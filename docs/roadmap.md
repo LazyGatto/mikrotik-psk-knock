@@ -88,11 +88,17 @@ UDP `content`, обновление rule content, scheduler 1s и bridge `token-
 
 ## Этап 3: клиент CLI
 
-- Выбрать язык и упаковку.
-- Реализовать расчет token.
-- Реализовать UDP staged knock.
-- Реализовать profiles/config.
-- Добавить dry-run/debug mode.
+- Выбрано: Go CLI.
+- Добавлен Go module в `client/`.
+- Реализован расчет token.
+- Реализован UDP staged knock transport.
+- Реализован YAML profiles/config.
+- Реализован RouterOS `.rsc` render для текущей single-profile схемы.
+- Добавлен debug mode для `token` и `knock`.
+- Проверено: `go test ./...` проходит.
+- Проверено: `token` совпадает с shell `shasum -a 512`.
+- Проверено: generated `.rsc` успешно импортируется на CHR и one-shot post-import init активирует token rules.
+- Ограничение проверки: Go UDP из текущего macOS/VPN окружения уходит через `utun18` с local source `198.18.0.1` и не доходит до CHR, тогда как `nc -u` доходит. Нужно повторить `knock` smoke вне этого route/proxy условия.
 - Добавить проверку времени и предупреждение о рассинхронизации.
 
 ## Этап 4: SSH/Ed25519 режим

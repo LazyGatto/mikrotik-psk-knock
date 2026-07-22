@@ -5,4 +5,4 @@ secrets/
 *.secret
 *.key
 *.pem
-
+routeros/generated-*.rsc

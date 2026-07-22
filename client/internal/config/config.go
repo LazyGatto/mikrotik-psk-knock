@@ -1,0 +1,167 @@
+package config
+
+import (
+	"fmt"
+	"os"
+	"time"
+
+	"gopkg.in/yaml.v3"
+)
+
+type Config struct {
+	Router   Router             `yaml:"router"`
+	Defaults Defaults           `yaml:"defaults"`
+	Services map[string]Service `yaml:"services"`
+	Clients  map[string]Client  `yaml:"clients"`
+}
+
+type Router struct {
+	Name    string `yaml:"name"`
+	Address string `yaml:"address"`
+}
+
+type Defaults struct {
+	BucketSeconds   int64  `yaml:"bucket_seconds"`
+	StageTimeout    string `yaml:"stage_timeout"`
+	TokenHitTimeout string `yaml:"token_hit_timeout"`
+	AllowedTimeout  string `yaml:"allowed_timeout"`
+	UsedTimeout     string `yaml:"used_timeout"`
+}
+
+type Service struct {
+	ServiceName string `yaml:"service_name"`
+	Stage1Port  int    `yaml:"stage1_port"`
+	Stage2Port  int    `yaml:"stage2_port"`
+	TokenPort   int    `yaml:"token_port"`
+	AllowedList string `yaml:"allowed_list"`
+	NAT         NAT    `yaml:"nat"`
+	Notify      Notify `yaml:"notify"`
+}
+
+type NAT struct {
+	Enabled   bool   `yaml:"enabled"`
+	Comment   string `yaml:"comment"`
+	DstPort   int    `yaml:"dst_port"`
+	ToAddress string `yaml:"to_address"`
+	ToPort    int    `yaml:"to_port"`
+}
+
+type Notify struct {
+	Enabled bool   `yaml:"enabled"`
+	URL     string `yaml:"url"`
+}
+
+type Client struct {
+	ClientID string `yaml:"client_id"`
+	Service  string `yaml:"service"`
+	PSK      string `yaml:"psk"`
+}
+
+type Resolved struct {
+	Config  Config
+	Client  Client
+	Service Service
+}
+
+func Load(path string) (Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return Config{}, err
+	}
+
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return Config{}, err
+	}
+	cfg.applyDefaults()
+	if err := cfg.Validate(); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+func (c *Config) applyDefaults() {
+	if c.Defaults.BucketSeconds == 0 {
+		c.Defaults.BucketSeconds = 30
+	}
+	if c.Defaults.StageTimeout == "" {
+		c.Defaults.StageTimeout = "5s"
+	}
+	if c.Defaults.TokenHitTimeout == "" {
+		c.Defaults.TokenHitTimeout = "2s"
+	}
+	if c.Defaults.AllowedTimeout == "" {
+		c.Defaults.AllowedTimeout = "3m"
+	}
+	if c.Defaults.UsedTimeout == "" {
+		c.Defaults.UsedTimeout = "35s"
+	}
+	for name, svc := range c.Services {
+		if svc.ServiceName == "" {
+			svc.ServiceName = name
+		}
+		if svc.AllowedList == "" {
+			svc.AllowedList = "mkpk-tt-allowed"
+		}
+		if svc.NAT.Comment == "" {
+			svc.NAT.Comment = "mkpk-tt dst-nat " + name
+		}
+		c.Services[name] = svc
+	}
+	for name, client := range c.Clients {
+		if client.ClientID == "" {
+			client.ClientID = name
+		}
+		c.Clients[name] = client
+	}
+}
+
+func (c Config) Validate() error {
+	if len(c.Services) == 0 {
+		return fmt.Errorf("services must not be empty")
+	}
+	if len(c.Clients) == 0 {
+		return fmt.Errorf("clients must not be empty")
+	}
+	if c.Defaults.BucketSeconds <= 0 {
+		return fmt.Errorf("defaults.bucket_seconds must be positive")
+	}
+	if _, err := time.ParseDuration(c.Defaults.StageTimeout); err != nil {
+		return fmt.Errorf("defaults.stage_timeout: %w", err)
+	}
+	if _, err := time.ParseDuration(c.Defaults.TokenHitTimeout); err != nil {
+		return fmt.Errorf("defaults.token_hit_timeout: %w", err)
+	}
+	for name, svc := range c.Services {
+		if svc.Stage1Port <= 0 || svc.Stage2Port <= 0 || svc.TokenPort <= 0 {
+			return fmt.Errorf("service %q ports must be positive", name)
+		}
+		if svc.NAT.DstPort <= 0 || svc.NAT.ToPort <= 0 {
+			return fmt.Errorf("service %q nat ports must be positive", name)
+		}
+		if svc.NAT.ToAddress == "" {
+			return fmt.Errorf("service %q nat.to_address is required", name)
+		}
+	}
+	for name, client := range c.Clients {
+		if client.Service == "" {
+			return fmt.Errorf("client %q service is required", name)
+		}
+		if client.PSK == "" {
+			return fmt.Errorf("client %q psk is required", name)
+		}
+		if _, ok := c.Services[client.Service]; !ok {
+			return fmt.Errorf("client %q references unknown service %q", name, client.Service)
+		}
+	}
+	return nil
+}
+
+func (c Config) Resolve(clientName string) (Resolved, error) {
+	client, ok := c.Clients[clientName]
+	if !ok {
+		return Resolved{}, fmt.Errorf("unknown client %q", clientName)
+	}
+	service := c.Services[client.Service]
+	return Resolved{Config: c, Client: client, Service: service}, nil
+}

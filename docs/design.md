@@ -171,6 +171,14 @@ bucket tokens и обновить token firewall rules. До успешного 
 или содержать заведомо невалидный content. Потеря `allowed` entries при reboot является приемлемым
 fail-closed поведением: клиент должен выполнить knock заново.
 
+После import без reboot применяется тот же порядок через one-shot scheduler `mkpk-tt-install`: он
+запускает `mkpk-tt-startup`, который применяет service NAT, сбрасывает token-hit runtime state и запускает
+poller для расчета token rules. Затем `mkpk-tt-install` удаляет сам себя.
+
+Практическая проверка generator output показала важный RouterOS nuance: self-remove должен идти первым
+действием в `mkpk-tt-install` on-event. Если сначала запускать `mkpk-tt-startup`, `:return 0` из
+startup/poller прерывает остаток on-event, и install scheduler остается циклически запускаться.
+
 Практический caveat: если scheduler уже включил token rules, RouterOS сохраняет измененный `content` как
 config state. После reboot rules могут кратко содержать старый token до первого startup tick scheduler-а.
 Это окно нужно отдельно измерить на CHR. Текущий production direction: scheduler с `start-time=startup`

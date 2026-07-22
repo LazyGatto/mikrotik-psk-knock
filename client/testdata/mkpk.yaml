@@ -1,0 +1,33 @@
+router:
+  name: router-a
+  address: router.example.com
+
+defaults:
+  bucket_seconds: 30
+  stage_timeout: 5s
+  token_hit_timeout: 2s
+  allowed_timeout: 3m
+  used_timeout: 35s
+
+services:
+  demo-service:
+    service_name: demo-service
+    stage1_port: 41001
+    stage2_port: 41002
+    token_port: 41003
+    allowed_list: mkpk-tt-allowed
+    nat:
+      enabled: false
+      comment: mkpk-tt dst-nat demo ssh
+      dst_port: 2222
+      to_address: 192.0.2.10
+      to_port: 22
+    notify:
+      enabled: false
+      url: ""
+
+clients:
+  demo-client:
+    client_id: demo-client
+    service: demo-service
+    psk: mkpk-prototype-psk
