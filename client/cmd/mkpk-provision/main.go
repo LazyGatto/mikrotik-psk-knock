@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"gopkg.in/yaml.v3"
 	"mikrotik-psk-knock/client/internal/config"
 	"mikrotik-psk-knock/client/internal/routeros"
 	"mikrotik-psk-knock/client/internal/token"
@@ -32,6 +33,8 @@ func run(args []string) error {
 		return secretCmd(args[1:])
 	case "config":
 		return configCmd(args[1:])
+	case "profile":
+		return profileCmd(args[1:])
 	case "token":
 		return tokenCmd(args[1:])
 	case "routeros":
@@ -48,6 +51,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `Usage:
   mkpk-provision secret generate [--bytes 32]
   mkpk-provision config validate --config mkpk.yaml
+  mkpk-provision profile init --out mkpk.yaml --router-address host
   mkpk-provision token --config mkpk.yaml --client laptop [--bucket N] [--debug]
   mkpk-provision routeros render --config mkpk.yaml --client laptop [--out generated.rsc]
 `)
@@ -65,12 +69,20 @@ func secretCmd(args []string) error {
 	if *n < 16 {
 		return fmt.Errorf("--bytes must be at least 16")
 	}
-	buf := make([]byte, *n)
-	if _, err := rand.Read(buf); err != nil {
+	secret, err := generateSecret(*n)
+	if err != nil {
 		return err
 	}
-	fmt.Println(base64.RawURLEncoding.EncodeToString(buf))
+	fmt.Println(secret)
 	return nil
+}
+
+func generateSecret(n int) (string, error) {
+	buf := make([]byte, n)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
 func configCmd(args []string) error {
@@ -88,6 +100,98 @@ func configCmd(args []string) error {
 	}
 	printConfigSummary(cfg, *configPath)
 	return nil
+}
+
+func profileCmd(args []string) error {
+	if len(args) == 0 || args[0] != "init" {
+		return fmt.Errorf("usage: mkpk-provision profile init --out mkpk.yaml --router-address host")
+	}
+	fs := flag.NewFlagSet("profile init", flag.ContinueOnError)
+	outPath := fs.String("out", "mkpk.yaml", "output config path")
+	routerName := fs.String("router-name", "mikrotik", "RouterOS identity label")
+	routerAddress := fs.String("router-address", "", "RouterOS public address")
+	serviceName := fs.String("service", "demo-service", "initial service name")
+	clientName := fs.String("client", "demo-client", "initial client name")
+	force := fs.Bool("force", false, "overwrite output file when it exists")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if *routerAddress == "" {
+		return fmt.Errorf("--router-address is required")
+	}
+	if *serviceName == "" {
+		return fmt.Errorf("--service is required")
+	}
+	if *clientName == "" {
+		return fmt.Errorf("--client is required")
+	}
+	if !*force {
+		if _, err := os.Stat(*outPath); err == nil {
+			return fmt.Errorf("%s already exists; use --force to overwrite", *outPath)
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+	}
+	psk, err := generateSecret(32)
+	if err != nil {
+		return err
+	}
+	cfg := initialConfig(*routerName, *routerAddress, *serviceName, *clientName, psk)
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(*outPath, data, 0600); err != nil {
+		return err
+	}
+	fmt.Printf("created %s service=%s client=%s\n", *outPath, *serviceName, *clientName)
+	return nil
+}
+
+func initialConfig(routerName, routerAddress, serviceName, clientName, psk string) config.Config {
+	return config.Config{
+		Router: config.Router{
+			Name:    routerName,
+			Address: routerAddress,
+		},
+		Defaults: config.Defaults{
+			BucketSeconds:   30,
+			StageTimeout:    "5s",
+			TokenHitTimeout: "2s",
+			AllowedTimeout:  "3m",
+			UsedTimeout:     "65s",
+		},
+		Services: map[string]config.Service{
+			serviceName: {
+				ServiceName: serviceName,
+				Stage1Port:  41001,
+				Stage2Port:  41002,
+				TokenPort:   41003,
+				AllowedList: "mkpk-tt-allowed",
+				NAT: config.NAT{
+					Enabled:   false,
+					Comment:   "mkpk-tt dst-nat " + serviceName,
+					DstPort:   2222,
+					ToAddress: "192.0.2.10",
+					ToPort:    22,
+				},
+				Notify: config.Notify{
+					Enabled: false,
+					URL:     "",
+				},
+			},
+		},
+		Clients: map[string]config.Client{
+			clientName: {
+				ClientID: clientName,
+				Service:  serviceName,
+				PSK:      psk,
+			},
+		},
+	}
 }
 
 func tokenCmd(args []string) error {

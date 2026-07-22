@@ -24,6 +24,7 @@ go run ./cmd/mkpk knock --config testdata/mkpk.yaml --client demo-client --check
 go run ./cmd/mkpk knock --config testdata/mkpk.yaml --client demo-client --min-bucket-age 2s --debug
 go run ./cmd/mkpk knock --config testdata/mkpk.yaml --client demo-client --noise 2 --debug
 go run ./cmd/mkpk-provision secret generate
+go run ./cmd/mkpk-provision profile init --out mkpk.yaml --router-address router.example
 go run ./cmd/mkpk-provision config validate --config testdata/mkpk.yaml
 go run ./cmd/mkpk-provision token --config testdata/mkpk.yaml --client demo-client --debug
 go run ./cmd/mkpk-provision routeros render --config testdata/mkpk.yaml --client demo-client --out ../routeros/generated-demo.rsc
@@ -43,6 +44,7 @@ PSK в `testdata/mkpk.yaml` демонстрационный. Production-кон�
 - `mkpk-provision routeros render` генерирует `.rsc`, который успешно импортируется на CHR.
 - `mkpk-provision routeros render` использует configured `defaults.bucket_seconds` в RouterOS poller, чтобы клиент и
   RouterOS считали один и тот же time bucket.
+- `mkpk-provision profile init` создает стартовый YAML с generated PSK и безопасными defaults.
 - `mkpk-provision config validate` загружает YAML, применяет defaults, проверяет инварианты и печатает
   summary без раскрытия PSK.
 - Сгенерированный `.rsc` создает one-shot `mkpk-tt-install`; после import token rules активируются без reboot.

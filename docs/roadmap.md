@@ -94,6 +94,7 @@ UDP `content`, обновление rule content, scheduler 1s и bridge `token-
 - Реализован UDP staged knock transport.
 - Реализован YAML profiles/config.
 - Реализован RouterOS `.rsc` render для текущей single-profile схемы.
+- Добавлено: `mkpk-provision profile init` для создания стартового YAML с generated PSK.
 - Добавлено: `mkpk-provision config validate` для safe/admin проверки YAML перед render/import.
 - Добавлен debug mode для `token` и `knock`.
 - Зафиксирован user flow: provisioning/render/import выполняются из safe/admin сети, runtime `knock` работает из unsafe roaming сети без SSH/API зависимости.
