@@ -108,7 +108,10 @@ func knockCmd(args []string) error {
 	clientName := fs.String("client", "", "client name")
 	routerAddr := fs.String("router", "", "router address override")
 	timeout := fs.Duration("timeout", time.Second, "UDP write timeout")
-	delay := fs.Duration("delay", 750*time.Millisecond, "delay between stages")
+	interval := fs.Duration("interval", 250*time.Millisecond, "retry interval inside each phase")
+	stageDuration := fs.Duration("stage-duration", 2*time.Second, "stage1/stage2 retry duration")
+	tokenDuration := fs.Duration("token-duration", time.Second, "token retry duration")
+	noisePackets := fs.Int("noise", 0, "random UDP noise packets to send to token port around phases")
 	debug := fs.Bool("debug", false, "print knock metadata")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -124,8 +127,8 @@ func knockCmd(args []string) error {
 	bucket := token.Bucket(time.Now(), res.Config.Defaults.BucketSeconds)
 	value := token.Compute(res.Client.PSK, res.Service.ServiceName, res.Client.ClientID, bucket)
 	if *debug {
-		fmt.Printf("router=%s service=%s client_id=%s bucket=%d stage1=%d stage2=%d token_port=%d\n",
-			router, res.Service.ServiceName, res.Client.ClientID, bucket, res.Service.Stage1Port, res.Service.Stage2Port, res.Service.TokenPort)
+		fmt.Printf("router=%s service=%s client_id=%s bucket=%d stage1=%d stage2=%d token_port=%d interval=%s stage_duration=%s token_duration=%s noise=%d\n",
+			router, res.Service.ServiceName, res.Client.ClientID, bucket, res.Service.Stage1Port, res.Service.Stage2Port, res.Service.TokenPort, *interval, *stageDuration, *tokenDuration, *noisePackets)
 	}
 	var logf func(string, ...any)
 	if *debug {
@@ -134,14 +137,17 @@ func knockCmd(args []string) error {
 		}
 	}
 	return knock.Run(knock.Options{
-		Router:     router,
-		Stage1Port: res.Service.Stage1Port,
-		Stage2Port: res.Service.Stage2Port,
-		TokenPort:  res.Service.TokenPort,
-		Token:      value,
-		Timeout:    *timeout,
-		Delay:      *delay,
-		Logf:       logf,
+		Router:        router,
+		Stage1Port:    res.Service.Stage1Port,
+		Stage2Port:    res.Service.Stage2Port,
+		TokenPort:     res.Service.TokenPort,
+		Token:         value,
+		Timeout:       *timeout,
+		Interval:      *interval,
+		StageDuration: *stageDuration,
+		TokenDuration: *tokenDuration,
+		NoisePackets:  *noisePackets,
+		Logf:          logf,
 	})
 }
 
