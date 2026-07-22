@@ -47,9 +47,11 @@ PSK в `testdata/mkpk.yaml` демонстрационный. Production-кон�
   получает observed source IP.
 - `knock --debug` показывает router, bucket, stage ports, local UDP address, remote UDP address и bytes sent.
 - `check` выполняет тот же TCP connect-check целевого endpoint без отправки knock. Это runtime primitive
-  для before/after status в будущем UI.
+  для before/after status в будущем UI. Он проверяет сквозную TCP-доступность сервиса, а не факт
+  появления `allowed` entry на RouterOS.
 - `knock --check` после отправки knock выполняет TCP connect-check целевого endpoint. По умолчанию
   проверяется `router:service.nat.dst_port`; можно переопределить через `--check-host` и `--check-port`.
+- UDP knock transport сейчас IPv4-only (`udp4`); TCP `check` использует обычный `tcp`.
 - `knock` по умолчанию ждет, пока текущий bucket станет хотя бы на 2 секунды старше
   (`--min-bucket-age 2s`). Это снижает риск, что клиент с чуть спешащими часами отправит token для
   bucket, который RouterOS еще не принимает.

@@ -7,7 +7,7 @@ defaults:
   stage_timeout: 5s
   token_hit_timeout: 2s
   allowed_timeout: 3m
-  used_timeout: 35s
+  used_timeout: 65s
 
 services:
   demo-service:

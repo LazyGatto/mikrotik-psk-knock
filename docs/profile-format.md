@@ -16,7 +16,7 @@ add name="mkpk-tt-profile-demo" policy=read,write,test source={
     :global mkpkTtTokenPort 41003
     :global mkpkTtAllowedList "mkpk-tt-allowed"
     :global mkpkTtAllowedTimeout "3m"
-    :global mkpkTtUsedTimeout "35s"
+    :global mkpkTtUsedTimeout "65s"
     :global mkpkTtNotifyEnabled false
     :global mkpkTtNotifyUrl ""
     :global mkpkTtNatEnabled false
@@ -40,7 +40,8 @@ add name="mkpk-tt-profile-demo" policy=read,write,test source={
 - `token_port` - UDP порт token stage.
 - `allowed_list` - address-list, через который ограничивается `dst-nat`.
 - `allowed_timeout` - время открытия observed source IP.
-- `used_timeout` - время жизни used-bucket marker.
+- `used_timeout` - время жизни used-bucket marker. Должен быть не меньше `2 * bucket_seconds`, чтобы
+  marker перекрывал полный интервал приема `now` и `prev` token buckets.
 - `notify_enabled` - включает webhook notification path.
 - `notify_url` - URL для `/tool fetch` POST после успешного allow.
 - `nat_enabled` - включает созданный service `dst-nat` rule.

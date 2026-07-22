@@ -41,6 +41,16 @@ func TestValidateRejectsInvalidTimeouts(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsUsedTimeoutShorterThanAcceptedBuckets(t *testing.T) {
+	cfg := validConfig()
+	cfg.Defaults.BucketSeconds = 30
+	cfg.Defaults.UsedTimeout = "59s"
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want short used timeout error")
+	}
+}
+
 func validConfig() Config {
 	return Config{
 		Defaults: Defaults{
@@ -48,7 +58,7 @@ func validConfig() Config {
 			StageTimeout:    "5s",
 			TokenHitTimeout: "2s",
 			AllowedTimeout:  "3m",
-			UsedTimeout:     "35s",
+			UsedTimeout:     "65s",
 		},
 		Services: map[string]Service{
 			"demo-service": {

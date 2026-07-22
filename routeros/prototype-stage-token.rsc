@@ -42,7 +42,7 @@ add name="mkpk-proto-poller" policy=read,write,test source={
     :local tokenHitList "mkpk-proto-token-hit"
     :local allowedList "mkpk-proto-allowed"
     :local allowedTimeout "3m"
-    :local usedTimeout "35s"
+    :local usedTimeout "65s"
     :local bucket ([:timestamp] / 30s)
     :local usedList ("mkpk-proto-used-" . $bucket)
     :local bucketComment ("bucket=" . $bucket)

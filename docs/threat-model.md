@@ -35,6 +35,8 @@ Break-glass/admin mode через SSH/API допустим как отдельн
 ## Не защищает полностью от
 
 - replay валидного токена до момента, когда scheduler пометил token/bucket как `used`;
+- DoS через принудительную collision: on-path атакующий может повторить валидный token с другого IP в
+  тот же polling interval, заставив RouterOS fail-closed сжечь bucket без открытия доступа;
 - активного MITM в момент knock;
 - компрометации клиента и утечки PSK;
 - компрометации MikroTik и чтения scripts/secrets;
@@ -60,7 +62,9 @@ firewall accepts valid token -> token-hit list
 scheduler every ~1s -> allow one src -> mark token/bucket used
 ```
 
-Это сужает replay window примерно до `scheduler interval + processing time`. При interval 1 секунда это лучше, чем replay window длиной во весь time bucket, но все еще не является строгой атомарной replay protection.
+Это сужает replay window примерно до `scheduler interval + processing time`, если used-marker живет
+дольше полного окна приема `now+prev`. При interval 1 секунда это лучше, чем replay window длиной во весь
+time bucket, но все еще не является строгой атомарной replay protection.
 
 Если за один polling interval пришли несколько hits с одним token, scheduler не должен разрешать все адреса. Консервативная политика: открыть только первый hit при надежном порядке записей или сжечь token без открытия доступа и отправить alert.
 

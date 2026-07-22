@@ -94,7 +94,7 @@ func (c *Config) applyDefaults() {
 		c.Defaults.AllowedTimeout = "3m"
 	}
 	if c.Defaults.UsedTimeout == "" {
-		c.Defaults.UsedTimeout = "35s"
+		c.Defaults.UsedTimeout = "65s"
 	}
 	for name, svc := range c.Services {
 		if svc.ServiceName == "" {
@@ -135,8 +135,13 @@ func (c Config) Validate() error {
 	if _, err := time.ParseDuration(c.Defaults.AllowedTimeout); err != nil {
 		return fmt.Errorf("defaults.allowed_timeout: %w", err)
 	}
-	if _, err := time.ParseDuration(c.Defaults.UsedTimeout); err != nil {
+	usedTimeout, err := time.ParseDuration(c.Defaults.UsedTimeout)
+	if err != nil {
 		return fmt.Errorf("defaults.used_timeout: %w", err)
+	}
+	minUsedTimeout := 2 * time.Duration(c.Defaults.BucketSeconds) * time.Second
+	if usedTimeout < minUsedTimeout {
+		return fmt.Errorf("defaults.used_timeout must be at least %s to cover current and previous token buckets", minUsedTimeout)
 	}
 	for name, svc := range c.Services {
 		if err := validatePort("stage1_port", svc.Stage1Port); err != nil {

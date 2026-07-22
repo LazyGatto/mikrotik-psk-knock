@@ -40,7 +40,7 @@ func resolvedConfig(bucketSeconds int64) config.Resolved {
 			StageTimeout:    "5s",
 			TokenHitTimeout: "2s",
 			AllowedTimeout:  "3m",
-			UsedTimeout:     "35s",
+			UsedTimeout:     "65s",
 		},
 	}
 	svc := config.Service{

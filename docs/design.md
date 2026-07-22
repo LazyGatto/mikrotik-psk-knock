@@ -65,6 +65,10 @@ break-glass/admin mode:
 14. Клиент опционально проверяет целевой TCP endpoint через обычный connect-check, без RouterOS SSH/API.
 ```
 
+TCP check подтверждает сквозную доступность target endpoint после knock. Он не доказывает отдельно, что
+RouterOS уже добавил `allowed` entry: если внутренний сервис не отвечает, check останется closed даже при
+успешном allow.
+
 ## Формат токена
 
 Базовая идея:
@@ -109,11 +113,16 @@ bucket_size = 30 секунд
 accepted_buckets = now, now - 1
 scheduler_interval = 1 секунда
 token_hit_timeout = 2 секунды
+used_timeout >= 2 * bucket_size
 ```
 
 `now + 1` стоит добавлять только если есть проблемы с рассинхронизацией времени.
 
 Чем короче окно, тем меньше replay window, но тем выше требования к синхронизации времени клиента и роутера.
+
+`used_timeout` обязан перекрывать полный интервал приема токена. Так как RouterOS принимает `now` и
+`prev`, marker для уже использованного bucket должен жить не меньше `2 * bucket_size`. При bucket 30
+секунд безопасный дефолт - 65 секунд: 60 секунд полного окна плюс небольшой запас.
 
 ## Profile storage
 
@@ -160,6 +169,8 @@ replay window ~= scheduler_interval + processing time
 ```
 
 При scheduler interval 1 секунда replay window можно практически сузить примерно до 1 секунды, вместо полного `bucket_size`.
+Это верно только при условии, что used-marker живет дольше полного окна приема `now+prev`; иначе старый
+token может снова пройти после истечения marker timeout, пока он еще принимается как `prev`.
 
 Если за один polling interval в `token-hit` попало больше одного source IP, безопасное поведение должно быть консервативным.
 
@@ -170,6 +181,10 @@ replay window ~= scheduler_interval + processing time
 - отправить/log warning о collision/replay suspicion.
 
 Нельзя разрешать все адреса из `token-hit` для одного token/bucket.
+
+Остаточный availability-риск: on-path атакующий, увидевший валидный token, может специально отправлять
+его с другого IP в тот же polling interval. Консервативная collision-политика fail-closed сожжет bucket и
+не откроет доступ легитимному клиенту. Это лучше, чем открыть неверный адрес, но остается DoS-вектором.
 
 Для used-state прототип использует временный address-list marker в list `mkpk-proto-used-<bucket>`. Первый
 вариант через script global на CHR не остановил повторный hit в том же bucket, поэтому global не стоит

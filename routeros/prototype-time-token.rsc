@@ -56,7 +56,7 @@ add name="mkpk-tt-profile-demo" policy=read,write,test source={
     :global mkpkTtTokenPort 41003
     :global mkpkTtAllowedList "mkpk-tt-allowed"
     :global mkpkTtAllowedTimeout "3m"
-    :global mkpkTtUsedTimeout "35s"
+    :global mkpkTtUsedTimeout "65s"
     :global mkpkTtNotifyEnabled false
     :global mkpkTtNotifyUrl ""
     :global mkpkTtNatEnabled false
