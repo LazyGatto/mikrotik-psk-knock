@@ -12,5 +12,6 @@
 Первый прототип намеренно не реализует PSK/time-token генерацию. Его задача - проверить bridge между
 firewall packet path и scheduler/script runtime.
 
-`prototype-time-token.rsc` использует hardcoded demo profile values и нужен только для проверки механики
-token generation/update. Production profile storage еще не описан.
+`prototype-time-token.rsc` хранит demo profile values в отдельном persistent RouterOS script
+`mkpk-tt-profile-demo`. PSK все еще находится в script source, поэтому production-вариант должен отдельно
+ограничить права на чтение scripts и описать ротацию секретов.

@@ -37,14 +37,16 @@
 - подтверждены replay/collision политики для time-token прототипа;
 - выполнен reboot-тест CHR: persistent `mkpk-tt` firewall rules/script/scheduler пережили reboot, dynamic state очистился, scheduler пересчитал token rules, post-reboot knock сработал;
 - подтверждено, что `:timestamp` bucket после reboot совпал с клиентским epoch bucket даже при disabled NTP client на тестовом CHR;
+- добавлен и проверен startup guard `mkpk-tt-startup`: после reboot он сбрасывает token rules в disabled/invalid, затем запускает poller для пересчета;
+- profile/client параметры вынесены в отдельный persistent RouterOS script `mkpk-tt-profile-demo`;
 - тестовые firewall rules, address-lists, scripts и schedulers после проверки удалены.
 
 Промежуточный вывод: базовая ROS-only архитектура стала заметно реалистичнее. `sha512`, time bucket,
 UDP `content`, обновление rule content, scheduler 1s и bridge `token-hit -> scheduler -> allowed`
 подтверждены на CHR.
 
-Следующий полезный эксперимент: вынести demo profile/secrets из прототипа в нормальный profile format и
-добавить startup guard против stale persisted token content.
+Следующий полезный эксперимент: добавить static `dst-nat` пример через `src-address-list` и notification
+hook для успешного allow.
 
 ## Этап 1: исследование RouterOS
 
@@ -68,8 +70,9 @@ UDP `content`, обновление rule content, scheduler 1s и bridge `token-
 - Добавить notification script.
 - Добавить logging и comments для address-list entries.
 - Проверено: после reboot scheduler пересчитывает token rules, dynamic `allowed` сбрасывается, post-reboot knock работает.
-- Описать persistent profile/client storage для service/client_id/PSK без hardcoded demo values.
-- Добавить startup guard против краткого окна stale persisted token content.
+- Проверено: persistent profile/client storage через отдельный RouterOS profile script.
+- Проверено: startup guard против stale persisted token content.
+- Добавить static `dst-nat` пример через `src-address-list`.
 
 ## Этап 3: клиент CLI
 

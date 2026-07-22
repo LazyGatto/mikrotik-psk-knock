@@ -193,10 +193,16 @@ bucket и не добавляет никого в `allowed`.
 - `:timestamp` bucket совпал с клиентским epoch bucket, хотя `/system ntp client` был disabled;
 - в логах ранний startup tick отразился со временем `10:19:39`, а после применения timezone/clock следующие записи шли как `15:20:00+`.
 
-Открытая production-hardening задача: scheduler меняет firewall rule `content`, и это
-становится config state. Если роутер перезагрузился после обновления token rules, до первого startup
-tick они могут содержать stale token. Нужно добавить startup guard или другую схему, которая делает
-token-stage fail-closed до первого успешного пересчета.
+Дополнительный startup guard проверен:
+
+- `mkpk-tt-startup` выполнился после reboot;
+- token rules сначала были переведены в `disabled=yes` и invalid content;
+- затем `mkpk-tt-startup` запустил poller, который пересчитал и включил актуальные token rules;
+- post-reboot knock сработал.
+
+Остаточная production-hardening задача: полностью исключить окно до самого первого startup script tick
+средствами persistent filter rules сложно. Нужно решить, достаточно ли такого guard, или нужен другой
+механизм установки/активации token-stage.
 
 ### PSK-derived time-token prototype
 
@@ -213,7 +219,27 @@ token-stage fail-closed до первого успешного пересчет�
 - replay/collision политика работает как в статическом прототипе.
 
 Ограничение прототипа: profile values (`service`, `client_id`, `psk`) пока hardcoded demo values внутри
-script. Следующий шаг - описать и проверить persistent profile/client storage.
+отдельного persistent profile script. Формат описан в [profile-format.md](profile-format.md).
+
+### Persistent profile script
+
+Статус: проверено в time-token прототипе.
+
+Profile/client параметры вынесены в отдельный persistent script `mkpk-tt-profile-demo`, который задает:
+
+- `service`;
+- `client_id`;
+- `psk`;
+- `token_port`;
+- `allowed_list`;
+- `allowed_timeout`;
+- `used_timeout`.
+
+Poller запускает profile script перед расчетом token. После reboot profile script сохранился, poller
+прочитал значения, пересчитал token rules, и post-reboot knock сработал.
+
+Ограничение: PSK хранится в RouterOS script source. Нужно отдельно определить права RouterOS users/groups,
+ротацию секретов и правила обращения с export/backup.
 
 ### Производительность `content` и `layer7-protocol`
 

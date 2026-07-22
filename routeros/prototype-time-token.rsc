@@ -28,15 +28,36 @@
 #   /ip firewall address-list print where list=mkpk-tt-allowed
 #
 # Cleanup:
+#   /system scheduler remove [find where name~"^mkpk-tt-"]
+#   /system script remove [find where name~"^mkpk-tt-"]
+#   /ip firewall filter remove [find where comment~"^mkpk-tt "]
+#   /ip firewall address-list remove [find where list~"^mkpk-tt-"]
+#
+# The demo profile is intentionally stored as a separate persistent script.
+# Production code should generate one profile script per client/profile and
+# restrict read access to scripts that contain PSKs.
+
+/system scheduler remove [find where name~"^mkpk-tt-"]
+/system script remove [find where name~"^mkpk-tt-"]
+/ip firewall filter remove [find where comment~"^mkpk-tt "]
+/ip firewall address-list remove [find where list~"^mkpk-tt-"]
+
+/system script
+add name="mkpk-tt-profile-demo" policy=read,write,test source={
+    :global mkpkTtService "demo-service"
+    :global mkpkTtClientId "demo-client"
+    :global mkpkTtPsk "mkpk-prototype-psk"
+    :global mkpkTtTokenPort 41003
+    :global mkpkTtAllowedList "mkpk-tt-allowed"
+    :global mkpkTtAllowedTimeout "3m"
+    :global mkpkTtUsedTimeout "35s"
+}
+
+# Legacy cleanup commands kept in comments for copy/paste reference:
 #   /system scheduler remove [find where name="mkpk-tt-poller"]
 #   /system script remove [find where name="mkpk-tt-poller"]
 #   /ip firewall filter remove [find where comment~"^mkpk-tt "]
 #   /ip firewall address-list remove [find where list~"^mkpk-tt-"]
-
-/system scheduler remove [find where name="mkpk-tt-poller"]
-/system script remove [find where name="mkpk-tt-poller"]
-/ip firewall filter remove [find where comment~"^mkpk-tt "]
-/ip firewall address-list remove [find where list~"^mkpk-tt-"]
 
 /ip firewall filter
 add chain=input action=add-src-to-address-list protocol=udp dst-port=41001 \
@@ -57,13 +78,23 @@ add chain=input action=add-src-to-address-list protocol=udp dst-port=41003 \
 
 /system script
 add name="mkpk-tt-poller" policy=read,write,test source={
-    :local service "demo-service"
-    :local clientId "demo-client"
-    :local psk "mkpk-prototype-psk"
-    :local tokenPort 41003
-    :local allowedList "mkpk-tt-allowed"
-    :local allowedTimeout "3m"
-    :local usedTimeout "35s"
+    /system script run mkpk-tt-profile-demo
+
+    :global mkpkTtService
+    :global mkpkTtClientId
+    :global mkpkTtPsk
+    :global mkpkTtTokenPort
+    :global mkpkTtAllowedList
+    :global mkpkTtAllowedTimeout
+    :global mkpkTtUsedTimeout
+
+    :local service $mkpkTtService
+    :local clientId $mkpkTtClientId
+    :local psk $mkpkTtPsk
+    :local tokenPort $mkpkTtTokenPort
+    :local allowedList $mkpkTtAllowedList
+    :local allowedTimeout $mkpkTtAllowedTimeout
+    :local usedTimeout $mkpkTtUsedTimeout
     :local nowBucket ([:timestamp] / 30s)
     :local prevBucket ($nowBucket - 1)
 
@@ -134,7 +165,28 @@ add name="mkpk-tt-poller" policy=read,write,test source={
     :return 0
 }
 
+add name="mkpk-tt-startup" policy=read,write,test source={
+    :local invalidContent "mkpk-tt-token-not-initialized"
+    :local nowRule [/ip firewall filter find where comment="mkpk-tt token now"]
+    :local prevRule [/ip firewall filter find where comment="mkpk-tt token prev"]
+
+    :if ([:len $nowRule] > 0) do={
+        /ip firewall filter set $nowRule content=$invalidContent disabled=yes
+    }
+    :if ([:len $prevRule] > 0) do={
+        /ip firewall filter set $prevRule content=$invalidContent disabled=yes
+    }
+
+    /ip firewall address-list remove [find where list~"^mkpk-tt-token-hit"]
+    /system script run mkpk-tt-poller
+    :log info "mkpk-tt startup guard applied"
+    :return 0
+}
+
 /system scheduler
+add name="mkpk-tt-startup" start-time=startup \
+    on-event="/system script run mkpk-tt-startup" \
+    policy=read,write,test comment="mkpk-tt fail-closed startup guard"
 add name="mkpk-tt-poller" interval=1s start-time=startup \
     on-event="/system script run mkpk-tt-poller" \
     policy=read,write,test comment="mkpk-tt update tokens and poll hits"

@@ -88,6 +88,25 @@ token_hit_timeout = 2 секунды
 
 Чем короче окно, тем меньше replay window, но тем выше требования к синхронизации времени клиента и роутера.
 
+## Profile storage
+
+Текущий проверенный прототип хранит profile/client параметры в отдельном persistent RouterOS script,
+например `mkpk-tt-profile-demo`. Основной poller запускает этот profile script и получает:
+
+- `service`;
+- `client_id`;
+- `psk`;
+- `token_port`;
+- `allowed_list`;
+- `allowed_timeout`;
+- `used_timeout`.
+
+Такой формат переживает reboot и отделяет профиль от основной poller-логики. Подробности описаны в
+[profile-format.md](profile-format.md).
+
+Ограничение: PSK остается в RouterOS script source. Production-конфигурация должна ограничивать права
+пользователей на чтение scripts и учитывать секреты в export/backup.
+
 ## Single-use bucket через polling
 
 RouterOS firewall и scheduler/script нужно рассматривать как два разных runtime:
@@ -165,8 +184,16 @@ Reboot-тест на CHR RouterOS 7.23.2 подтвердил:
 - scheduler стартовал после reboot и пересчитал `token now`/`token prev`;
 - post-reboot knock снова открыл observed source IP.
 
-Остался production-hardening вопрос: startup tick успел обновить rules, но краткое окно со stale persisted
-content теоретически остается, если reboot происходит в пределах еще валидного bucket.
+Дополнительный startup guard прототипа `mkpk-tt-startup` проверен на CHR:
+
+- startup scheduler выполнился после reboot;
+- первым шагом поставил token rules в `disabled=yes` и `content=mkpk-tt-token-not-initialized`;
+- затем запустил poller, который пересчитал и включил актуальные `token now`/`token prev`;
+- post-reboot knock после этого сработал.
+
+Остался теоретический production-hardening вопрос: полностью исключить окно до самого первого startup
+script tick средствами persistent filter rules сложно. Текущий guard сужает его до раннего startup script
+и делает порядок действий явным в логах.
 
 ## Address-list и NAT
 
