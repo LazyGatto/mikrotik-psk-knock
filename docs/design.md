@@ -32,7 +32,7 @@ ROS-only режим предназначен для окружений, где �
 7. Firewall rule матчить source IP из stage2 и payload/content == current token.
 8. Firewall добавляет source IP в token-hit address-list на короткий timeout, например 2 секунды.
 9. Scheduler раз в 1 секунду проверяет token-hit list.
-10. Если token/bucket еще не used, scheduler выбирает один hit, добавляет source IP в allowed address-list на 3-5 минут и помечает token/bucket used.
+10. Если token/bucket еще не used и hit ровно один, scheduler добавляет observed source IP в allowed address-list на 3-5 минут и помечает token/bucket used.
 11. Scheduler отключает или меняет token firewall rule до следующего bucket.
 12. RouterOS отправляет уведомление.
 13. `dst-nat` работает только для source IP из allowed address-list.
@@ -101,13 +101,42 @@ replay window ~= scheduler_interval + processing time
 
 При scheduler interval 1 секунда replay window можно практически сузить примерно до 1 секунды, вместо полного `bucket_size`.
 
-Если за один polling interval в `token-hit` попало больше одного source IP, безопасное поведение должно быть консервативным. Варианты для проверки:
+Если за один polling interval в `token-hit` попало больше одного source IP, безопасное поведение должно быть консервативным.
 
-- разрешить только первый hit, если RouterOS дает надежный порядок создания dynamic address-list entries;
-- если порядок ненадежен, сжечь token/bucket и не разрешать никого;
-- отправить alert о collision/replay suspicion.
+Текущая политика прототипа:
+
+- если hit ровно один, открыть observed source IP;
+- если hits больше одного, сжечь token/bucket и не разрешать никого;
+- отправить/log warning о collision/replay suspicion.
 
 Нельзя разрешать все адреса из `token-hit` для одного token/bucket.
+
+Для used-state прототип использует временный address-list marker в list `mkpk-proto-used-<bucket>`. Первый
+вариант через script global на CHR не остановил повторный hit в том же bucket, поэтому global не стоит
+считать достаточным hot-path state без дополнительной проверки.
+
+## Reboot-survival
+
+Механика внутри MikroTik должна переживать reboot устройства в fail-closed режиме.
+
+Должны быть persistent RouterOS config objects:
+
+- firewall rules для stage1/stage2/token;
+- scheduler;
+- scripts;
+- static `dst-nat` rules с `src-address-list`;
+- profile/client metadata, из которых можно пересчитать текущие tokens.
+
+Нужно считать потерянными после reboot:
+
+- dynamic `stage1`, `stage2`, `token-hit`, `allowed` address-list entries;
+- временные used-bucket markers;
+- script globals и другой in-memory state.
+
+Следствие для production-варианта: после reboot scheduler должен быстро пересчитать current/previous
+bucket tokens и обновить token firewall rules. До успешного пересчета token-stage должен быть disabled
+или содержать заведомо невалидный content. Потеря `allowed` entries при reboot является приемлемым
+fail-closed поведением: клиент должен выполнить knock заново.
 
 ## Address-list и NAT
 

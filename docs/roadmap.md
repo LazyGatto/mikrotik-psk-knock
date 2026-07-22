@@ -19,11 +19,22 @@
 - подтверждено, что UDP `content` matcher работает в `input` chain по payload;
 - подтверждено, что `content` matcher можно менять через SSH/script, и новое значение начинает применяться;
 - подтверждено, что scheduler с `interval=1s` работает практически около 1 секунды, но с джиттером/стартовой задержкой;
+- добавлен [routeros/prototype-stage-token.rsc](../routeros/prototype-stage-token.rsc) для минимального end-to-end прототипа;
+- подтверждено на CHR, что `stage1 -> stage2 -> token-hit -> scheduler -> allowed` работает со статическим token payload;
+- подтверждено, что `:return` в scheduler script нужно вызывать с явным значением, например `:return 0`;
+- проверено, что script global не годится как единственный used-bucket state в этом прототипе: повторный проход не был остановлен и уперся в duplicate address-list entry;
+- подтвержден рабочий used-bucket marker через временный address-list `mkpk-proto-used-<bucket>`;
+- подтверждено replay-поведение: второй token-hit в том же bucket удаляется с warning `replay ignored`, без нового `allowed`;
+- подтверждено collision-поведение ручной инъекцией двух разных `token-hit`: bucket сжигается, `allowed` не создается;
+- зафиксировано требование reboot-survival: persistent config objects должны переживать reboot, dynamic runtime state считается потерянным и восстанавливается/fail-closed;
 - тестовые firewall rules, address-lists, scripts и schedulers после проверки удалены.
 
-Промежуточный вывод: базовая ROS-only архитектура стала заметно реалистичнее. `sha512`, time bucket, UDP `content`, обновление rule content и scheduler 1s подтверждены на CHR.
+Промежуточный вывод: базовая ROS-only архитектура стала заметно реалистичнее. `sha512`, time bucket,
+UDP `content`, обновление rule content, scheduler 1s и bridge `token-hit -> scheduler -> allowed`
+подтверждены на CHR.
 
-Следующий полезный эксперимент: собрать маленький end-to-end prototype `stage1/stage2/token-hit` плюс scheduler, который переносит один IP в `allowed` и сжигает bucket.
+Следующий полезный эксперимент: заменить статический token payload на PSK-derived time-token и проверить
+обновление token firewall rules для текущего/предыдущего bucket.
 
 ## Этап 1: исследование RouterOS
 
@@ -32,9 +43,9 @@
 - Проверено: стабильный time bucket можно получить через `[:timestamp] / 30s`.
 - Проверено: firewall `content` матчится по UDP payload.
 - Проверено: `content` matcher можно обновлять через SSH/script.
-- Проверить polling `token-hit` address-list с scheduler interval около 1s.
-- Проверить порядок dynamic address-list entries при нескольких hits.
-- Проверить варианты хранения `used bucket/token state`.
+- Проверено: polling `token-hit` address-list с scheduler interval около 1s переносит один observed source IP в `allowed`.
+- Проверено: при нескольких hits текущий прототип может fail-closed без опоры на порядок dynamic entries.
+- Проверено: временный address-list marker подходит как used bucket/token state для прототипа.
 - Проверить стоимость `content` и `layer7-protocol` на тестовом железе.
 - Проверить каналы уведомлений: email, Telegram/webhook через `/tool fetch`, syslog.
 
@@ -42,10 +53,11 @@
 
 - Описать profile format.
 - Написать RouterOS scripts для генерации token.
-- Написать firewall rules для stage1/stage2/token.
+- Проверено прототипом: firewall rules для stage1/stage2/token.
 - Настроить `dst-nat` через `src-address-list`.
 - Добавить notification script.
 - Добавить logging и comments для address-list entries.
+- Проверить reboot behavior: после reboot scheduler пересчитывает token rules, `allowed` сбрасывается, token-stage до пересчета fail-closed.
 
 ## Этап 3: клиент CLI
 

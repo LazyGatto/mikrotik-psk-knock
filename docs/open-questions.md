@@ -22,14 +22,16 @@ Payload не должен иметь права просить открыть п
 
 ### Поведение при нескольких token-hit за polling interval
 
-Статус: решено концептуально, требует проверки деталей RouterOS.
+Статус: проверено для prototype policy.
 
 Нельзя разрешать все адреса, попавшие в `token-hit` для одного token/bucket.
 
-Политика:
+Политика текущего прототипа fail-closed: если за polling interval есть больше одного `token-hit`,
+scheduler сжигает bucket, никого не открывает и пишет warning `collision/replay suspicion`.
 
-- если RouterOS дает надежно определить первый dynamic address-list entry, открыть только первый hit;
-- если порядок ненадежен, сжечь token/bucket, никого не открывать и отправить alert `collision/replay suspicion`.
+Это проверено на CHR ручной инъекцией двух разных `token-hit` адресов. Для рабочего packet path
+открывается только observed source IP; тестовая инъекция нужна только потому, что с одного реального
+source IP RouterOS не создаст две одинаковые address-list записи.
 
 ### Token должен быть per-client
 
@@ -139,15 +141,17 @@ replay window ~= scheduler interval + processing time
 
 ### Порядок dynamic address-list entries
 
-Статус: требует проверки.
+Статус: не требуется для текущей fail-closed policy.
 
-Проверить, можно ли надежно определить первый `token-hit`, если за один polling interval в address-list попали несколько source IP.
+Если в `token-hit` попало несколько source IP, текущий прототип не выбирает первый entry. Он сжигает
+bucket и не добавляет никого в `allowed`.
 
-Если порядок ненадежен, политика должна быть fail-closed: сжечь token/bucket, никого не открыть, отправить alert.
+Это снимает зависимость от порядка dynamic address-list entries. Возвращаться к выбору "первого"
+имеет смысл только если появится сильная UX-причина и будет отдельно проверена надежность порядка.
 
 ### Хранение `used bucket/token state`
 
-Статус: требует проверки.
+Статус: проверено для прототипа.
 
 Кандидаты:
 
@@ -156,7 +160,32 @@ replay window ~= scheduler interval + processing time
 - disabled/commented firewall rule;
 - file.
 
-Предварительная позиция: избегать частой записи в files, если можно хранить state в runtime/config objects. Файлы могут быть полезны для debug или persistence, но хуже как hot-path state.
+Результат CHR:
+
+- script global в первом варианте прототипа не остановил повторный hit в том же bucket;
+- повторный hit с того же source IP дополнительно маскировался тем, что RouterOS не добавляет второй
+  одинаковый `allowed` entry и возвращает ошибку `already have such entry`;
+- временный address-list marker `mkpk-proto-used-<bucket>` сработал как used-state;
+- второй token-hit в том же bucket удаляется с warning `replay ignored`;
+- collision из двух разных `token-hit` сжигает bucket и не создает `allowed`.
+
+Предварительная позиция уточнена: для hot-path state использовать runtime/config objects, в первую
+очередь временные address-list markers. Частой записи в files по-прежнему лучше избегать.
+
+### Reboot-survival
+
+Статус: требование зафиксировано, требует отдельной проверки после PSK/time-token прототипа.
+
+Механизмы внутри MikroTik должны переживать reboot в fail-closed режиме:
+
+- persistent firewall rules, scripts, scheduler, NAT rules и profile/client metadata остаются в config;
+- dynamic address-list entries и script globals считаются потерянными;
+- после reboot scheduler должен пересчитать current/previous bucket token rules;
+- до успешного пересчета token-stage должен быть disabled или содержать заведомо невалидный content;
+- потеря `allowed` entries после reboot приемлема: клиент делает knock заново.
+
+Открытая проверка: как именно RouterOS scheduler стартует после reboot относительно готовности clock/NTP
+и когда безопасно считать `:timestamp` пригодным для token bucket.
 
 ### Производительность `content` и `layer7-protocol`
 

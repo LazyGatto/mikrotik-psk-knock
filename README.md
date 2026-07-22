@@ -41,8 +41,10 @@ MikroTik
 - добавлена polling-модель `token-hit -> scheduler -> allowed` для сужения replay window;
 - закрыты основные концептуальные вопросы по dynamic/roaming clients, observed source IP и per-client PSK;
 - проверены ключевые RouterOS-примитивы на CHR: `sha512`, time bucket через `:timestamp`, UDP `content`, обновление rule content и scheduler 1s.
+- собран и проверен минимальный RouterOS end-to-end прототип `stage1 -> stage2 -> token-hit -> scheduler -> allowed`.
 
-Ближайший следующий шаг: собрать маленький end-to-end прототип `stage1 -> stage2 -> token-hit -> scheduler -> allowed`.
+Ближайший следующий шаг: заменить статический token payload в прототипе на PSK-derived time-token и
+обновление firewall content для текущего/предыдущего bucket.
 
 ## Документы
 

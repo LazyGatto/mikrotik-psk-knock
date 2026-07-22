@@ -52,6 +52,18 @@ scheduler every ~1s -> allow one src -> mark token/bucket used
 
 Если за один polling interval пришли несколько hits с одним token, scheduler не должен разрешать все адреса. Консервативная политика: открыть только первый hit при надежном порядке записей или сжечь token без открытия доступа и отправить alert.
 
+## Reboot и runtime state
+
+После reboot RouterOS dynamic state нужно считать потерянным:
+
+- временно разрешенные `allowed` entries исчезают или должны быть очищены;
+- `stage`/`token-hit` entries исчезают;
+- in-memory used-state не считается надежным.
+
+Безопасный failure mode: после reboot доступ закрыт, пока scheduler не пересчитает актуальные token
+rules. Клиент должен повторить knock. Нельзя проектировать режим, где старый runtime token или
+неинициализированное состояние после reboot открывает доступ шире, чем до reboot.
+
 ## Сравнение уровней
 
 ```text
