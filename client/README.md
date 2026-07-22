@@ -19,6 +19,7 @@ time-token из внешней небезопасной сети.
 ```bash
 go run ./cmd/mkpk secret generate
 go run ./cmd/mkpk token --config testdata/mkpk.yaml --client demo-client --debug
+go run ./cmd/mkpk check --config testdata/mkpk.yaml --client demo-client --debug
 go run ./cmd/mkpk knock --config testdata/mkpk.yaml --client demo-client --debug
 go run ./cmd/mkpk knock --config testdata/mkpk.yaml --client demo-client --check --debug
 go run ./cmd/mkpk knock --config testdata/mkpk.yaml --client demo-client --min-bucket-age 2s --debug
@@ -44,6 +45,8 @@ PSK в `testdata/mkpk.yaml` демонстрационный. Production-кон�
 - `knock --debug` проверен на CHR: retry windows проходят stage1/stage2/token, `mkpk-tt-allowed`
   получает observed source IP.
 - `knock --debug` показывает router, bucket, stage ports, local UDP address, remote UDP address и bytes sent.
+- `check` выполняет тот же TCP connect-check целевого endpoint без отправки knock. Это runtime primitive
+  для before/after status в будущем UI.
 - `knock --check` после отправки knock выполняет TCP connect-check целевого endpoint. По умолчанию
   проверяется `router:service.nat.dst_port`; можно переопределить через `--check-host` и `--check-port`.
 - `knock` по умолчанию ждет, пока текущий bucket станет хотя бы на 2 секунды старше

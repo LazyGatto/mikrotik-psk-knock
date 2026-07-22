@@ -35,6 +35,8 @@ func run(args []string) error {
 		return tokenCmd(args[1:])
 	case "knock":
 		return knockCmd(args[1:])
+	case "check":
+		return checkCmd(args[1:])
 	case "routeros":
 		return routerosCmd(args[1:])
 	case "help", "-h", "--help":
@@ -49,6 +51,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `Usage:
   mkpk secret generate [--bytes 32]
   mkpk token --config mkpk.yaml --client laptop [--bucket N] [--debug]
+  mkpk check --config mkpk.yaml --client laptop [--host host] [--port port] [--debug]
   mkpk knock --config mkpk.yaml --client laptop [--router host] [--check] [--debug]
   mkpk routeros render --config mkpk.yaml --client laptop [--out generated.rsc]
 `)
@@ -170,14 +173,7 @@ func knockCmd(args []string) error {
 	if !*check {
 		return nil
 	}
-	host := *checkHost
-	if host == "" {
-		host = router
-	}
-	port := *checkPort
-	if port == 0 {
-		port = res.Service.NAT.DstPort
-	}
+	host, port := resolveCheckTarget(res, router, *checkHost, *checkPort)
 	if *debug {
 		fmt.Printf("check_host=%s check_port=%d check_timeout=%s check_attempts=%d check_interval=%s\n",
 			host, port, *checkTimeout, *checkAttempts, *checkInterval)
@@ -190,6 +186,59 @@ func knockCmd(args []string) error {
 		Interval: *checkInterval,
 		Logf:     logf,
 	})
+}
+
+func checkCmd(args []string) error {
+	fs := flag.NewFlagSet("check", flag.ContinueOnError)
+	configPath := fs.String("config", "mkpk.yaml", "config path")
+	clientName := fs.String("client", "", "client name")
+	routerAddr := fs.String("router", "", "router address override")
+	hostFlag := fs.String("host", "", "target host override; router address when empty")
+	portFlag := fs.Int("port", 0, "target TCP port override; service nat.dst_port when empty")
+	timeout := fs.Duration("timeout", time.Second, "per-attempt TCP check timeout")
+	attempts := fs.Int("attempts", 1, "TCP check attempts")
+	interval := fs.Duration("interval", 500*time.Millisecond, "delay between TCP check attempts")
+	debug := fs.Bool("debug", false, "print check metadata")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	res, err := loadResolved(*configPath, *clientName)
+	if err != nil {
+		return err
+	}
+	router := *routerAddr
+	if router == "" {
+		router = res.Config.Router.Address
+	}
+	host, port := resolveCheckTarget(res, router, *hostFlag, *portFlag)
+	var logf func(string, ...any)
+	if *debug {
+		fmt.Printf("check_host=%s check_port=%d check_timeout=%s check_attempts=%d check_interval=%s\n",
+			host, port, *timeout, *attempts, *interval)
+		logf = func(format string, args ...any) {
+			fmt.Printf(format+"\n", args...)
+		}
+	}
+	return servicecheck.Run(servicecheck.Options{
+		Host:     host,
+		Port:     port,
+		Timeout:  *timeout,
+		Attempts: *attempts,
+		Interval: *interval,
+		Logf:     logf,
+	})
+}
+
+func resolveCheckTarget(res config.Resolved, router, hostOverride string, portOverride int) (string, int) {
+	host := hostOverride
+	if host == "" {
+		host = router
+	}
+	port := portOverride
+	if port == 0 {
+		port = res.Service.NAT.DstPort
+	}
+	return host, port
 }
 
 func waitForBucketAge(bucketSeconds int64, minAge time.Duration, debug bool) (time.Time, error) {
