@@ -95,6 +95,7 @@ UDP `content`, обновление rule content, scheduler 1s и bridge `token-
 - Реализован YAML profiles/config.
 - Реализован RouterOS `.rsc` render для текущей single-profile схемы.
 - Добавлен debug mode для `token` и `knock`.
+- Зафиксирован user flow: provisioning/render/import выполняются из safe/admin сети, runtime `knock` работает из unsafe roaming сети без SSH/API зависимости.
 - Проверено: `go test ./...` проходит.
 - Проверено: `token` совпадает с shell `shasum -a 512`.
 - Проверено: generated `.rsc` успешно импортируется на CHR и one-shot post-import init активирует token rules.
@@ -112,6 +113,7 @@ UDP `content`, обновление rule content, scheduler 1s и bridge `token-
 
 - Рассматривать SSH/API только как optional admin tooling для окружений, где management path уже допустим.
 - Не делать SSH/API зависимостью основного UDP-token режима: если SSH доступен снаружи, сам port-knocking теряет значительную часть смысла.
+- Разделить CLI verbs на provisioning/admin команды и runtime `knock`, чтобы mobile flow не тянул management assumptions.
 - Проверить права RouterOS user/group для безопасного script run.
 - Реализовать явную admin-команду для прямого добавления observed/explicit src IP в address-list только при осознанном выборе этого режима.
 - Сравнить UX и threat model с основным stealth UDP-token режимом.

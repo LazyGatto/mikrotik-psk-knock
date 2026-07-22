@@ -10,6 +10,18 @@ public dst-nat -> service exposed 24/7
 
 И лучше, чем обычный port knocking, где секретом является только последовательность портов.
 
+## Trust zones
+
+Provisioning выполняется из safe/admin сети, где допустим полный management-доступ к MikroTik:
+импорт `.rsc`, проверка firewall/NAT/scripts/schedulers, reboot-тесты и ротация секретов.
+
+Runtime-доступ roaming клиента выполняется из unsafe сети. В этой фазе клиент не должен иметь SSH/API к
+RouterOS и не должен полагаться на обратный management channel. Он отправляет только staged UDP knock и
+PSK-derived time-token; RouterOS открывает только observed source IP на короткий timeout.
+
+Break-glass/admin mode через SSH/API допустим как отдельный осознанный режим из safe среды, но не является
+частью основной security-модели stealth UDP-token flow.
+
 ## Защищает от
 
 - массового сканирования Интернета;

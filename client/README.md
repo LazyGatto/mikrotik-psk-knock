@@ -4,6 +4,16 @@
 
 Клиент должен поддерживать profiles, dry-run/debug mode и проверку рассинхронизации времени.
 
+## User flow
+
+`routeros render` и будущие provisioning/apply команды рассчитаны на safe/admin среду, где есть полный
+management-доступ к MikroTik. После импорта конфигурации runtime-сценарий для mobile/roaming клиента не
+должен требовать RouterOS SSH/API: `mkpk knock` отправляет только staged UDP packets и PSK-derived
+time-token из внешней небезопасной сети.
+
+Опциональный admin/break-glass режим через SSH/API может появиться отдельно, но он не является частью
+основного stealth UDP-token flow.
+
 ## Команды
 
 ```bash

@@ -8,6 +8,32 @@ ROS-only режим предназначен для окружений, где �
 
 Основной сценарий - dynamic/roaming клиенты. Заранее известные static source IP не являются целевой веткой: если IP известен заранее, его проще и честнее обслуживать через static allow-list или отдельную firewall policy.
 
+## User flow и trust zones
+
+Проект разделяет настройку и runtime-доступ на разные trust zones.
+
+```text
+safe/admin network:
+  generate profile/client secrets
+  render RouterOS .rsc
+  import/apply config on MikroTik
+  verify NAT, scripts, schedulers, reboot behavior
+
+unsafe roaming network:
+  no RouterOS SSH/API dependency
+  no management plane requirement
+  send staged UDP knock + PSK time-token only
+  open only observed source IP for a short timeout
+
+break-glass/admin mode:
+  optional explicit tooling for environments where management path is already acceptable
+  may add observed/explicit src IP directly through RouterOS SSH/API
+```
+
+Основной production runtime - второй сценарий. После provisioning MikroTik management plane не должен
+быть доступен roaming-клиенту и не должен быть условием успешного knock. Целевой сервис остается
+невидимым до успешного allow observed source IP через `allowed` address-list.
+
 ## Основные сущности
 
 - `profile` - профиль доступа к конкретному сервису.
