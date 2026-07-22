@@ -42,9 +42,10 @@ MikroTik
 - закрыты основные концептуальные вопросы по dynamic/roaming clients, observed source IP и per-client PSK;
 - проверены ключевые RouterOS-примитивы на CHR: `sha512`, time bucket через `:timestamp`, UDP `content`, обновление rule content и scheduler 1s.
 - собран и проверен минимальный RouterOS end-to-end прототип `stage1 -> stage2 -> token-hit -> scheduler -> allowed`.
+- собран и проверен PSK-derived time-token прототип с RouterOS-side `sha512` и token rules для текущего/предыдущего bucket.
 
-Ближайший следующий шаг: заменить статический token payload в прототипе на PSK-derived time-token и
-обновление firewall content для текущего/предыдущего bucket.
+Ближайший следующий шаг: вынести demo profile/secrets в нормальный profile format и добавить startup
+guard против stale persisted token content.
 
 ## Документы
 

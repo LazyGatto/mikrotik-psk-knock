@@ -64,6 +64,16 @@ scheduler every ~1s -> allow one src -> mark token/bucket used
 rules. Клиент должен повторить knock. Нельзя проектировать режим, где старый runtime token или
 неинициализированное состояние после reboot открывает доступ шире, чем до reboot.
 
+Нужно учитывать практическую особенность RouterOS: scheduler-обновление firewall rule `content` сохраняет
+это значение как config state. После reboot до первого startup tick scheduler-а rules могут кратко
+содержать stale token. Это не должно считаться полноценной fail-closed гарантией, пока не измерено на CHR
+и не добавлен более строгий startup guard при необходимости.
+
+Базовый reboot-тест CHR подтвердил хороший основной failure mode: dynamic `allowed` state после reboot
+не сохранился, persistent scripts/rules/scheduler поднялись, scheduler пересчитал token rules, а клиенту
+потребовалось выполнить knock заново. Остаточный риск - только короткое startup окно stale persisted token
+content до первого успешного пересчета.
+
 ## Сравнение уровней
 
 ```text

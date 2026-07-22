@@ -174,7 +174,7 @@ bucket и не добавляет никого в `allowed`.
 
 ### Reboot-survival
 
-Статус: требование зафиксировано, требует отдельной проверки после PSK/time-token прототипа.
+Статус: базово проверено на CHR, требует production-hardening.
 
 Механизмы внутри MikroTik должны переживать reboot в fail-closed режиме:
 
@@ -184,8 +184,36 @@ bucket и не добавляет никого в `allowed`.
 - до успешного пересчета token-stage должен быть disabled или содержать заведомо невалидный content;
 - потеря `allowed` entries после reboot приемлема: клиент делает knock заново.
 
-Открытая проверка: как именно RouterOS scheduler стартует после reboot относительно готовности clock/NTP
-и когда безопасно считать `:timestamp` пригодным для token bucket.
+Результат reboot-теста CHR RouterOS 7.23.2:
+
+- firewall rules, script и scheduler сохранились;
+- dynamic `allowed` и used markers после reboot отсутствовали;
+- scheduler стартовал и пересчитал `token now`/`token prev`;
+- post-reboot knock с current bucket token сработал;
+- `:timestamp` bucket совпал с клиентским epoch bucket, хотя `/system ntp client` был disabled;
+- в логах ранний startup tick отразился со временем `10:19:39`, а после применения timezone/clock следующие записи шли как `15:20:00+`.
+
+Открытая production-hardening задача: scheduler меняет firewall rule `content`, и это
+становится config state. Если роутер перезагрузился после обновления token rules, до первого startup
+tick они могут содержать stale token. Нужно добавить startup guard или другую схему, которая делает
+token-stage fail-closed до первого успешного пересчета.
+
+### PSK-derived time-token prototype
+
+Статус: проверено на CHR RouterOS 7.23.2.
+
+Результат:
+
+- RouterOS `:convert $msg from=raw to=hex transform=sha512` совпадает с локальным `shasum -a 512`;
+- firewall `content` принимает 128-символьный SHA512 hex token;
+- scheduler успешно обновляет два token rules: current bucket и previous bucket;
+- end-to-end flow с current bucket token добавляет observed source IP в `allowed`;
+- end-to-end flow с previous bucket token также работает;
+- неверный payload не создает token-hit и не открывает доступ;
+- replay/collision политика работает как в статическом прототипе.
+
+Ограничение прототипа: profile values (`service`, `client_id`, `psk`) пока hardcoded demo values внутри
+script. Следующий шаг - описать и проверить persistent profile/client storage.
 
 ### Производительность `content` и `layer7-protocol`
 

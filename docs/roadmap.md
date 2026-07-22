@@ -27,14 +27,24 @@
 - подтверждено replay-поведение: второй token-hit в том же bucket удаляется с warning `replay ignored`, без нового `allowed`;
 - подтверждено collision-поведение ручной инъекцией двух разных `token-hit`: bucket сжигается, `allowed` не создается;
 - зафиксировано требование reboot-survival: persistent config objects должны переживать reboot, dynamic runtime state считается потерянным и восстанавливается/fail-closed;
+- добавлен [routeros/prototype-time-token.rsc](../routeros/prototype-time-token.rsc) с PSK-derived time-token;
+- подтверждено, что RouterOS-side token formula совпадает с локальным `shasum -a 512`;
+- подтверждено, что firewall `content` принимает 128-символьный SHA512 hex token;
+- подтверждено, что scheduler обновляет `token now` и `token prev` rules для текущего/предыдущего bucket;
+- подтвержден end-to-end flow с current bucket token;
+- подтвержден end-to-end flow с previous bucket token;
+- подтвержден negative case: неверный payload проходит stages, но не попадает в token-hit и не открывает `allowed`;
+- подтверждены replay/collision политики для time-token прототипа;
+- выполнен reboot-тест CHR: persistent `mkpk-tt` firewall rules/script/scheduler пережили reboot, dynamic state очистился, scheduler пересчитал token rules, post-reboot knock сработал;
+- подтверждено, что `:timestamp` bucket после reboot совпал с клиентским epoch bucket даже при disabled NTP client на тестовом CHR;
 - тестовые firewall rules, address-lists, scripts и schedulers после проверки удалены.
 
 Промежуточный вывод: базовая ROS-only архитектура стала заметно реалистичнее. `sha512`, time bucket,
 UDP `content`, обновление rule content, scheduler 1s и bridge `token-hit -> scheduler -> allowed`
 подтверждены на CHR.
 
-Следующий полезный эксперимент: заменить статический token payload на PSK-derived time-token и проверить
-обновление token firewall rules для текущего/предыдущего bucket.
+Следующий полезный эксперимент: вынести demo profile/secrets из прототипа в нормальный profile format и
+добавить startup guard против stale persisted token content.
 
 ## Этап 1: исследование RouterOS
 
@@ -52,12 +62,14 @@ UDP `content`, обновление rule content, scheduler 1s и bridge `token-
 ## Этап 2: прототип RouterOS-only
 
 - Описать profile format.
-- Написать RouterOS scripts для генерации token.
+- Проверено прототипом: RouterOS scripts для генерации PSK-derived time-token.
 - Проверено прототипом: firewall rules для stage1/stage2/token.
 - Настроить `dst-nat` через `src-address-list`.
 - Добавить notification script.
 - Добавить logging и comments для address-list entries.
-- Проверить reboot behavior: после reboot scheduler пересчитывает token rules, `allowed` сбрасывается, token-stage до пересчета fail-closed.
+- Проверено: после reboot scheduler пересчитывает token rules, dynamic `allowed` сбрасывается, post-reboot knock работает.
+- Описать persistent profile/client storage для service/client_id/PSK без hardcoded demo values.
+- Добавить startup guard против краткого окна stale persisted token content.
 
 ## Этап 3: клиент CLI
 

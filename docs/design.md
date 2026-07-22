@@ -59,6 +59,20 @@ token = sha512(psk + "|" + message + "|" + psk)
 
 Это не стандартный HMAC. Если получится реализовать настоящий HMAC-SHA512 в RouterOS script без чрезмерной сложности, его стоит предпочесть.
 
+Проверенный прототип [prototype-time-token.rsc](../routeros/prototype-time-token.rsc) использует формулу:
+
+```text
+token = sha512(psk + "|v1|" + service + "|" + client_id + "|" + bucket + "|" + psk)
+```
+
+Scheduler держит два firewall `content` rules:
+
+- `token now` для текущего bucket;
+- `token prev` для предыдущего bucket.
+
+Это подтверждает, что RouterOS может сам считать PSK-derived token через `:convert ... transform=sha512`
+и обновлять `content` matcher без внешнего verifier.
+
 ## Time bucket
 
 Начальный вариант:
@@ -137,6 +151,22 @@ replay window ~= scheduler_interval + processing time
 bucket tokens и обновить token firewall rules. До успешного пересчета token-stage должен быть disabled
 или содержать заведомо невалидный content. Потеря `allowed` entries при reboot является приемлемым
 fail-closed поведением: клиент должен выполнить knock заново.
+
+Практический caveat: если scheduler уже включил token rules, RouterOS сохраняет измененный `content` как
+config state. После reboot rules могут кратко содержать старый token до первого startup tick scheduler-а.
+Это окно нужно отдельно измерить на CHR. Текущий production direction: scheduler с `start-time=startup`
+должен обновлять rules как можно раньше, а stale token считается допустимым только в очень коротком
+startup window и только после прохождения staged UDP.
+
+Reboot-тест на CHR RouterOS 7.23.2 подтвердил:
+
+- firewall rules, script и scheduler сохранились как persistent config objects;
+- dynamic `allowed` и used markers не сохранились;
+- scheduler стартовал после reboot и пересчитал `token now`/`token prev`;
+- post-reboot knock снова открыл observed source IP.
+
+Остался production-hardening вопрос: startup tick успел обновить rules, но краткое окно со stale persisted
+content теоретически остается, если reboot происходит в пределах еще валидного bucket.
 
 ## Address-list и NAT
 
