@@ -93,6 +93,7 @@ Staged UDP + PSK/SHA512 time-token на RouterOS
 
 SSH/API/external verifier with nonce cache
   более строгая криптография и полноценная replay protection
+  но требует management channel и не является stealth UDP-token режимом
 ```
 
 ## Практический security target для ROS-only
@@ -112,7 +113,12 @@ PSK time-token gated port opening for RouterOS
 - значительно безопаснее постоянного публичного `dst-nat`;
 - имеет ограниченное replay window;
 - может сужать replay window через polling-based single-use bucket;
+- не требует SSH/API на runtime path;
 - не заменяет VPN или полноценный криптографический verifier в высокорисковых сценариях.
+
+Если RouterOS SSH/API доступен клиенту в момент открытия, можно напрямую добавить source IP в address-list.
+Это полезно как отдельный admin-mode, но противоречит основной цели UDP-token режима: держать production host
+максимально невидимым и не выставлять management path как условие работы knock.
 
 ## Static IP не является целевым сценарием
 

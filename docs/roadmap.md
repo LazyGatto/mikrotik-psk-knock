@@ -103,14 +103,16 @@ UDP `content`, обновление rule content, scheduler 1s и bridge `token-
 - Реализовано: fixed delay заменен на retry windows для stage1/stage2/token.
 - Добавлено: optional UDP noise через `mkpk knock --noise N`, выключено по умолчанию.
 - Добавлено: client-side bucket-age guard `--min-bucket-age`, чтобы не отправлять token сразу после локального rollover bucket.
-- Добавить remote clock check и предупреждение о рассинхронизации времени с RouterOS.
+- Решено: remote clock check через SSH/API не входит в основной stealth UDP-token flow; если management channel доступен, это отдельный admin-mode, а не runtime-зависимость knock.
+- Добавить локальные diagnostics/presets для clock-skew сценариев без обратного канала.
 
-## Этап 4: SSH/Ed25519 режим
+## Этап 4: Admin/SSH режим
 
+- Рассматривать SSH/API только как optional admin tooling для окружений, где management path уже допустим.
+- Не делать SSH/API зависимостью основного UDP-token режима: если SSH доступен снаружи, сам port-knocking теряет значительную часть смысла.
 - Проверить права RouterOS user/group для безопасного script run.
-- Настроить SSH public-key auth.
-- Реализовать client command для SSH-open.
-- Сравнить UX и threat model с UDP-token режимом.
+- Реализовать явную admin-команду для прямого добавления observed/explicit src IP в address-list только при осознанном выборе этого режима.
+- Сравнить UX и threat model с основным stealth UDP-token режимом.
 
 ## Этап 5: GUI
 
