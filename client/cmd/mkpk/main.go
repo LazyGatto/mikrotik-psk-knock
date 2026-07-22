@@ -48,7 +48,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `Usage:
   mkpk secret generate [--bytes 32]
   mkpk token --config mkpk.yaml --client laptop [--bucket N] [--debug]
-  mkpk knock --config mkpk.yaml --client laptop [--router host] [--debug]
+  mkpk knock --config mkpk.yaml --client laptop [--router host] [--debug] [--min-bucket-age 2s]
   mkpk routeros render --config mkpk.yaml --client laptop [--out generated.rsc]
 `)
 }
@@ -86,7 +86,8 @@ func tokenCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	bucket := token.Bucket(time.Now(), res.Config.Defaults.BucketSeconds)
+	window := token.InspectWindow(time.Now(), res.Config.Defaults.BucketSeconds)
+	bucket := window.Bucket
 	if *bucketFlag != "" {
 		bucket, err = strconv.ParseInt(*bucketFlag, 10, 64)
 		if err != nil {
@@ -96,6 +97,7 @@ func tokenCmd(args []string) error {
 	value := token.Compute(res.Client.PSK, res.Service.ServiceName, res.Client.ClientID, bucket)
 	if *debug {
 		fmt.Printf("service=%s client_id=%s bucket=%d token=%s\n", res.Service.ServiceName, res.Client.ClientID, bucket, value)
+		printWindowDebug(window)
 		return nil
 	}
 	fmt.Println(value)
@@ -112,6 +114,7 @@ func knockCmd(args []string) error {
 	stageDuration := fs.Duration("stage-duration", 2*time.Second, "stage1/stage2 retry duration")
 	tokenDuration := fs.Duration("token-duration", time.Second, "token retry duration")
 	noisePackets := fs.Int("noise", 0, "random UDP noise packets to send to token port around phases")
+	minBucketAge := fs.Duration("min-bucket-age", 2*time.Second, "wait until current bucket is at least this old before sending token")
 	debug := fs.Bool("debug", false, "print knock metadata")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -124,11 +127,17 @@ func knockCmd(args []string) error {
 	if router == "" {
 		router = res.Config.Router.Address
 	}
-	bucket := token.Bucket(time.Now(), res.Config.Defaults.BucketSeconds)
+	now, err := waitForBucketAge(res.Config.Defaults.BucketSeconds, *minBucketAge, *debug)
+	if err != nil {
+		return err
+	}
+	window := token.InspectWindow(now, res.Config.Defaults.BucketSeconds)
+	bucket := window.Bucket
 	value := token.Compute(res.Client.PSK, res.Service.ServiceName, res.Client.ClientID, bucket)
 	if *debug {
-		fmt.Printf("router=%s service=%s client_id=%s bucket=%d stage1=%d stage2=%d token_port=%d interval=%s stage_duration=%s token_duration=%s noise=%d\n",
-			router, res.Service.ServiceName, res.Client.ClientID, bucket, res.Service.Stage1Port, res.Service.Stage2Port, res.Service.TokenPort, *interval, *stageDuration, *tokenDuration, *noisePackets)
+		fmt.Printf("router=%s service=%s client_id=%s bucket=%d stage1=%d stage2=%d token_port=%d interval=%s stage_duration=%s token_duration=%s noise=%d min_bucket_age=%s\n",
+			router, res.Service.ServiceName, res.Client.ClientID, bucket, res.Service.Stage1Port, res.Service.Stage2Port, res.Service.TokenPort, *interval, *stageDuration, *tokenDuration, *noisePackets, *minBucketAge)
+		printWindowDebug(window)
 	}
 	var logf func(string, ...any)
 	if *debug {
@@ -149,6 +158,42 @@ func knockCmd(args []string) error {
 		NoisePackets:  *noisePackets,
 		Logf:          logf,
 	})
+}
+
+func waitForBucketAge(bucketSeconds int64, minAge time.Duration, debug bool) (time.Time, error) {
+	if minAge < 0 {
+		return time.Time{}, fmt.Errorf("--min-bucket-age must be non-negative")
+	}
+	bucketDuration := time.Duration(bucketSeconds) * time.Second
+	if minAge >= bucketDuration {
+		return time.Time{}, fmt.Errorf("--min-bucket-age must be less than bucket duration %s", bucketDuration)
+	}
+	now := time.Now()
+	window := token.InspectWindow(now, bucketSeconds)
+	if window.Age >= minAge {
+		return now, nil
+	}
+	wait := minAge - window.Age
+	if debug {
+		fmt.Printf("bucket_age=%s min_bucket_age=%s wait=%s\n", window.Age.Truncate(time.Millisecond), minAge, wait.Truncate(time.Millisecond))
+	}
+	time.Sleep(wait)
+	return time.Now(), nil
+}
+
+func printWindowDebug(window token.Window) {
+	fmt.Printf("local_time=%s unix=%d bucket_seconds=%d accepted_buckets=%d,%d next_bucket=%d bucket_start=%s bucket_end=%s bucket_age=%s bucket_remaining=%s\n",
+		window.Time.Format(time.RFC3339),
+		window.Time.Unix(),
+		window.BucketSeconds,
+		window.Previous,
+		window.Bucket,
+		window.Next,
+		window.Start.Format(time.RFC3339),
+		window.End.Format(time.RFC3339),
+		window.Age.Truncate(time.Millisecond),
+		window.Remaining.Truncate(time.Millisecond),
+	)
 }
 
 func routerosCmd(args []string) error {

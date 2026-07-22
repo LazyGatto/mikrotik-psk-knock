@@ -102,7 +102,8 @@ UDP `content`, обновление rule content, scheduler 1s и bridge `token-
 - Исторически проверено: `--delay 100ms` был слишком быстрым для staged address-lists в текущем VPN route; `750ms` и `1500ms` сработали.
 - Реализовано: fixed delay заменен на retry windows для stage1/stage2/token.
 - Добавлено: optional UDP noise через `mkpk knock --noise N`, выключено по умолчанию.
-- Добавить проверку времени и предупреждение о рассинхронизации.
+- Добавлено: client-side bucket-age guard `--min-bucket-age`, чтобы не отправлять token сразу после локального rollover bucket.
+- Добавить remote clock check и предупреждение о рассинхронизации времени с RouterOS.
 
 ## Этап 4: SSH/Ed25519 режим
 
