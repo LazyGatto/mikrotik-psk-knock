@@ -2,6 +2,16 @@
 
 Здесь будут храниться RouterOS scripts, firewall snippets и export-фрагменты для ROS-only прототипа.
 
+Production-oriented `.rsc` сейчас генерируется из Go provisioning tool:
+
+```bash
+cd ../client
+go run ./cmd/mkpk-provision routeros render --config testdata/mkpk.yaml --client demo-client --out ../routeros/generated-demo.rsc
+```
+
+`generated-*.rsc` игнорируются git. Они содержат profile values, включая PSK, и должны считаться
+секретными operational artifacts.
+
 ## Прототипы
 
 - [prototype-stage-token.rsc](prototype-stage-token.rsc) - минимальный end-to-end прототип

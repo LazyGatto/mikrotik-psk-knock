@@ -11,7 +11,8 @@
 - принято, что успешный knock открывает только observed source IP;
 - принято, что token/PSK предпочтительно делать per-client;
 - принято, что при нескольких `token-hit` за polling interval нельзя открывать все адреса;
-- принято, что клиент должен поддерживать UDP-token mode и SSH/Ed25519 mode.
+- принято, что основной runtime-клиент работает в UDP-token mode без RouterOS SSH/API; SSH/API остается
+  только optional admin/break-glass tooling для safe сети;
 - подтвержден доступ к тестовому CHR `admin@router.example.com` после обновления `known_hosts`;
 - проверен CHR: `ROUTER-A`, RouterOS `7.23.2 stable`, CHR x86_64, 1 CPU, 1GB RAM;
 - подтверждено, что `:convert ... transform=sha512` работает и совпадает с локальным `shasum -a 512` для `abc`;
@@ -55,8 +56,8 @@
 UDP `content`, обновление rule content, scheduler 1s и bridge `token-hit -> scheduler -> allowed`
 подтверждены на CHR.
 
-Следующий полезный эксперимент: перейти к клиентскому CLI и вынести ручной token helper в повторяемую
-команду.
+Следующий полезный шаг: улучшать machine-readable runtime output и готовить multi-profile RouterOS
+layout. Минимальный provisioning flow уже собран в `mkpk-provision`, а everyday runtime flow - в `mkpk`.
 
 ## Этап 1: исследование RouterOS
 

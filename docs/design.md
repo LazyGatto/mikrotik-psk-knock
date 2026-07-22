@@ -34,6 +34,10 @@ break-glass/admin mode:
 быть доступен roaming-клиенту и не должен быть условием успешного knock. Целевой сервис остается
 невидимым до успешного allow observed source IP через `allowed` address-list.
 
+Текущий Go runtime transport для UDP knock использует IPv4 (`udp4`). TCP endpoint check использует
+обычный `tcp` и может быть dual-stack в зависимости от resolver/OS. IPv6 knock нужно проектировать и
+проверять отдельно.
+
 ## Основные сущности
 
 - `profile` - профиль доступа к конкретному сервису.
