@@ -95,6 +95,7 @@ UDP `content`, обновление rule content, scheduler 1s и bridge `token-
 - Реализован YAML profiles/config.
 - Реализован RouterOS `.rsc` render для текущей single-profile схемы.
 - Добавлено: `mkpk-provision profile init` для создания стартового YAML с generated PSK.
+- Добавлено: `mkpk-provision service add` для добавления service/NAT target без ручного редактирования YAML.
 - Добавлено: `mkpk-provision client add` для добавления roaming clients без ручного редактирования YAML.
 - Добавлено: `mkpk-provision config validate` для safe/admin проверки YAML перед render/import.
 - Добавлен debug mode для `token` и `knock`.

@@ -37,6 +37,8 @@ func run(args []string) error {
 		return profileCmd(args[1:])
 	case "client":
 		return clientCmd(args[1:])
+	case "service":
+		return serviceCmd(args[1:])
 	case "token":
 		return tokenCmd(args[1:])
 	case "routeros":
@@ -54,6 +56,7 @@ func usage() {
   mkpk-provision secret generate [--bytes 32]
   mkpk-provision config validate --config mkpk.yaml
   mkpk-provision profile init --out mkpk.yaml --router-address host
+  mkpk-provision service add --config mkpk.yaml --name ssh --stage1-port 41011 --stage2-port 41012 --token-port 41013 --nat-dst-port 2022 --nat-to-address 192.0.2.10 --nat-to-port 22
   mkpk-provision client add --config mkpk.yaml --name laptop --service service
   mkpk-provision token --config mkpk.yaml --client laptop [--bucket N] [--debug]
   mkpk-provision routeros render --config mkpk.yaml --client laptop [--out generated.rsc]
@@ -167,17 +170,8 @@ func initialConfig(routerName, routerAddress, serviceName, clientName, psk strin
 				Stage2Port:  41002,
 				TokenPort:   41003,
 				AllowedList: "mkpk-tt-allowed",
-				NAT: config.NAT{
-					Enabled:   false,
-					Comment:   "mkpk-tt dst-nat " + serviceName,
-					DstPort:   2222,
-					ToAddress: "192.0.2.10",
-					ToPort:    22,
-				},
-				Notify: config.Notify{
-					Enabled: false,
-					URL:     "",
-				},
+				NAT:         initialNAT(serviceName, false, 2222, "192.0.2.10", 22),
+				Notify:      config.Notify{Enabled: false, URL: ""},
 			},
 		},
 		Clients: map[string]config.Client{
@@ -187,6 +181,101 @@ func initialConfig(routerName, routerAddress, serviceName, clientName, psk strin
 				PSK:      psk,
 			},
 		},
+	}
+}
+
+func serviceCmd(args []string) error {
+	if len(args) == 0 || args[0] != "add" {
+		return fmt.Errorf("usage: mkpk-provision service add --config mkpk.yaml --name ssh --stage1-port 41011 --stage2-port 41012 --token-port 41013 --nat-dst-port 2022 --nat-to-address 192.0.2.10 --nat-to-port 22")
+	}
+	fs := flag.NewFlagSet("service add", flag.ContinueOnError)
+	configPath := fs.String("config", "mkpk.yaml", "config path")
+	name := fs.String("name", "", "service map key")
+	serviceName := fs.String("service-name", "", "service_name; --name when empty")
+	stage1Port := fs.Int("stage1-port", 0, "stage1 UDP port")
+	stage2Port := fs.Int("stage2-port", 0, "stage2 UDP port")
+	tokenPort := fs.Int("token-port", 0, "token UDP port")
+	allowedList := fs.String("allowed-list", "mkpk-tt-allowed", "RouterOS allowed address-list")
+	natEnabled := fs.Bool("nat-enabled", false, "enable generated dst-nat rule")
+	natComment := fs.String("nat-comment", "", "stable RouterOS NAT rule comment")
+	natDstPort := fs.Int("nat-dst-port", 0, "external TCP dst-nat port")
+	natToAddress := fs.String("nat-to-address", "", "internal service address")
+	natToPort := fs.Int("nat-to-port", 0, "internal service port")
+	notifyEnabled := fs.Bool("notify-enabled", false, "enable webhook notification")
+	notifyURL := fs.String("notify-url", "", "webhook notification URL")
+	force := fs.Bool("force", false, "replace existing service")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if *name == "" {
+		return fmt.Errorf("--name is required")
+	}
+	if *stage1Port == 0 {
+		return fmt.Errorf("--stage1-port is required")
+	}
+	if *stage2Port == 0 {
+		return fmt.Errorf("--stage2-port is required")
+	}
+	if *tokenPort == 0 {
+		return fmt.Errorf("--token-port is required")
+	}
+	if *natDstPort == 0 {
+		return fmt.Errorf("--nat-dst-port is required")
+	}
+	if *natToAddress == "" {
+		return fmt.Errorf("--nat-to-address is required")
+	}
+	if *natToPort == 0 {
+		return fmt.Errorf("--nat-to-port is required")
+	}
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	if _, ok := cfg.Services[*name]; ok && !*force {
+		return fmt.Errorf("service %q already exists; use --force to replace", *name)
+	}
+	id := *serviceName
+	if id == "" {
+		id = *name
+	}
+	comment := *natComment
+	if comment == "" {
+		comment = "mkpk-tt dst-nat " + *name
+	}
+	cfg.Services[*name] = config.Service{
+		ServiceName: id,
+		Stage1Port:  *stage1Port,
+		Stage2Port:  *stage2Port,
+		TokenPort:   *tokenPort,
+		AllowedList: *allowedList,
+		NAT: config.NAT{
+			Enabled:   *natEnabled,
+			Comment:   comment,
+			DstPort:   *natDstPort,
+			ToAddress: *natToAddress,
+			ToPort:    *natToPort,
+		},
+		Notify: config.Notify{
+			Enabled: *notifyEnabled,
+			URL:     *notifyURL,
+		},
+	}
+	if err := writeConfig(*configPath, cfg); err != nil {
+		return err
+	}
+	fmt.Printf("service added config=%s name=%s service_name=%s stage1=%d stage2=%d token=%d nat_enabled=%t nat_dst_port=%d nat_to=%s:%d\n",
+		*configPath, *name, id, *stage1Port, *stage2Port, *tokenPort, *natEnabled, *natDstPort, *natToAddress, *natToPort)
+	return nil
+}
+
+func initialNAT(serviceName string, enabled bool, dstPort int, toAddress string, toPort int) config.NAT {
+	return config.NAT{
+		Enabled:   enabled,
+		Comment:   "mkpk-tt dst-nat " + serviceName,
+		DstPort:   dstPort,
+		ToAddress: toAddress,
+		ToPort:    toPort,
 	}
 }
 

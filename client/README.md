@@ -25,6 +25,7 @@ go run ./cmd/mkpk knock --config testdata/mkpk.yaml --client demo-client --min-b
 go run ./cmd/mkpk knock --config testdata/mkpk.yaml --client demo-client --noise 2 --debug
 go run ./cmd/mkpk-provision secret generate
 go run ./cmd/mkpk-provision profile init --out mkpk.yaml --router-address router.example
+go run ./cmd/mkpk-provision service add --config mkpk.yaml --name ssh-home --stage1-port 41011 --stage2-port 41012 --token-port 41013 --nat-dst-port 2022 --nat-to-address 192.0.2.10 --nat-to-port 22
 go run ./cmd/mkpk-provision client add --config mkpk.yaml --name phone --service demo-service
 go run ./cmd/mkpk-provision config validate --config testdata/mkpk.yaml
 go run ./cmd/mkpk-provision token --config testdata/mkpk.yaml --client demo-client --debug
@@ -46,6 +47,8 @@ PSK в `testdata/mkpk.yaml` демонстрационный. Production-кон�
 - `mkpk-provision routeros render` использует configured `defaults.bucket_seconds` в RouterOS poller, чтобы клиент и
   RouterOS считали один и тот же time bucket.
 - `mkpk-provision profile init` создает стартовый YAML с generated PSK и безопасными defaults.
+- `mkpk-provision service add` добавляет service/NAT target к существующему YAML. NAT rule остается
+  disabled, если не передать `--nat-enabled`.
 - `mkpk-provision client add` добавляет нового клиента к существующему service и генерирует PSK, если
   `--psk` не передан явно.
 - `mkpk-provision config validate` загружает YAML, применяет defaults, проверяет инварианты и печатает
