@@ -35,6 +35,8 @@ func run(args []string) error {
 		return configCmd(args[1:])
 	case "profile":
 		return profileCmd(args[1:])
+	case "client":
+		return clientCmd(args[1:])
 	case "token":
 		return tokenCmd(args[1:])
 	case "routeros":
@@ -52,6 +54,7 @@ func usage() {
   mkpk-provision secret generate [--bytes 32]
   mkpk-provision config validate --config mkpk.yaml
   mkpk-provision profile init --out mkpk.yaml --router-address host
+  mkpk-provision client add --config mkpk.yaml --name laptop --service service
   mkpk-provision token --config mkpk.yaml --client laptop [--bucket N] [--debug]
   mkpk-provision routeros render --config mkpk.yaml --client laptop [--out generated.rsc]
 `)
@@ -137,14 +140,7 @@ func profileCmd(args []string) error {
 		return err
 	}
 	cfg := initialConfig(*routerName, *routerAddress, *serviceName, *clientName, psk)
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-	data, err := yaml.Marshal(cfg)
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(*outPath, data, 0600); err != nil {
+	if err := writeConfig(*outPath, cfg); err != nil {
 		return err
 	}
 	fmt.Printf("created %s service=%s client=%s\n", *outPath, *serviceName, *clientName)
@@ -192,6 +188,61 @@ func initialConfig(routerName, routerAddress, serviceName, clientName, psk strin
 			},
 		},
 	}
+}
+
+func clientCmd(args []string) error {
+	if len(args) == 0 || args[0] != "add" {
+		return fmt.Errorf("usage: mkpk-provision client add --config mkpk.yaml --name laptop --service service")
+	}
+	fs := flag.NewFlagSet("client add", flag.ContinueOnError)
+	configPath := fs.String("config", "mkpk.yaml", "config path")
+	name := fs.String("name", "", "client map key")
+	clientID := fs.String("client-id", "", "client_id; --name when empty")
+	serviceName := fs.String("service", "", "service name")
+	pskFlag := fs.String("psk", "", "client PSK; generated when empty")
+	force := fs.Bool("force", false, "replace existing client")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if *name == "" {
+		return fmt.Errorf("--name is required")
+	}
+	if *serviceName == "" {
+		return fmt.Errorf("--service is required")
+	}
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	if _, ok := cfg.Services[*serviceName]; !ok {
+		return fmt.Errorf("unknown service %q", *serviceName)
+	}
+	if _, ok := cfg.Clients[*name]; ok && !*force {
+		return fmt.Errorf("client %q already exists; use --force to replace", *name)
+	}
+	id := *clientID
+	if id == "" {
+		id = *name
+	}
+	psk := *pskFlag
+	pskSource := "provided"
+	if psk == "" {
+		psk, err = generateSecret(32)
+		if err != nil {
+			return err
+		}
+		pskSource = "generated"
+	}
+	cfg.Clients[*name] = config.Client{
+		ClientID: id,
+		Service:  *serviceName,
+		PSK:      psk,
+	}
+	if err := writeConfig(*configPath, cfg); err != nil {
+		return err
+	}
+	fmt.Printf("client added config=%s name=%s client_id=%s service=%s psk=%s\n", *configPath, *name, id, *serviceName, pskSource)
+	return nil
 }
 
 func tokenCmd(args []string) error {
@@ -249,6 +300,17 @@ func routerosCmd(args []string) error {
 		return nil
 	}
 	return os.WriteFile(*outPath, []byte(rendered), 0600)
+}
+
+func writeConfig(path string, cfg config.Config) error {
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0600)
 }
 
 func printConfigSummary(cfg config.Config, path string) {
