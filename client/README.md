@@ -25,9 +25,10 @@ PSK в `testdata/mkpk.yaml` демонстрационный. Production-кон�
 - `token` совпадает с shell `shasum -a 512` для RouterOS prototype formula.
 - `routeros render` генерирует `.rsc`, который успешно импортируется на CHR.
 - Сгенерированный `.rsc` создает one-shot `mkpk-tt-install`; после import token rules активируются без reboot.
+- `knock --debug --delay 750ms` проверен на CHR: stage1/stage2/token проходят, `mkpk-tt-allowed`
+  получает observed source IP.
 - `knock --debug` показывает router, bucket, stage ports, local UDP address, remote UDP address и bytes sent.
 
-Ограничение текущей локальной проверки: на macOS в этом окружении route до CHR идет через `utun18`, а Go
-UDP получает local source `198.18.0.1`; такие пакеты до CHR не доходят, хотя `nc -u` из той же shell-сессии
-доставляет UDP. Поэтому сам Go UDP transport требует повторной проверки вне этого VPN/proxy route или с
-явно настроенным сетевым окружением.
+Примечание по локальному окружению: при включенном LuLu Go UDP попадал под проверку локального firewall.
+После временного отключения LuLu `mkpk knock` начал доходить до CHR. В текущем VPN route устойчиво
+сработали `--delay 750ms` и `--delay 1500ms`; `100ms` оказался слишком быстрым для staged address-lists.

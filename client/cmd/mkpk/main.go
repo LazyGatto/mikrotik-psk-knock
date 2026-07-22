@@ -108,7 +108,7 @@ func knockCmd(args []string) error {
 	clientName := fs.String("client", "", "client name")
 	routerAddr := fs.String("router", "", "router address override")
 	timeout := fs.Duration("timeout", time.Second, "UDP write timeout")
-	delay := fs.Duration("delay", time.Second, "delay between stages")
+	delay := fs.Duration("delay", 750*time.Millisecond, "delay between stages")
 	debug := fs.Bool("debug", false, "print knock metadata")
 	if err := fs.Parse(args); err != nil {
 		return err

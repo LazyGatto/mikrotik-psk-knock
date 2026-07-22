@@ -98,7 +98,8 @@ UDP `content`, обновление rule content, scheduler 1s и bridge `token-
 - Проверено: `go test ./...` проходит.
 - Проверено: `token` совпадает с shell `shasum -a 512`.
 - Проверено: generated `.rsc` успешно импортируется на CHR и one-shot post-import init активирует token rules.
-- Ограничение проверки: Go UDP из текущего macOS/VPN окружения уходит через `utun18` с local source `198.18.0.1` и не доходит до CHR, тогда как `nc -u` доходит. Нужно повторить `knock` smoke вне этого route/proxy условия.
+- Проверено: после временного отключения LuLu `mkpk knock --delay 750ms` проходит до CHR end-to-end и открывает observed source IP.
+- Проверено: `--delay 100ms` слишком быстрый для staged address-lists в текущем VPN route; `750ms` и `1500ms` сработали.
 - Добавить проверку времени и предупреждение о рассинхронизации.
 
 ## Этап 4: SSH/Ed25519 режим
