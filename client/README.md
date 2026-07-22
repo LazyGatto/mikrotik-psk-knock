@@ -1,15 +1,16 @@
 # Client
 
-Здесь находится Go CLI для расчета token, отправки staged UDP knock и генерации RouterOS `.rsc`.
+Здесь находятся два Go CLI:
 
-Клиент должен поддерживать profiles, dry-run/debug mode и проверку рассинхронизации времени.
+- `mkpk` - runtime-клиент для everyday mobile/roaming use.
+- `mkpk-provision` - provisioning/admin tool для safe сети.
 
 ## User flow
 
-`routeros render` и будущие provisioning/apply команды рассчитаны на safe/admin среду, где есть полный
-management-доступ к MikroTik. После импорта конфигурации runtime-сценарий для mobile/roaming клиента не
-должен требовать RouterOS SSH/API: `mkpk knock` отправляет только staged UDP packets и PSK-derived
-time-token из внешней небезопасной сети.
+`mkpk-provision routeros render` и будущие provisioning/apply команды рассчитаны на safe/admin среду, где
+есть полный management-доступ к MikroTik. После импорта конфигурации runtime-сценарий для mobile/roaming
+клиента не должен требовать RouterOS SSH/API: `mkpk knock` отправляет только staged UDP packets и
+PSK-derived time-token из внешней небезопасной сети.
 
 Опциональный admin/break-glass режим через SSH/API может появиться отдельно, но он не является частью
 основного stealth UDP-token flow.
@@ -17,29 +18,29 @@ time-token из внешней небезопасной сети.
 ## Команды
 
 ```bash
-go run ./cmd/mkpk secret generate
-go run ./cmd/mkpk token --config testdata/mkpk.yaml --client demo-client --debug
 go run ./cmd/mkpk check --config testdata/mkpk.yaml --client demo-client --debug
 go run ./cmd/mkpk knock --config testdata/mkpk.yaml --client demo-client --debug
 go run ./cmd/mkpk knock --config testdata/mkpk.yaml --client demo-client --check --debug
 go run ./cmd/mkpk knock --config testdata/mkpk.yaml --client demo-client --min-bucket-age 2s --debug
 go run ./cmd/mkpk knock --config testdata/mkpk.yaml --client demo-client --noise 2 --debug
-go run ./cmd/mkpk routeros render --config testdata/mkpk.yaml --client demo-client --out ../routeros/generated-demo.rsc
+go run ./cmd/mkpk-provision secret generate
+go run ./cmd/mkpk-provision token --config testdata/mkpk.yaml --client demo-client --debug
+go run ./cmd/mkpk-provision routeros render --config testdata/mkpk.yaml --client demo-client --out ../routeros/generated-demo.rsc
 ```
 
-Текущий `routeros render` намеренно рендерит один выбранный client/service в уже проверенную
+Текущий `mkpk-provision routeros render` намеренно рендерит один выбранный client/service в уже проверенную
 single-profile RouterOS схему. Config format допускает несколько services/clients, но multi-profile
 RouterOS runtime еще не реализован.
 
 PSK в `testdata/mkpk.yaml` демонстрационный. Production-конфигурация не должна хранить реальные секреты
 в открытом репозитории. `psk` должен использовать base64url-safe ASCII alphabet: `A-Z`, `a-z`, `0-9`,
-`-` и `_`; `mkpk secret generate` уже выдает такой формат.
+`-` и `_`; `mkpk-provision secret generate` уже выдает такой формат.
 
 ## Текущий статус проверки
 
 - `token` совпадает с shell `shasum -a 512` для RouterOS prototype formula.
-- `routeros render` генерирует `.rsc`, который успешно импортируется на CHR.
-- `routeros render` использует configured `defaults.bucket_seconds` в RouterOS poller, чтобы клиент и
+- `mkpk-provision routeros render` генерирует `.rsc`, который успешно импортируется на CHR.
+- `mkpk-provision routeros render` использует configured `defaults.bucket_seconds` в RouterOS poller, чтобы клиент и
   RouterOS считали один и тот же time bucket.
 - Сгенерированный `.rsc` создает one-shot `mkpk-tt-install`; после import token rules активируются без reboot.
 - `knock --debug` проверен на CHR: retry windows проходят stage1/stage2/token, `mkpk-tt-allowed`

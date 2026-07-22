@@ -96,6 +96,7 @@ UDP `content`, обновление rule content, scheduler 1s и bridge `token-
 - Реализован RouterOS `.rsc` render для текущей single-profile схемы.
 - Добавлен debug mode для `token` и `knock`.
 - Зафиксирован user flow: provisioning/render/import выполняются из safe/admin сети, runtime `knock` работает из unsafe roaming сети без SSH/API зависимости.
+- Разделены CLI binaries: `mkpk` содержит runtime команды `check`/`knock`, `mkpk-provision` содержит admin/provisioning команды `secret`/`token`/`routeros render`.
 - Проверено: `go test ./...` проходит.
 - Проверено: `token` совпадает с shell `shasum -a 512`.
 - Проверено: generated `.rsc` успешно импортируется на CHR и one-shot post-import init активирует token rules.
