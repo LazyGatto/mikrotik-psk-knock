@@ -49,6 +49,27 @@ SSH/Ed25519 mode - более строгий режим для окружени�
 
 ## Требует проверки на RouterOS
 
+### Доступ к тестовому CHR
+
+Статус: проверено.
+
+Доступ:
+
+```text
+ssh admin@router.example.com
+```
+
+Host key подтвержден, local `known_hosts` обновлен. CHR доступен.
+
+Проверенная система:
+
+```text
+identity: ROUTER-A
+RouterOS: 7.23.2 stable
+platform: CHR x86_64
+resources: 1 CPU, 1GB RAM
+```
+
 ### Packet payload в script
 
 Статус: гипотеза - скорее всего нельзя.
@@ -59,58 +80,56 @@ SSH/Ed25519 mode - более строгий режим для окружени�
 
 ### `:convert sha512`
 
-Статус: требует проверки на целевых версиях RouterOS.
+Статус: проверено на CHR RouterOS 7.23.2.
 
-Проверить:
+Результат:
 
-- точный синтаксис `:convert` для `sha512`;
-- формат входа `raw`;
-- формат выхода `hex`;
-- совпадение результата с reference implementation на клиенте.
+- `:convert ... transform=sha512` работает;
+- результат для `abc` совпал с локальным `shasum -a 512`;
+- это подтверждает пригодность `sha512` как базового примитива для PSK-derived token.
 
 ### Time bucket в RouterOS script
 
-Статус: требует проверки.
+Статус: проверено на CHR RouterOS 7.23.2.
 
-Проверить, можно ли удобно и надежно получить Unix time или иной стабильный timestamp для расчета:
+Результат: `:timestamp` доступен, выражение ниже возвращает числовой bucket:
 
 ```text
-bucket = floor(now / bucket_size)
+[:timestamp] / 30s
 ```
 
-Если Unix time неудобен, нужно выбрать RouterOS-friendly способ вычисления bucket.
+Это хороший RouterOS-friendly кандидат для time bucket без ручного парсинга даты.
 
 ### Firewall `content` для UDP token
 
-Статус: требует проверки.
+Статус: проверено базово на CHR RouterOS 7.23.2.
 
-Проверить:
+Результат:
 
-- матчится ли UDP payload через `content` достаточно предсказуемо;
-- можно ли сделать exact token matching без ложных совпадений;
-- есть ли ограничения по длине hex token;
-- не требуется ли `layer7-protocol`.
+- UDP packet с payload `mkpk-token-test` сработал в `input` chain и добавил source IP в address-list;
+- UDP packet с неверным payload не сработал;
+- `content` выглядит пригодным для token-stage.
 
-Предпочтение: использовать `content`, если его достаточно. `layer7-protocol` тяжелее и должен быть запасным вариантом.
+Остается проверить ограничения длины token и поведение под нагрузкой. `layer7-protocol` пока остается запасным вариантом.
 
 ### Обновление firewall rules scheduler-ом
 
-Статус: требует проверки.
+Статус: частично проверено на CHR RouterOS 7.23.2.
 
-Проверить, можно ли регулярно обновлять token rules без побочных эффектов:
+Результат:
 
-- менять `content` matcher;
-- включать/отключать rules;
-- держать отдельные rules для `now` и `now-1`;
-- не создавать заметных packet drops или CPU spikes.
+- `content` matcher можно менять через SSH/script;
+- после смены на `mkpk-token-updated` старый token не сработал, новый сработал.
+
+Остается проверить регулярное обновление scheduler-ом и схему rules для `now`/`now-1`.
 
 ### Минимальный scheduler interval
 
-Статус: требует проверки.
+Статус: базово проверено на CHR RouterOS 7.23.2.
 
-Текущая гипотеза: около 1 секунды.
+Результат: scheduler с `interval=1s` работает. За `:delay 5s` тестовый счетчик увеличился на 4, то есть практически около 1 секунды, но с джиттером/стартовой задержкой.
 
-Проверить, стабилен ли scheduler interval 1s на целевых MikroTik и не создает ли он заметной нагрузки.
+Остается проверить стабильность под нагрузкой и влияние на CPU.
 
 Это важно для replay window:
 
@@ -176,4 +195,3 @@ ssh client -> run конкретный script -> add observed/declared address t
 ```
 
 Важно понять, можно ли достаточно ограничить пользователя без OpenSSH-style `ForceCommand`.
-

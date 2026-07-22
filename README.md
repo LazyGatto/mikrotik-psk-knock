@@ -24,14 +24,25 @@ client
   -> UDP token stage with short-lived PSK token
 
 MikroTik
-  -> добавляет src-address в allowed address-list с timeout
+  -> добавляет src-address в token-hit address-list
+  -> scheduler выбирает допустимый hit и помечает bucket/token used
+  -> добавляет selected src-address в allowed address-list с timeout
   -> отправляет уведомление владельцу
   -> dst-nat начинает работать только для этого src-address
 ```
 
 ## Статус
 
-Сейчас это проектная заготовка: собраны требования, ограничения RouterOS, модель угроз и варианты архитектуры.
+Сейчас это проектная заготовка с первично проверенной ROS-only базой на живом CHR: собраны требования, ограничения RouterOS, модель угроз, варианты архитектуры и реестр оставшихся вопросов.
+
+Сделано:
+
+- зафиксирован ROS-only дизайн через staged UDP и PSK-derived time-token;
+- добавлена polling-модель `token-hit -> scheduler -> allowed` для сужения replay window;
+- закрыты основные концептуальные вопросы по dynamic/roaming clients, observed source IP и per-client PSK;
+- проверены ключевые RouterOS-примитивы на CHR: `sha512`, time bucket через `:timestamp`, UDP `content`, обновление rule content и scheduler 1s.
+
+Ближайший следующий шаг: собрать маленький end-to-end прототип `stage1 -> stage2 -> token-hit -> scheduler -> allowed`.
 
 ## Документы
 
