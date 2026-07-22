@@ -101,7 +101,9 @@ layout. Минимальный provisioning flow уже собран в `mkpk-pr
 - Добавлено: `mkpk-provision config validate` для safe/admin проверки YAML перед render/import.
 - Добавлен debug mode для `token` и `knock`.
 - Зафиксирован user flow: provisioning/render/import выполняются из safe/admin сети, runtime `knock` работает из unsafe roaming сети без SSH/API зависимости.
-- Разделены CLI binaries: `mkpk` содержит runtime команды `check`/`knock`, `mkpk-provision` содержит admin/provisioning команды `secret`/`token`/`routeros render`.
+- Разделены CLI binaries: `mkpk` содержит runtime команды `check`/`knock`, `mkpk-provision` содержит
+  admin/provisioning команды `secret generate`, `config validate`, `profile init`, `service add`,
+  `client add`, `token` и `routeros render`.
 - Проверено: `go test ./...` проходит.
 - Проверено: `token` совпадает с shell `shasum -a 512`.
 - Проверено: generated `.rsc` успешно импортируется на CHR и one-shot post-import init активирует token rules.
@@ -123,7 +125,8 @@ layout. Минимальный provisioning flow уже собран в `mkpk-pr
 
 - Рассматривать SSH/API только как optional admin tooling для окружений, где management path уже допустим.
 - Не делать SSH/API зависимостью основного UDP-token режима: если SSH доступен снаружи, сам port-knocking теряет значительную часть смысла.
-- Разделить CLI verbs на provisioning/admin команды и runtime `knock`, чтобы mobile flow не тянул management assumptions.
+- Сделано: CLI verbs разделены на provisioning/admin команды и runtime `check`/`knock`, чтобы mobile flow
+  не тянул management assumptions.
 - Проверить права RouterOS user/group для безопасного script run.
 - Реализовать явную admin-команду для прямого добавления observed/explicit src IP в address-list только при осознанном выборе этого режима.
 - Сравнить UX и threat model с основным stealth UDP-token режимом.
