@@ -155,6 +155,44 @@ RouterOS scripting может считать хеши через `:convert ... t
 
 Из-за этого полноценный verifier вида "прочитать payload, проверить HMAC, проверить nonce" на чистом RouterOS выглядит трудным или непрактичным.
 
+## Два рантайма RouterOS
+
+Центральное архитектурное ограничение ROS-only варианта: в RouterOS фактически есть два разных runtime.
+
+Firewall runtime:
+
+- видит пакеты в момент прохождения;
+- умеет матчить protocol, port, source address-list, `content`, `layer7-protocol`;
+- умеет выполнять packet-path actions вроде `add-src-to-address-list`;
+- быстрый и пригоден для дешевых проверок;
+- плохо подходит для parsing, crypto, сложной state machine и атомарной бизнес-логики.
+
+Scheduler/scripting runtime:
+
+- умеет считать `sha512` через `:convert`;
+- умеет менять firewall rules, address-lists, files и comments;
+- умеет хранить состояние;
+- умеет отправлять уведомления;
+- но не является обработчиком каждого UDP-пакета.
+
+Главная проблема - "подружить" эти runtime:
+
+```text
+firewall увидел валидный packet
+-> как синхронно вызвать script?
+-> как передать payload/src/metadata?
+-> как атомарно проверить token и пометить его used?
+```
+
+Если такого моста нет, остается polling/workaround:
+
+```text
+scheduler заранее считает token
+scheduler прописывает token в firewall rule
+firewall матчить content и кладет source IP в token-hit list
+scheduler постфактум читает token-hit list, открывает доступ и помечает token used
+```
+
 ## Снижение CPU-нагрузки
 
 Можно использовать staged UDP knocks перед дорогой проверкой payload/hash:
@@ -184,6 +222,55 @@ Replay protection требует хотя бы одного из вариант�
 - server-side nonce cache, который помнит использованные nonce.
 
 Без nonce cache replay внутри окна валидности возможен.
+
+## Single-use token через scheduler polling
+
+Идея: приблизить ROS-only схему к TOTP-like one-time token.
+
+Scheduler заранее считает текущие валидные токены и может хранить их в script variables, files или прямо в firewall rule `content`. После первого успешного token-hit scheduler помечает текущий token/bucket как `used` и отключает или меняет соответствующее firewall rule до следующего bucket.
+
+Примерная схема:
+
+```text
+firewall token rule:
+  если src прошел stage2 и content == valid_token
+  -> add src to knock-token-hit list timeout=2s
+
+scheduler every 1s:
+  смотрит knock-token-hit
+  если текущий bucket/token еще не used:
+    выбирает один hit
+    добавляет его src в allowed list
+    помечает bucket/token as used
+    отключает или меняет token firewall rule
+    отправляет уведомление
+  если token уже used:
+    чистит/игнорирует новые hits
+```
+
+Это не дает идеальной атомарности, потому что firewall и scheduler не работают как одна транзакция. Но replay window можно сузить примерно до:
+
+```text
+scheduler interval + время обработки
+```
+
+При polling раз в 1 секунду практическое окно replay может быть около 1 секунды.
+
+Ограничение: если token не привязан к source IP, а атакующий успел replay-нуть тот же token с другого IP до ближайшего прохода scheduler, в `knock-token-hit` могут оказаться несколько адресов. Scheduler должен разрешать не больше одного адреса на token/bucket и сразу сжигать token.
+
+Нужно экспериментально проверить, есть ли в dynamic address-list достаточно надежный порядок/metadata, чтобы выбрать первый hit корректно. Если порядка нет, нужно выбирать более консервативное поведение, например не открывать никого при нескольких concurrent hits.
+
+## Заранее известный source IP не является основной веткой
+
+Привязка token к `source_ip` теоретически ломает replay с другого IP:
+
+```text
+message = "v1|" + service + "|" + client_id + "|" + bucket + "|" + source_ip
+```
+
+Но для этого MikroTik должен заранее знать source IP клиента, чтобы заранее посчитать token для firewall `content` matcher. Это противоречит основной задаче, потому что проект рассчитан на dynamic/roaming клиентов.
+
+Если `src-ip` заранее известен, его проще заранее добавить в статический allow-list или отдельную политику. Поэтому known static IP не рассматривается как основной сценарий этой концепции.
 
 ## Практический MikroTik-only компромисс
 
@@ -307,7 +394,9 @@ router script -> add remote/source IP to address-list with timeout
 staged UDP knock
 -> short-lived PSK-derived time token
 -> firewall payload/content match
--> add src IP to address-list with timeout
+-> add src IP to token-hit address-list
+-> scheduler polling сжигает token/bucket
+-> add selected src IP to allowed address-list with timeout
 -> notification
 ```
 
@@ -315,7 +404,7 @@ staged UDP knock
 
 - защиту от сканеров и неавторизованного открытия;
 - заметно лучше обычного port knocking;
-- ограниченную replay resistance через короткое временное окно;
+- ограниченную replay resistance через короткое временное окно и polling-based single-use bucket;
 - не полноценную replay protection.
 
 ### Track B: более строгая криптография
@@ -331,13 +420,13 @@ client CLI/GUI
 
 ## Открытые вопросы
 
-- Может ли RouterOS firewall/script надежно передавать UDP payload в script для parsing? Текущая гипотеза: нет.
-- Какие точные `:convert` transforms доступны на целевых RouterOS versions?
-- Можно ли реализовать настоящий HMAC-SHA512 в RouterOS script достаточно чисто для поддержки?
-- Насколько дороги `content` или `layer7-protocol` matches на целевом железе под интернет-шумом?
-- Достаточно ли `content` для exact token matching, или нужен `layer7-protocol`?
-- Как client identity должен мапиться на services и TTL?
-- Source IP должен всегда браться только из observed packet или payload может просить открыть другой IP? Текущая позиция: только observed packet source.
-- Какое replay window приемлемо: 10s, 30s, 60s?
-- Должен ли будущий клиент поддерживать оба режима: SSH mode и UDP token mode?
+Актуальный реестр вопросов и принятых решений вынесен в [open-questions.md](open-questions.md).
 
+Короткий итог текущих решений:
+
+- основной сценарий - dynamic/roaming clients, static source IP не является основной веткой;
+- открывается только observed source IP;
+- token/PSK предпочтительно делать per-client;
+- при нескольких `token-hit` за polling interval нельзя открывать все адреса;
+- UDP-token и SSH/Ed25519 modes должны рассматриваться как два поддерживаемых режима;
+- оставшиеся вопросы в основном требуют проверки на живом RouterOS.

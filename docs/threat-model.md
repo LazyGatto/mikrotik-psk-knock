@@ -17,11 +17,12 @@ public dst-nat -> service exposed 24/7
 - простого перебора knock-портов;
 - открытия доступа без знания PSK;
 - повторного использования старых токенов после истечения time bucket;
+- повторного использования уже принятого token/bucket после scheduler пометки `used`;
 - незаметного открытия доступа, если включены уведомления.
 
 ## Не защищает полностью от
 
-- replay валидного токена внутри активного time bucket;
+- replay валидного токена до момента, когда scheduler пометил token/bucket как `used`;
 - активного MITM в момент knock;
 - компрометации клиента и утечки PSK;
 - компрометации MikroTik и чтения scripts/secrets;
@@ -40,6 +41,17 @@ nonce accepted once -> stored as used -> repeated nonce rejected
 
 В ROS-only firewall/content дизайне такой verifier, вероятно, недоступен. Поэтому replay ограничивается коротким time bucket.
 
+Дополнительный ROS-only компромисс: token-hit address-list плюс scheduler polling.
+
+```text
+firewall accepts valid token -> token-hit list
+scheduler every ~1s -> allow one src -> mark token/bucket used
+```
+
+Это сужает replay window примерно до `scheduler interval + processing time`. При interval 1 секунда это лучше, чем replay window длиной во весь time bucket, но все еще не является строгой атомарной replay protection.
+
+Если за один polling interval пришли несколько hits с одним token, scheduler не должен разрешать все адреса. Консервативная политика: открыть только первый hit при надежном порядке записей или сжечь token без открытия доступа и отправить alert.
+
 ## Сравнение уровней
 
 ```text
@@ -51,7 +63,7 @@ nonce accepted once -> stored as used -> repeated nonce rejected
 
 Staged UDP + PSK/SHA512 time-token на RouterOS
   последовательность недостаточна, нужен актуальный токен
-  replay ограничен коротким временным окном
+  replay ограничен time bucket или примерно 1s при polling single-use bucket
 
 SSH/API/external verifier with nonce cache
   более строгая криптография и полноценная replay protection
@@ -73,5 +85,13 @@ PSK time-token gated port opening for RouterOS
 - существенно лучше обычного port knocking;
 - значительно безопаснее постоянного публичного `dst-nat`;
 - имеет ограниченное replay window;
+- может сужать replay window через polling-based single-use bucket;
 - не заменяет VPN или полноценный криптографический verifier в высокорисковых сценариях.
 
+## Static IP не является целевым сценарием
+
+Привязка token к source IP могла бы уменьшить replay с другого адреса, но основной сценарий проекта - dynamic/roaming клиенты.
+
+Если source IP заранее известен, authenticated knock обычно не нужен как основной механизм. Такой адрес проще заранее добавить в static allow-list или обслуживать отдельной firewall policy.
+
+Поэтому в основной модели угроз token не привязан к source IP, а replay mitigation строится через staged knock, короткие buckets, token-hit polling и used-state.

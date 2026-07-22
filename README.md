@@ -38,6 +38,6 @@ MikroTik
 - [docs/context.md](docs/context.md) - консолидированный контекст обсуждения и технические заметки.
 - [docs/design.md](docs/design.md) - первичный дизайн ROS-only решения.
 - [docs/threat-model.md](docs/threat-model.md) - модель угроз и ограничения.
+- [docs/open-questions.md](docs/open-questions.md) - открытые вопросы и принятые концептуальные решения.
 - [docs/roadmap.md](docs/roadmap.md) - план дальнейшей работы.
 - [agent/instructions.md](agent/instructions.md) - инструкции для будущего агента/разработчика.
-

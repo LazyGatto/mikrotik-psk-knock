@@ -6,6 +6,8 @@ ROS-only режим предназначен для окружений, где �
 
 Это не полноценный HMAC-протокол с nonce cache. Это staged UDP knock плюс короткоживущий PSK-derived token, который MikroTik может предварительно вычислять через `:convert transform=sha512`.
 
+Основной сценарий - dynamic/roaming клиенты. Заранее известные static source IP не являются целевой веткой: если IP известен заранее, его проще и честнее обслуживать через static allow-list или отдельную firewall policy.
+
 ## Основные сущности
 
 - `profile` - профиль доступа к конкретному сервису.
@@ -14,7 +16,9 @@ ROS-only режим предназначен для окружений, где �
 - `bucket` - временное окно, например `floor(unix_time / 30)`.
 - `token` - hex-encoded SHA512 от фиксированной строки.
 - `stage address-list` - временные списки прохождения дешевых knock-стадий.
+- `token-hit address-list` - временный список source IP, которые предъявили валидный token.
 - `allowed address-list` - список IP, которым временно разрешен `dst-nat`.
+- `used bucket/token state` - состояние, запрещающее повторное использование token в текущем bucket.
 
 ## Предлагаемый flow
 
@@ -26,9 +30,12 @@ ROS-only режим предназначен для окружений, где �
 5. RouterOS добавляет source IP из stage1 в stage2 на 5 секунд.
 6. Клиент отправляет UDP пакет на token port C с payload/token.
 7. Firewall rule матчить source IP из stage2 и payload/content == current token.
-8. RouterOS добавляет source IP в allowed address-list на 3-5 минут.
-9. RouterOS отправляет уведомление.
-10. `dst-nat` работает только для source IP из allowed address-list.
+8. Firewall добавляет source IP в token-hit address-list на короткий timeout, например 2 секунды.
+9. Scheduler раз в 1 секунду проверяет token-hit list.
+10. Если token/bucket еще не used, scheduler выбирает один hit, добавляет source IP в allowed address-list на 3-5 минут и помечает token/bucket used.
+11. Scheduler отключает или меняет token firewall rule до следующего bucket.
+12. RouterOS отправляет уведомление.
+13. `dst-nat` работает только для source IP из allowed address-list.
 ```
 
 ## Формат токена
@@ -59,11 +66,48 @@ token = sha512(psk + "|" + message + "|" + psk)
 ```text
 bucket_size = 30 секунд
 accepted_buckets = now, now - 1
+scheduler_interval = 1 секунда
+token_hit_timeout = 2 секунды
 ```
 
 `now + 1` стоит добавлять только если есть проблемы с рассинхронизацией времени.
 
 Чем короче окно, тем меньше replay window, но тем выше требования к синхронизации времени клиента и роутера.
+
+## Single-use bucket через polling
+
+RouterOS firewall и scheduler/script нужно рассматривать как два разных runtime:
+
+```text
+firewall:
+  видит packet-path
+  матчить stage/address-list/content
+  добавляет source IP в token-hit list
+
+scheduler/script:
+  считает tokens
+  обновляет firewall rules
+  читает token-hit list
+  помечает bucket/token used
+  добавляет один source IP в allowed list
+  отправляет notification
+```
+
+Идеальная атомарная операция `check token -> mark used -> allow src` в ROS-only режиме, вероятно, недоступна. Поэтому используется polling:
+
+```text
+replay window ~= scheduler_interval + processing time
+```
+
+При scheduler interval 1 секунда replay window можно практически сузить примерно до 1 секунды, вместо полного `bucket_size`.
+
+Если за один polling interval в `token-hit` попало больше одного source IP, безопасное поведение должно быть консервативным. Варианты для проверки:
+
+- разрешить только первый hit, если RouterOS дает надежный порядок создания dynamic address-list entries;
+- если порядок ненадежен, сжечь token/bucket и не разрешать никого;
+- отправить alert о collision/replay suspicion.
+
+Нельзя разрешать все адреса из `token-hit` для одного token/bucket.
 
 ## Address-list и NAT
 
@@ -83,6 +127,8 @@ comment="client_id=<id>; mode=udp-token; service=<service>"
 ```
 
 Payload не должен иметь права просить открыть произвольный IP. Открывается только фактический source IP принятого пакета.
+
+Token не привязывается к `source_ip` в основном ROS-only режиме, потому что source IP заранее неизвестен. Это оставляет короткое replay window для атакующего, который успел повторить валидный token с другого IP до polling-прохода scheduler.
 
 ## Уведомления
 
@@ -112,10 +158,13 @@ time=<router timestamp>
 
 ## Вопросы реализации
 
-- Как именно лучше обновлять firewall `content` match под текущие токены?
-- Можно ли держать несколько правил для `now` и `now-1`, обновляя их scheduler-ом?
-- Достаточно ли `content`, или потребуется `layer7-protocol`?
-- Как извлечь или зафиксировать `client_id`, если payload матчится только как token?
-- Нужен ли отдельный token на каждого клиента или на профиль?
-- Как хранить PSK в RouterOS script так, чтобы не расширять поверхность утечки?
+Актуальный реестр открыт в [open-questions.md](open-questions.md).
 
+На уровне дизайна сейчас зафиксировано:
+
+- основной режим рассчитан на dynamic/roaming clients;
+- token/PSK предпочтительно делать per-client;
+- открывать только observed source IP;
+- использовать `token-hit` как bridge между firewall и scheduler;
+- при нескольких hits одного token/bucket не открывать все адреса;
+- remaining implementation details проверять на живом RouterOS.
