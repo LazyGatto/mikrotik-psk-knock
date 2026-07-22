@@ -20,6 +20,7 @@ time-token из внешней небезопасной сети.
 go run ./cmd/mkpk secret generate
 go run ./cmd/mkpk token --config testdata/mkpk.yaml --client demo-client --debug
 go run ./cmd/mkpk knock --config testdata/mkpk.yaml --client demo-client --debug
+go run ./cmd/mkpk knock --config testdata/mkpk.yaml --client demo-client --check --debug
 go run ./cmd/mkpk knock --config testdata/mkpk.yaml --client demo-client --min-bucket-age 2s --debug
 go run ./cmd/mkpk knock --config testdata/mkpk.yaml --client demo-client --noise 2 --debug
 go run ./cmd/mkpk routeros render --config testdata/mkpk.yaml --client demo-client --out ../routeros/generated-demo.rsc
@@ -43,6 +44,8 @@ PSK в `testdata/mkpk.yaml` демонстрационный. Production-кон�
 - `knock --debug` проверен на CHR: retry windows проходят stage1/stage2/token, `mkpk-tt-allowed`
   получает observed source IP.
 - `knock --debug` показывает router, bucket, stage ports, local UDP address, remote UDP address и bytes sent.
+- `knock --check` после отправки knock выполняет TCP connect-check целевого endpoint. По умолчанию
+  проверяется `router:service.nat.dst_port`; можно переопределить через `--check-host` и `--check-port`.
 - `knock` по умолчанию ждет, пока текущий bucket станет хотя бы на 2 секунды старше
   (`--min-bucket-age 2s`). Это снижает риск, что клиент с чуть спешащими часами отправит token для
   bucket, который RouterOS еще не принимает.

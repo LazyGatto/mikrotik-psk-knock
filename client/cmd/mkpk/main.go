@@ -12,6 +12,7 @@ import (
 	"mikrotik-psk-knock/client/internal/config"
 	"mikrotik-psk-knock/client/internal/knock"
 	"mikrotik-psk-knock/client/internal/routeros"
+	"mikrotik-psk-knock/client/internal/servicecheck"
 	"mikrotik-psk-knock/client/internal/token"
 )
 
@@ -48,7 +49,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `Usage:
   mkpk secret generate [--bytes 32]
   mkpk token --config mkpk.yaml --client laptop [--bucket N] [--debug]
-  mkpk knock --config mkpk.yaml --client laptop [--router host] [--debug] [--min-bucket-age 2s]
+  mkpk knock --config mkpk.yaml --client laptop [--router host] [--check] [--debug]
   mkpk routeros render --config mkpk.yaml --client laptop [--out generated.rsc]
 `)
 }
@@ -115,6 +116,12 @@ func knockCmd(args []string) error {
 	tokenDuration := fs.Duration("token-duration", time.Second, "token retry duration")
 	noisePackets := fs.Int("noise", 0, "random UDP noise packets to send to token port around phases")
 	minBucketAge := fs.Duration("min-bucket-age", 2*time.Second, "wait until current bucket is at least this old before sending token")
+	check := fs.Bool("check", false, "check target TCP port after knock")
+	checkHost := fs.String("check-host", "", "target host for post-knock TCP check; router address when empty")
+	checkPort := fs.Int("check-port", 0, "target TCP port for post-knock check; service nat.dst_port when empty")
+	checkTimeout := fs.Duration("check-timeout", time.Second, "per-attempt TCP check timeout")
+	checkAttempts := fs.Int("check-attempts", 10, "TCP check attempts after knock")
+	checkInterval := fs.Duration("check-interval", 500*time.Millisecond, "delay between TCP check attempts")
 	debug := fs.Bool("debug", false, "print knock metadata")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -135,8 +142,8 @@ func knockCmd(args []string) error {
 	bucket := window.Bucket
 	value := token.Compute(res.Client.PSK, res.Service.ServiceName, res.Client.ClientID, bucket)
 	if *debug {
-		fmt.Printf("router=%s service=%s client_id=%s bucket=%d stage1=%d stage2=%d token_port=%d interval=%s stage_duration=%s token_duration=%s noise=%d min_bucket_age=%s\n",
-			router, res.Service.ServiceName, res.Client.ClientID, bucket, res.Service.Stage1Port, res.Service.Stage2Port, res.Service.TokenPort, *interval, *stageDuration, *tokenDuration, *noisePackets, *minBucketAge)
+		fmt.Printf("router=%s service=%s client_id=%s bucket=%d stage1=%d stage2=%d token_port=%d interval=%s stage_duration=%s token_duration=%s noise=%d min_bucket_age=%s check=%t\n",
+			router, res.Service.ServiceName, res.Client.ClientID, bucket, res.Service.Stage1Port, res.Service.Stage2Port, res.Service.TokenPort, *interval, *stageDuration, *tokenDuration, *noisePackets, *minBucketAge, *check)
 		printWindowDebug(window)
 	}
 	var logf func(string, ...any)
@@ -145,7 +152,7 @@ func knockCmd(args []string) error {
 			fmt.Printf(format+"\n", args...)
 		}
 	}
-	return knock.Run(knock.Options{
+	if err := knock.Run(knock.Options{
 		Router:        router,
 		Stage1Port:    res.Service.Stage1Port,
 		Stage2Port:    res.Service.Stage2Port,
@@ -157,6 +164,31 @@ func knockCmd(args []string) error {
 		TokenDuration: *tokenDuration,
 		NoisePackets:  *noisePackets,
 		Logf:          logf,
+	}); err != nil {
+		return err
+	}
+	if !*check {
+		return nil
+	}
+	host := *checkHost
+	if host == "" {
+		host = router
+	}
+	port := *checkPort
+	if port == 0 {
+		port = res.Service.NAT.DstPort
+	}
+	if *debug {
+		fmt.Printf("check_host=%s check_port=%d check_timeout=%s check_attempts=%d check_interval=%s\n",
+			host, port, *checkTimeout, *checkAttempts, *checkInterval)
+	}
+	return servicecheck.Run(servicecheck.Options{
+		Host:     host,
+		Port:     port,
+		Timeout:  *checkTimeout,
+		Attempts: *checkAttempts,
+		Interval: *checkInterval,
+		Logf:     logf,
 	})
 }
 

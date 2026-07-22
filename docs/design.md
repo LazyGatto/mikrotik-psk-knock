@@ -62,6 +62,7 @@ break-glass/admin mode:
 11. Scheduler отключает или меняет token firewall rule до следующего bucket.
 12. RouterOS отправляет уведомление.
 13. `dst-nat` работает только для source IP из allowed address-list.
+14. Клиент опционально проверяет целевой TCP endpoint через обычный connect-check, без RouterOS SSH/API.
 ```
 
 ## Формат токена
