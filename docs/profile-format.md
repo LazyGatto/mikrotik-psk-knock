@@ -34,7 +34,9 @@ add name="mkpk-tt-profile-demo" policy=read,write,test source={
 
 - `service` - имя сервиса, включается в token message.
 - `client_id` - идентификатор клиента, включается в token message и audit comment.
-- `psk` - per-client или per-profile секрет.
+- `psk` - per-client или per-profile секрет. В Go config допускается только base64url-safe ASCII
+  alphabet (`A-Z`, `a-z`, `0-9`, `-`, `_`), чтобы RouterOS string interpolation не меняла значение
+  секрета при рендере profile script.
 - `token_port` - UDP порт token stage.
 - `allowed_list` - address-list, через который ограничивается `dst-nat`.
 - `allowed_timeout` - время открытия observed source IP.

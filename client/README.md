@@ -20,12 +20,15 @@ single-profile RouterOS схему. Config format допускает неско�
 RouterOS runtime еще не реализован.
 
 PSK в `testdata/mkpk.yaml` демонстрационный. Production-конфигурация не должна хранить реальные секреты
-в открытом репозитории.
+в открытом репозитории. `psk` должен использовать base64url-safe ASCII alphabet: `A-Z`, `a-z`, `0-9`,
+`-` и `_`; `mkpk secret generate` уже выдает такой формат.
 
 ## Текущий статус проверки
 
 - `token` совпадает с shell `shasum -a 512` для RouterOS prototype formula.
 - `routeros render` генерирует `.rsc`, который успешно импортируется на CHR.
+- `routeros render` использует configured `defaults.bucket_seconds` в RouterOS poller, чтобы клиент и
+  RouterOS считали один и тот же time bucket.
 - Сгенерированный `.rsc` создает one-shot `mkpk-tt-install`; после import token rules активируются без reboot.
 - `knock --debug` проверен на CHR: retry windows проходят stage1/stage2/token, `mkpk-tt-allowed`
   получает observed source IP.

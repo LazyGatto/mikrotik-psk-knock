@@ -132,12 +132,30 @@ func (c Config) Validate() error {
 	if _, err := time.ParseDuration(c.Defaults.TokenHitTimeout); err != nil {
 		return fmt.Errorf("defaults.token_hit_timeout: %w", err)
 	}
+	if _, err := time.ParseDuration(c.Defaults.AllowedTimeout); err != nil {
+		return fmt.Errorf("defaults.allowed_timeout: %w", err)
+	}
+	if _, err := time.ParseDuration(c.Defaults.UsedTimeout); err != nil {
+		return fmt.Errorf("defaults.used_timeout: %w", err)
+	}
 	for name, svc := range c.Services {
-		if svc.Stage1Port <= 0 || svc.Stage2Port <= 0 || svc.TokenPort <= 0 {
-			return fmt.Errorf("service %q ports must be positive", name)
+		if err := validatePort("stage1_port", svc.Stage1Port); err != nil {
+			return fmt.Errorf("service %q %w", name, err)
 		}
-		if svc.NAT.DstPort <= 0 || svc.NAT.ToPort <= 0 {
-			return fmt.Errorf("service %q nat ports must be positive", name)
+		if err := validatePort("stage2_port", svc.Stage2Port); err != nil {
+			return fmt.Errorf("service %q %w", name, err)
+		}
+		if err := validatePort("token_port", svc.TokenPort); err != nil {
+			return fmt.Errorf("service %q %w", name, err)
+		}
+		if svc.Stage1Port == svc.Stage2Port || svc.Stage1Port == svc.TokenPort || svc.Stage2Port == svc.TokenPort {
+			return fmt.Errorf("service %q stage1_port, stage2_port and token_port must be distinct", name)
+		}
+		if err := validatePort("nat.dst_port", svc.NAT.DstPort); err != nil {
+			return fmt.Errorf("service %q %w", name, err)
+		}
+		if err := validatePort("nat.to_port", svc.NAT.ToPort); err != nil {
+			return fmt.Errorf("service %q %w", name, err)
 		}
 		if svc.NAT.ToAddress == "" {
 			return fmt.Errorf("service %q nat.to_address is required", name)
@@ -149,6 +167,9 @@ func (c Config) Validate() error {
 		}
 		if client.PSK == "" {
 			return fmt.Errorf("client %q psk is required", name)
+		}
+		if !isSafePSK(client.PSK) {
+			return fmt.Errorf("client %q psk must use only base64url-safe characters: A-Z, a-z, 0-9, - and _", name)
 		}
 		if _, ok := c.Services[client.Service]; !ok {
 			return fmt.Errorf("client %q references unknown service %q", name, client.Service)
@@ -164,4 +185,21 @@ func (c Config) Resolve(clientName string) (Resolved, error) {
 	}
 	service := c.Services[client.Service]
 	return Resolved{Config: c, Client: client, Service: service}, nil
+}
+
+func validatePort(name string, port int) error {
+	if port <= 0 || port > 65535 {
+		return fmt.Errorf("%s must be between 1 and 65535", name)
+	}
+	return nil
+}
+
+func isSafePSK(v string) bool {
+	for _, r := range v {
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			continue
+		}
+		return false
+	}
+	return true
 }

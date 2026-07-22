@@ -13,6 +13,7 @@ type renderData struct {
 	Service         string
 	ClientID        string
 	PSK             string
+	BucketSeconds   int64
 	Stage1Port      int
 	Stage2Port      int
 	TokenPort       int
@@ -36,6 +37,7 @@ func Render(res config.Resolved) (string, error) {
 		Service:         rosString(res.Service.ServiceName),
 		ClientID:        rosString(res.Client.ClientID),
 		PSK:             rosString(res.Client.PSK),
+		BucketSeconds:   res.Config.Defaults.BucketSeconds,
 		Stage1Port:      res.Service.Stage1Port,
 		Stage2Port:      res.Service.Stage2Port,
 		TokenPort:       res.Service.TokenPort,
@@ -212,7 +214,7 @@ add name="mkpk-tt-poller" policy=read,write,test source={
     :local allowedList $mkpkTtAllowedList
     :local allowedTimeout $mkpkTtAllowedTimeout
     :local usedTimeout $mkpkTtUsedTimeout
-    :local nowBucket ([:timestamp] / 30s)
+    :local nowBucket ([:timestamp] / {{.BucketSeconds}}s)
     :local prevBucket ($nowBucket - 1)
 
     :local nowMsg ($psk . "|v1|" . $service . "|" . $clientId . "|" . $nowBucket . "|" . $psk)

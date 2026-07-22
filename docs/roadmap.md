@@ -103,6 +103,8 @@ UDP `content`, обновление rule content, scheduler 1s и bridge `token-
 - Реализовано: fixed delay заменен на retry windows для stage1/stage2/token.
 - Добавлено: optional UDP noise через `mkpk knock --noise N`, выключено по умолчанию.
 - Добавлено: client-side bucket-age guard `--min-bucket-age`, чтобы не отправлять token сразу после локального rollover bucket.
+- Исправлено: `defaults.bucket_seconds` пробрасывается в RouterOS render, без hardcoded `30s` в generated poller.
+- Добавлен hardening config validation: safe PSK alphabet, distinct stage/token ports, timeout parsing.
 - Решено: remote clock check через SSH/API не входит в основной stealth UDP-token flow; если management channel доступен, это отдельный admin-mode, а не runtime-зависимость knock.
 - Добавить локальные diagnostics/presets для clock-skew сценариев без обратного канала.
 
