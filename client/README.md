@@ -19,6 +19,7 @@ PSK-derived time-token из внешней небезопасной сети.
 
 ```bash
 go run ./cmd/mkpk check --config testdata/mkpk.yaml --client demo-client --debug
+go run ./cmd/mkpk check --config testdata/mkpk.yaml --client demo-client --json
 go run ./cmd/mkpk knock --config testdata/mkpk.yaml --client demo-client --debug
 go run ./cmd/mkpk knock --config testdata/mkpk.yaml --client demo-client --check --debug
 go run ./cmd/mkpk knock --config testdata/mkpk.yaml --client demo-client --min-bucket-age 2s --debug
@@ -60,6 +61,8 @@ PSK в `testdata/mkpk.yaml` демонстрационный. Production-кон�
 - `check` выполняет тот же TCP connect-check целевого endpoint без отправки knock. Это runtime primitive
   для before/after status в будущем UI. Он проверяет сквозную TCP-доступность сервиса, а не факт
   появления `allowed` entry на RouterOS.
+- `check --json` печатает machine-readable результат со статусом `open`, `closed` или `error`, host/port,
+  количеством attempts, duration и error text.
 - `knock --check` после отправки knock выполняет TCP connect-check целевого endpoint. По умолчанию
   проверяется `router:service.nat.dst_port`; можно переопределить через `--check-host` и `--check-port`.
 - UDP knock transport сейчас IPv4-only (`udp4`); TCP `check` использует обычный `tcp`.

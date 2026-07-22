@@ -110,6 +110,7 @@ UDP `content`, обновление rule content, scheduler 1s и bridge `token-
 - Добавлено: optional UDP noise через `mkpk knock --noise N`, выключено по умолчанию.
 - Добавлено: optional post-knock TCP check целевого endpoint через `mkpk knock --check`, без RouterOS SSH/API.
 - Добавлено: standalone runtime `mkpk check` для before/after TCP endpoint status, пригодно для будущего UI.
+- Добавлено: machine-readable `mkpk check --json` для будущего UI.
 - Добавлено: client-side bucket-age guard `--min-bucket-age`, чтобы не отправлять token сразу после локального rollover bucket.
 - Исправлено: `defaults.bucket_seconds` пробрасывается в RouterOS render, без hardcoded `30s` в generated poller.
 - Добавлен hardening config validation: safe PSK alphabet, distinct stage/token ports, timeout parsing.

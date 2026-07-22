@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -14,9 +15,24 @@ import (
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
+		if !isSilentError(err) {
+			fmt.Fprintln(os.Stderr, "error:", err)
+		}
 		os.Exit(1)
 	}
+}
+
+type silentError struct {
+	err error
+}
+
+func (e silentError) Error() string {
+	return e.err.Error()
+}
+
+func isSilentError(err error) bool {
+	_, ok := err.(silentError)
+	return ok
 }
 
 func run(args []string) error {
@@ -39,7 +55,7 @@ func run(args []string) error {
 
 func usage() {
 	fmt.Fprintf(os.Stderr, `Usage:
-  mkpk check --config mkpk.yaml --client laptop [--host host] [--port port] [--debug]
+  mkpk check --config mkpk.yaml --client laptop [--host host] [--port port] [--json] [--debug]
   mkpk knock --config mkpk.yaml --client laptop [--router host] [--check] [--debug]
 `)
 }
@@ -135,6 +151,7 @@ func checkCmd(args []string) error {
 	attempts := fs.Int("attempts", 1, "TCP check attempts")
 	interval := fs.Duration("interval", 500*time.Millisecond, "delay between TCP check attempts")
 	debug := fs.Bool("debug", false, "print check metadata")
+	jsonOutput := fs.Bool("json", false, "print machine-readable JSON result")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -148,14 +165,14 @@ func checkCmd(args []string) error {
 	}
 	host, port := resolveCheckTarget(res, router, *hostFlag, *portFlag)
 	var logf func(string, ...any)
-	if *debug {
+	if *debug && !*jsonOutput {
 		fmt.Printf("check_host=%s check_port=%d check_timeout=%s check_attempts=%d check_interval=%s\n",
 			host, port, *timeout, *attempts, *interval)
 		logf = func(format string, args ...any) {
 			fmt.Printf(format+"\n", args...)
 		}
 	}
-	return servicecheck.Run(servicecheck.Options{
+	result := servicecheck.Check(servicecheck.Options{
 		Host:     host,
 		Port:     port,
 		Timeout:  *timeout,
@@ -163,6 +180,44 @@ func checkCmd(args []string) error {
 		Interval: *interval,
 		Logf:     logf,
 	})
+	if *jsonOutput {
+		if err := printCheckJSON(result); err != nil {
+			return err
+		}
+	}
+	if result.Status == "open" {
+		return nil
+	}
+	if *jsonOutput {
+		return silentError{err: fmt.Errorf("%s", result.LastError)}
+	}
+	return fmt.Errorf("%s", result.LastError)
+}
+
+type checkJSON struct {
+	Status     string `json:"status"`
+	Host       string `json:"host"`
+	Port       int    `json:"port"`
+	Attempts   int    `json:"attempts"`
+	DurationMS int64  `json:"duration_ms"`
+	Error      string `json:"error,omitempty"`
+}
+
+func printCheckJSON(result servicecheck.Result) error {
+	payload := checkJSON{
+		Status:     result.Status,
+		Host:       result.Host,
+		Port:       result.Port,
+		Attempts:   result.Attempts,
+		DurationMS: result.Duration.Milliseconds(),
+		Error:      result.LastError,
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(data))
+	return nil
 }
 
 func resolveCheckTarget(res config.Resolved, router, hostOverride string, portOverride int) (string, int) {
