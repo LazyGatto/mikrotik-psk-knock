@@ -28,7 +28,8 @@
 #   /ip firewall address-list print where list=mkpk-tt-allowed
 #
 # Optional dst-nat demo rule:
-#   Edit to-addresses/to-ports and enable rule "mkpk-tt dst-nat demo ssh".
+#   Edit mkpkTtNat* values in profile script and run:
+#   /system script run mkpk-tt-apply-service
 #
 # Cleanup:
 #   /system scheduler remove [find where name~"^mkpk-tt-"]
@@ -58,6 +59,11 @@ add name="mkpk-tt-profile-demo" policy=read,write,test source={
     :global mkpkTtUsedTimeout "35s"
     :global mkpkTtNotifyEnabled false
     :global mkpkTtNotifyUrl ""
+    :global mkpkTtNatEnabled false
+    :global mkpkTtNatComment "mkpk-tt dst-nat demo ssh"
+    :global mkpkTtNatDstPort 2222
+    :global mkpkTtNatToAddress "192.0.2.10"
+    :global mkpkTtNatToPort 22
 }
 
 /ip firewall filter
@@ -77,12 +83,38 @@ add chain=input action=add-src-to-address-list protocol=udp dst-port=41003 \
     address-list=mkpk-tt-token-hit-prev address-list-timeout=2s disabled=yes \
     comment="mkpk-tt token prev"
 
-/ip firewall nat
-add chain=dstnat action=dst-nat protocol=tcp dst-port=2222 \
-    src-address-list=mkpk-tt-allowed to-addresses=192.0.2.10 to-ports=22 \
-    disabled=yes comment="mkpk-tt dst-nat demo ssh"
-
 /system script
+add name="mkpk-tt-apply-service" policy=read,write,test source={
+    /system script run mkpk-tt-profile-demo
+
+    :global mkpkTtAllowedList
+    :global mkpkTtNatEnabled
+    :global mkpkTtNatComment
+    :global mkpkTtNatDstPort
+    :global mkpkTtNatToAddress
+    :global mkpkTtNatToPort
+
+    :local natDisabled true
+    :if ($mkpkTtNatEnabled = true) do={
+        :set natDisabled false
+    }
+
+    :local natRule [/ip firewall nat find where comment=$mkpkTtNatComment]
+    :if ([:len $natRule] = 0) do={
+        /ip firewall nat add chain=dstnat action=dst-nat protocol=tcp \
+            dst-port=$mkpkTtNatDstPort src-address-list=$mkpkTtAllowedList \
+            to-addresses=$mkpkTtNatToAddress to-ports=$mkpkTtNatToPort \
+            disabled=$natDisabled comment=$mkpkTtNatComment
+        :log info ("mkpk-tt service nat created comment=" . $mkpkTtNatComment)
+    } else={
+        /ip firewall nat set $natRule chain=dstnat action=dst-nat protocol=tcp \
+            dst-port=$mkpkTtNatDstPort src-address-list=$mkpkTtAllowedList \
+            to-addresses=$mkpkTtNatToAddress to-ports=$mkpkTtNatToPort \
+            disabled=$natDisabled
+        :log info ("mkpk-tt service nat updated comment=" . $mkpkTtNatComment)
+    }
+}
+
 add name="mkpk-tt-notify" policy=read,write,test source={
     :global mkpkTtNotifyEnabled
     :global mkpkTtNotifyUrl
@@ -223,6 +255,7 @@ add name="mkpk-tt-startup" policy=read,write,test source={
     }
 
     /ip firewall address-list remove [find where list~"^mkpk-tt-token-hit"]
+    /system script run mkpk-tt-apply-service
     /system script run mkpk-tt-poller
     :log info "mkpk-tt startup guard applied"
     :return 0
@@ -236,4 +269,5 @@ add name="mkpk-tt-poller" interval=1s start-time=startup \
     on-event="/system script run mkpk-tt-poller" \
     policy=read,write,test comment="mkpk-tt update tokens and poll hits"
 
+/system script run mkpk-tt-apply-service
 :log info "mkpk-tt installed"

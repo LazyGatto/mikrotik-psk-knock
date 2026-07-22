@@ -203,7 +203,9 @@ NAT-правило не включается динамически. Оно вс
 src-address-list=knock-allowed-<service>
 ```
 
-В текущем прототипе это проверяется через disabled demo-rule:
+В текущем прототипе это проверяется через `mkpk-tt-apply-service`: script читает profile fields
+`nat_enabled`, `nat_dst_port`, `nat_to_address`, `nat_to_port` и создает/обновляет persistent NAT rule.
+Demo defaults дают disabled rule:
 
 ```routeros
 /ip firewall nat
@@ -212,11 +214,16 @@ add chain=dstnat action=dst-nat protocol=tcp dst-port=2222 \
     disabled=yes comment="mkpk-tt dst-nat demo ssh"
 ```
 
-Production setup должен заменить demo `dst-port`, `to-addresses` и `to-ports`, затем включить rule явным
-действием администратора. Knock не должен динамически включать/выключать NAT rule.
+Production setup должен заменить demo NAT target в profile script, поставить `nat_enabled=true` и
+запустить `mkpk-tt-apply-service`. Knock не должен динамически включать/выключать NAT rule.
 
 CHR reboot-тест подтвердил, что disabled NAT rule сохраняется как persistent config object, а dynamic
-`allowed` state после reboot сбрасывается.
+`allowed` state после reboot сбрасывается. Startup guard дополнительно запускает `mkpk-tt-apply-service`,
+чтобы NAT rule был пересверен с persistent profile после reboot.
+
+Отдельно проверено: если изменить profile на `nat_enabled=true`, `nat_dst_port=2022`,
+`nat_to_address=192.0.2.20`, `nat_to_port=2222`, apply script обновляет existing NAT rule. Эти значения
+пережили reboot, startup снова применил rule, и post-reboot knock открыл observed source IP.
 
 Успешный knock добавляет:
 

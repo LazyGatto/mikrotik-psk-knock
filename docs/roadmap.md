@@ -45,14 +45,18 @@
 - проверено на CHR: direct `/tool fetch` POST на `https://postman-echo.com/post` возвращает HTTP 200;
 - проверено на CHR: при включенном webhook в demo profile успешный knock вызывает `mkpk-tt-notify` без `notify failed`;
 - проверено на CHR: после reboot disabled NAT rule и scripts/schedulers сохраняются, dynamic state сбрасывается, startup guard срабатывает, post-reboot knock работает;
+- NAT service target и notification webhook target вынесены в profile fields;
+- startup guard теперь пере-применяет service NAT из profile перед пересчетом token rules;
+- проверено на CHR: `mkpk-tt-apply-service` обновляет existing NAT rule из profile fields, включая `disabled`, `dst-port`, `to-addresses` и `to-ports`;
+- проверено на CHR: modified NAT profile переживает reboot, startup пере-применяет NAT rule, post-reboot knock работает;
 - тестовые firewall rules, nat rules, address-lists, scripts и schedulers после проверки удалены.
 
 Промежуточный вывод: базовая ROS-only архитектура стала заметно реалистичнее. `sha512`, time bucket,
 UDP `content`, обновление rule content, scheduler 1s и bridge `token-hit -> scheduler -> allowed`
 подтверждены на CHR.
 
-Следующий полезный эксперимент: вынести параметры NAT service target и notification target в
-profile/service format вместо demo constants.
+Следующий полезный эксперимент: перейти к клиентскому CLI и вынести ручной token helper в повторяемую
+команду.
 
 ## Этап 1: исследование RouterOS
 
@@ -79,7 +83,8 @@ profile/service format вместо demo constants.
 - Проверено: после reboot scheduler пересчитывает token rules, dynamic `allowed` сбрасывается, post-reboot knock работает.
 - Проверено: persistent profile/client storage через отдельный RouterOS profile script.
 - Проверено: startup guard против stale persisted token content.
-- Вынести NAT service target и notification target в profile/service format.
+- Добавлено: NAT service target и notification target в profile/service format.
+- Проверено: apply/update сценарий для NAT service target из profile script.
 
 ## Этап 3: клиент CLI
 

@@ -45,7 +45,7 @@ MikroTik
 - собран и проверен PSK-derived time-token прототип с RouterOS-side `sha512` и token rules для текущего/предыдущего bucket;
 - добавлены и проверены persistent profile script, startup guard, disabled `dst-nat` demo-rule и notification hook.
 
-Ближайший следующий шаг: вынести NAT target и notification target параметры в profile/service format.
+Ближайший следующий шаг: перейти к клиентскому CLI и вынести ручной token helper в повторяемую команду.
 
 ## Документы
 

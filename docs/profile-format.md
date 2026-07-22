@@ -19,6 +19,11 @@ add name="mkpk-tt-profile-demo" policy=read,write,test source={
     :global mkpkTtUsedTimeout "35s"
     :global mkpkTtNotifyEnabled false
     :global mkpkTtNotifyUrl ""
+    :global mkpkTtNatEnabled false
+    :global mkpkTtNatComment "mkpk-tt dst-nat demo ssh"
+    :global mkpkTtNatDstPort 2222
+    :global mkpkTtNatToAddress "192.0.2.10"
+    :global mkpkTtNatToPort 22
 }
 ```
 
@@ -36,20 +41,29 @@ add name="mkpk-tt-profile-demo" policy=read,write,test source={
 - `used_timeout` - время жизни used-bucket marker.
 - `notify_enabled` - включает webhook notification path.
 - `notify_url` - URL для `/tool fetch` POST после успешного allow.
+- `nat_enabled` - включает созданный service `dst-nat` rule.
+- `nat_comment` - стабильный comment, по которому `mkpk-tt-apply-service` находит NAT rule.
+- `nat_dst_port` - внешний TCP port для `dstnat`.
+- `nat_to_address` - внутренний адрес сервиса.
+- `nat_to_port` - внутренний TCP port сервиса.
 
 ## NAT и notification
 
-`dst-nat` остается отдельным persistent firewall object. В прототипе есть disabled demo-rule:
+`dst-nat` остается отдельным persistent firewall object. Прототип создает или обновляет его из profile
+fields через `mkpk-tt-apply-service`:
 
 ```routeros
-/ip firewall nat
-add chain=dstnat action=dst-nat protocol=tcp dst-port=2222 \
-    src-address-list=mkpk-tt-allowed to-addresses=192.0.2.10 to-ports=22 \
-    disabled=yes comment="mkpk-tt dst-nat demo ssh"
+/system script run mkpk-tt-apply-service
 ```
 
-Для production-профиля нужно заменить `dst-port`, `to-addresses` и `to-ports`, затем явно включить rule.
-Успешный knock не меняет NAT rule, а только добавляет observed source IP в `allowed_list`.
+Для production-профиля нужно заменить `nat_dst_port`, `nat_to_address` и `nat_to_port`, затем поставить
+`nat_enabled=true` и запустить `mkpk-tt-apply-service`. Успешный knock не меняет NAT rule, а только
+добавляет observed source IP в `allowed_list`. Startup guard также запускает `mkpk-tt-apply-service`
+после reboot.
+
+CHR-проверка подтвердила, что `mkpk-tt-apply-service` обновляет existing NAT rule из profile fields,
+включая `disabled`, `dst-port`, `to-addresses` и `to-ports`. Modified profile values пережили reboot,
+startup пере-применил NAT rule, и post-reboot knock снова открыл observed source IP.
 
 Notification hook реализован отдельным script `mkpk-tt-notify`. Poller вызывает его после добавления
 `allowed_list` entry и удаления `token-hit`. Если notification выключен или webhook падает, allow не
