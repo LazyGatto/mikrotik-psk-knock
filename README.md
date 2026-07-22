@@ -40,12 +40,12 @@ MikroTik
 - зафиксирован ROS-only дизайн через staged UDP и PSK-derived time-token;
 - добавлена polling-модель `token-hit -> scheduler -> allowed` для сужения replay window;
 - закрыты основные концептуальные вопросы по dynamic/roaming clients, observed source IP и per-client PSK;
-- проверены ключевые RouterOS-примитивы на CHR: `sha512`, time bucket через `:timestamp`, UDP `content`, обновление rule content и scheduler 1s.
-- собран и проверен минимальный RouterOS end-to-end прототип `stage1 -> stage2 -> token-hit -> scheduler -> allowed`.
-- собран и проверен PSK-derived time-token прототип с RouterOS-side `sha512` и token rules для текущего/предыдущего bucket.
+- проверены ключевые RouterOS-примитивы на CHR: `sha512`, time bucket через `:timestamp`, UDP `content`, обновление rule content и scheduler 1s;
+- собран и проверен минимальный RouterOS end-to-end прототип `stage1 -> stage2 -> token-hit -> scheduler -> allowed`;
+- собран и проверен PSK-derived time-token прототип с RouterOS-side `sha512` и token rules для текущего/предыдущего bucket;
+- добавлены и проверены persistent profile script, startup guard, disabled `dst-nat` demo-rule и notification hook.
 
-Ближайший следующий шаг: вынести demo profile/secrets в нормальный profile format и добавить startup
-guard против stale persisted token content.
+Ближайший следующий шаг: вынести NAT target и notification target параметры в profile/service format.
 
 ## Документы
 

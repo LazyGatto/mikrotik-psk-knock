@@ -27,10 +27,14 @@
 # Expected result:
 #   /ip firewall address-list print where list=mkpk-tt-allowed
 #
+# Optional dst-nat demo rule:
+#   Edit to-addresses/to-ports and enable rule "mkpk-tt dst-nat demo ssh".
+#
 # Cleanup:
 #   /system scheduler remove [find where name~"^mkpk-tt-"]
 #   /system script remove [find where name~"^mkpk-tt-"]
 #   /ip firewall filter remove [find where comment~"^mkpk-tt "]
+#   /ip firewall nat remove [find where comment~"^mkpk-tt "]
 #   /ip firewall address-list remove [find where list~"^mkpk-tt-"]
 #
 # The demo profile is intentionally stored as a separate persistent script.
@@ -40,6 +44,7 @@
 /system scheduler remove [find where name~"^mkpk-tt-"]
 /system script remove [find where name~"^mkpk-tt-"]
 /ip firewall filter remove [find where comment~"^mkpk-tt "]
+/ip firewall nat remove [find where comment~"^mkpk-tt "]
 /ip firewall address-list remove [find where list~"^mkpk-tt-"]
 
 /system script
@@ -51,13 +56,9 @@ add name="mkpk-tt-profile-demo" policy=read,write,test source={
     :global mkpkTtAllowedList "mkpk-tt-allowed"
     :global mkpkTtAllowedTimeout "3m"
     :global mkpkTtUsedTimeout "35s"
+    :global mkpkTtNotifyEnabled false
+    :global mkpkTtNotifyUrl ""
 }
-
-# Legacy cleanup commands kept in comments for copy/paste reference:
-#   /system scheduler remove [find where name="mkpk-tt-poller"]
-#   /system script remove [find where name="mkpk-tt-poller"]
-#   /ip firewall filter remove [find where comment~"^mkpk-tt "]
-#   /ip firewall address-list remove [find where list~"^mkpk-tt-"]
 
 /ip firewall filter
 add chain=input action=add-src-to-address-list protocol=udp dst-port=41001 \
@@ -76,7 +77,41 @@ add chain=input action=add-src-to-address-list protocol=udp dst-port=41003 \
     address-list=mkpk-tt-token-hit-prev address-list-timeout=2s disabled=yes \
     comment="mkpk-tt token prev"
 
+/ip firewall nat
+add chain=dstnat action=dst-nat protocol=tcp dst-port=2222 \
+    src-address-list=mkpk-tt-allowed to-addresses=192.0.2.10 to-ports=22 \
+    disabled=yes comment="mkpk-tt dst-nat demo ssh"
+
 /system script
+add name="mkpk-tt-notify" policy=read,write,test source={
+    :global mkpkTtNotifyEnabled
+    :global mkpkTtNotifyUrl
+    :global mkpkTtNotifyRouter
+    :global mkpkTtNotifyService
+    :global mkpkTtNotifyClientId
+    :global mkpkTtNotifySrc
+    :global mkpkTtNotifyList
+    :global mkpkTtNotifyTtl
+    :global mkpkTtNotifyBucket
+    :global mkpkTtNotifyTime
+
+    :if ($mkpkTtNotifyEnabled != true) do={
+        :return 0
+    }
+    :if ([:len $mkpkTtNotifyUrl] = 0) do={
+        :log warning "mkpk-tt notify enabled but url is empty"
+        :return 0
+    }
+
+    :local payload ("router=" . $mkpkTtNotifyRouter . "&service=" . $mkpkTtNotifyService . "&client_id=" . $mkpkTtNotifyClientId . "&src=" . $mkpkTtNotifySrc . "&list=" . $mkpkTtNotifyList . "&ttl=" . $mkpkTtNotifyTtl . "&mode=udp-token&bucket=" . $mkpkTtNotifyBucket . "&time=" . $mkpkTtNotifyTime)
+    :do {
+        /tool fetch url=$mkpkTtNotifyUrl http-method=post http-data=$payload keep-result=no
+    } on-error={
+        :log warning ("mkpk-tt notify failed src=" . $mkpkTtNotifySrc . " service=" . $mkpkTtNotifyService)
+    }
+    :return 0
+}
+
 add name="mkpk-tt-poller" policy=read,write,test source={
     /system script run mkpk-tt-profile-demo
 
@@ -162,6 +197,16 @@ add name="mkpk-tt-poller" policy=read,write,test source={
     :log info ("mkpk-tt allowed src=" . $src . " ttl=" . $allowedTimeout . " bucket=" . $selectedBucket)
     /ip firewall address-list remove $nowHits
     /ip firewall address-list remove $prevHits
+
+    :global mkpkTtNotifyRouter [/system identity get name]
+    :global mkpkTtNotifyService $service
+    :global mkpkTtNotifyClientId $clientId
+    :global mkpkTtNotifySrc $src
+    :global mkpkTtNotifyList $allowedList
+    :global mkpkTtNotifyTtl $allowedTimeout
+    :global mkpkTtNotifyBucket $selectedBucket
+    :global mkpkTtNotifyTime [:timestamp]
+    /system script run mkpk-tt-notify
     :return 0
 }
 

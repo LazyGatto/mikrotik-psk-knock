@@ -203,6 +203,21 @@ NAT-правило не включается динамически. Оно вс
 src-address-list=knock-allowed-<service>
 ```
 
+В текущем прототипе это проверяется через disabled demo-rule:
+
+```routeros
+/ip firewall nat
+add chain=dstnat action=dst-nat protocol=tcp dst-port=2222 \
+    src-address-list=mkpk-tt-allowed to-addresses=192.0.2.10 to-ports=22 \
+    disabled=yes comment="mkpk-tt dst-nat demo ssh"
+```
+
+Production setup должен заменить demo `dst-port`, `to-addresses` и `to-ports`, затем включить rule явным
+действием администратора. Knock не должен динамически включать/выключать NAT rule.
+
+CHR reboot-тест подтвердил, что disabled NAT rule сохраняется как persistent config object, а dynamic
+`allowed` state после reboot сбрасывается.
+
 Успешный knock добавляет:
 
 ```text
@@ -241,6 +256,18 @@ time=<router timestamp>
 - remote syslog.
 
 Ошибки уведомлений не должны отменять уже успешное открытие доступа.
+
+Текущий прототип добавляет script `mkpk-tt-notify`. Poller передает ему данные через globals, удаляет
+`token-hit`, затем вызывает hook после успешного allow. По умолчанию `mkpkTtNotifyEnabled=false`, поэтому
+прототип не выполняет внешние HTTP-запросы без явного изменения profile script. Ошибка `/tool fetch`
+логируется warning и не откатывает добавление observed source IP в `allowed`.
+
+На CHR проверен HTTPS webhook path через `/tool fetch`: direct POST вернул HTTP 200, а успешный knock с
+включенным `mkpkTtNotifyEnabled=true` вызвал `mkpk-tt-notify` без локального `notify failed`.
+
+Ограничение текущего hook: payload собирается как простой `key=value&...` без полноценного URL-encoding.
+Production-вариант должен либо ограничить символы в profile/service/router fields, либо перейти на
+корректно сформированный JSON/form payload.
 
 ## Вопросы реализации
 

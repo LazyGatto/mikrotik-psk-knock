@@ -39,14 +39,20 @@
 - подтверждено, что `:timestamp` bucket после reboot совпал с клиентским epoch bucket даже при disabled NTP client на тестовом CHR;
 - добавлен и проверен startup guard `mkpk-tt-startup`: после reboot он сбрасывает token rules в disabled/invalid, затем запускает poller для пересчета;
 - profile/client параметры вынесены в отдельный persistent RouterOS script `mkpk-tt-profile-demo`;
-- тестовые firewall rules, address-lists, scripts и schedulers после проверки удалены.
+- добавлен static disabled `dst-nat` demo-rule через `src-address-list=mkpk-tt-allowed`;
+- добавлен notification hook `mkpk-tt-notify` с выключенным по умолчанию webhook;
+- проверено на CHR: импорт прототипа создает disabled NAT rule, profile/notify/poller/startup scripts и schedulers;
+- проверено на CHR: direct `/tool fetch` POST на `https://postman-echo.com/post` возвращает HTTP 200;
+- проверено на CHR: при включенном webhook в demo profile успешный knock вызывает `mkpk-tt-notify` без `notify failed`;
+- проверено на CHR: после reboot disabled NAT rule и scripts/schedulers сохраняются, dynamic state сбрасывается, startup guard срабатывает, post-reboot knock работает;
+- тестовые firewall rules, nat rules, address-lists, scripts и schedulers после проверки удалены.
 
 Промежуточный вывод: базовая ROS-only архитектура стала заметно реалистичнее. `sha512`, time bucket,
 UDP `content`, обновление rule content, scheduler 1s и bridge `token-hit -> scheduler -> allowed`
 подтверждены на CHR.
 
-Следующий полезный эксперимент: добавить static `dst-nat` пример через `src-address-list` и notification
-hook для успешного allow.
+Следующий полезный эксперимент: вынести параметры NAT service target и notification target в
+profile/service format вместо demo constants.
 
 ## Этап 1: исследование RouterOS
 
@@ -66,13 +72,14 @@ hook для успешного allow.
 - Описать profile format.
 - Проверено прототипом: RouterOS scripts для генерации PSK-derived time-token.
 - Проверено прототипом: firewall rules для stage1/stage2/token.
-- Настроить `dst-nat` через `src-address-list`.
-- Добавить notification script.
+- Проверено: disabled `dst-nat` demo-rule через `src-address-list`.
+- Проверено: notification script `mkpk-tt-notify`.
+- Проверено: webhook notification через `/tool fetch` до внешнего HTTPS endpoint.
 - Добавить logging и comments для address-list entries.
 - Проверено: после reboot scheduler пересчитывает token rules, dynamic `allowed` сбрасывается, post-reboot knock работает.
 - Проверено: persistent profile/client storage через отдельный RouterOS profile script.
 - Проверено: startup guard против stale persisted token content.
-- Добавить static `dst-nat` пример через `src-address-list`.
+- Вынести NAT service target и notification target в profile/service format.
 
 ## Этап 3: клиент CLI
 

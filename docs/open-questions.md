@@ -256,16 +256,25 @@ Staged UDP должен снижать нагрузку, потому что tok
 
 ### Уведомления
 
-Статус: требует проверки.
+Статус: webhook через `/tool fetch` проверен на CHR, остальные каналы требуют проверки.
 
 Проверить каналы:
 
 - `/tool e-mail`;
-- `/tool fetch` на webhook;
+- Проверено: `/tool fetch` на webhook;
 - Telegram bot API через HTTPS;
 - remote syslog.
 
 Требование: notification failure не должен отменять успешное добавление source IP в allowed list. Ошибка должна логироваться локально.
+
+Проверяемый прототип уже соблюдает это требование структурно: `mkpk-tt-poller` сначала добавляет
+observed source IP в `allowed`, удаляет `token-hit`, затем запускает `mkpk-tt-notify`; ошибка
+`/tool fetch` ловится через `on-error` и остается warning в локальном логе. По умолчанию webhook выключен через
+`mkpkTtNotifyEnabled=false`.
+
+Проверка на CHR: прямой `/tool fetch` POST на `https://postman-echo.com/post` вернул HTTP 200. При
+включенном webhook в demo profile успешный knock вызвал `mkpk-tt-notify`, `notify failed` в логе не
+появился.
 
 ### Безопасные права для SSH/Ed25519 режима
 
