@@ -1,19 +1,16 @@
 package main
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"flag"
 	"fmt"
 	"os"
-	"sort"
 	"strconv"
+	"strings"
 	"time"
 
-	"gopkg.in/yaml.v3"
+	"mikrotik-psk-knock/client/internal/admin"
 	"mikrotik-psk-knock/client/internal/config"
 	"mikrotik-psk-knock/client/internal/deploy"
-	"mikrotik-psk-knock/client/internal/routeros"
 	"mikrotik-psk-knock/client/internal/token"
 )
 
@@ -76,23 +73,12 @@ func secretCmd(args []string) error {
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
-	if *n < 16 {
-		return fmt.Errorf("--bytes must be at least 16")
-	}
-	secret, err := generateSecret(*n)
+	secret, err := admin.GenerateSecret(*n)
 	if err != nil {
 		return err
 	}
 	fmt.Println(secret)
 	return nil
-}
-
-func generateSecret(n int) (string, error) {
-	buf := make([]byte, n)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
 func configCmd(args []string) error {
@@ -108,7 +94,7 @@ func configCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	printConfigSummary(cfg, *configPath)
+	printSummary(*configPath, admin.Summarize(cfg))
 	return nil
 }
 
@@ -126,15 +112,6 @@ func profileCmd(args []string) error {
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
-	if *routerAddress == "" {
-		return fmt.Errorf("--router-address is required")
-	}
-	if *serviceName == "" {
-		return fmt.Errorf("--service is required")
-	}
-	if *clientName == "" {
-		return fmt.Errorf("--client is required")
-	}
 	if !*force {
 		if _, err := os.Stat(*outPath); err == nil {
 			return fmt.Errorf("%s already exists; use --force to overwrite", *outPath)
@@ -142,50 +119,20 @@ func profileCmd(args []string) error {
 			return err
 		}
 	}
-	psk, err := generateSecret(32)
+	cfg, err := admin.InitConfig(admin.InitOptions{
+		RouterName:    *routerName,
+		RouterAddress: *routerAddress,
+		ServiceName:   *serviceName,
+		ClientName:    *clientName,
+	})
 	if err != nil {
 		return err
 	}
-	cfg := initialConfig(*routerName, *routerAddress, *serviceName, *clientName, psk)
-	if err := writeConfig(*outPath, cfg); err != nil {
+	if err := admin.SaveConfig(*outPath, cfg); err != nil {
 		return err
 	}
 	fmt.Printf("created %s service=%s client=%s\n", *outPath, *serviceName, *clientName)
 	return nil
-}
-
-func initialConfig(routerName, routerAddress, serviceName, clientName, psk string) config.Config {
-	return config.Config{
-		Router: config.Router{
-			Name:    routerName,
-			Address: routerAddress,
-		},
-		Defaults: config.Defaults{
-			BucketSeconds:   30,
-			StageTimeout:    "5s",
-			TokenHitTimeout: "2s",
-			AllowedTimeout:  "3m",
-			UsedTimeout:     "65s",
-		},
-		Services: map[string]config.Service{
-			serviceName: {
-				ServiceName: serviceName,
-				Stage1Port:  41001,
-				Stage2Port:  41002,
-				TokenPort:   41003,
-				AllowedList: "mkpk-tt-allowed-" + serviceName,
-				NAT:         initialNAT(serviceName, false, 2222, "192.0.2.10", 22),
-				Notify:      config.Notify{Enabled: false, URL: ""},
-			},
-		},
-		Clients: map[string]config.Client{
-			clientName: {
-				ClientID: clientName,
-				Service:  serviceName,
-				PSK:      psk,
-			},
-		},
-	}
 }
 
 func serviceCmd(args []string) error {
@@ -206,7 +153,7 @@ func serviceCmd(args []string) error {
 	natToAddress := fs.String("nat-to-address", "", "internal service address")
 	natToPort := fs.Int("nat-to-port", 0, "internal service port")
 	notifyEnabled := fs.Bool("notify-enabled", false, "enable notification")
-	notifyChannel := fs.String("notify-channel", "webhook", "notification channel: webhook or telegram")
+	notifyChannel := fs.String("notify-channel", "webhook", "notification channel: webhook, telegram or email")
 	notifyURL := fs.String("notify-url", "", "webhook notification URL")
 	notifyTgToken := fs.String("notify-telegram-bot-token", "", "telegram bot token")
 	notifyTgChat := fs.String("notify-telegram-chat-id", "", "telegram chat id")
@@ -221,104 +168,51 @@ func serviceCmd(args []string) error {
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
-	if *name == "" {
-		return fmt.Errorf("--name is required")
-	}
-	if *stage1Port == 0 {
-		return fmt.Errorf("--stage1-port is required")
-	}
-	if *stage2Port == 0 {
-		return fmt.Errorf("--stage2-port is required")
-	}
-	if *tokenPort == 0 {
-		return fmt.Errorf("--token-port is required")
-	}
-	if *natDstPort == 0 {
-		return fmt.Errorf("--nat-dst-port is required")
-	}
-	if *natToAddress == "" {
-		return fmt.Errorf("--nat-to-address is required")
-	}
-	if *natToPort == 0 {
-		return fmt.Errorf("--nat-to-port is required")
-	}
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return err
 	}
-	if _, ok := cfg.Services[*name]; ok && !*force {
-		return fmt.Errorf("service %q already exists; use --force to replace", *name)
-	}
-	id := *serviceName
-	if id == "" {
-		id = *name
-	}
-	comment := *natComment
-	if comment == "" {
-		comment = "mkpk-tt dst-nat " + *name
-	}
-	allowed := *allowedList
-	if allowed == "" {
-		allowed = "mkpk-tt-allowed-" + *name
-	}
-	emailPort := *notifyEmailPort
-	emailTLS := *notifyEmailTLS
-	if *notifyChannel == "email" {
-		if emailPort == 0 {
-			emailPort = 587
-		}
-		if emailTLS == "" {
-			emailTLS = "starttls"
-		}
-	}
-	cfg.Services[*name] = config.Service{
-		ServiceName: id,
+	cfg, err = admin.AddService(cfg, admin.ServiceOptions{
+		Name:        *name,
+		ServiceName: *serviceName,
 		Stage1Port:  *stage1Port,
 		Stage2Port:  *stage2Port,
 		TokenPort:   *tokenPort,
-		AllowedList: allowed,
+		AllowedList: *allowedList,
 		NAT: config.NAT{
 			Enabled:   *natEnabled,
-			Comment:   comment,
+			Comment:   *natComment,
 			DstPort:   *natDstPort,
 			ToAddress: *natToAddress,
 			ToPort:    *natToPort,
 		},
 		Notify: config.Notify{
-			Enabled: *notifyEnabled,
-			Channel: *notifyChannel,
-			URL:     *notifyURL,
-			Telegram: config.NotifyTelegram{
-				BotToken: *notifyTgToken,
-				ChatID:   *notifyTgChat,
-			},
+			Enabled:  *notifyEnabled,
+			Channel:  *notifyChannel,
+			URL:      *notifyURL,
+			Telegram: config.NotifyTelegram{BotToken: *notifyTgToken, ChatID: *notifyTgChat},
 			Email: config.NotifyEmail{
 				To:       *notifyEmailTo,
 				From:     *notifyEmailFrom,
 				Server:   *notifyEmailServer,
-				Port:     emailPort,
-				TLS:      emailTLS,
+				Port:     *notifyEmailPort,
+				TLS:      *notifyEmailTLS,
 				User:     *notifyEmailUser,
 				Password: *notifyEmailPassword,
 			},
 		},
-	}
-	if err := writeConfig(*configPath, cfg); err != nil {
+		Force: *force,
+	})
+	if err != nil {
 		return err
 	}
-	fmt.Printf("service added config=%s name=%s service_name=%s stage1=%d stage2=%d token=%d nat_enabled=%t nat_dst_port=%d nat_to=%s:%d\n",
-		*configPath, *name, id, *stage1Port, *stage2Port, *tokenPort, *natEnabled, *natDstPort, *natToAddress, *natToPort)
-	return nil
-}
-
-func initialNAT(serviceName string, enabled bool, dstPort int, toAddress string, toPort int) config.NAT {
-	return config.NAT{
-		Enabled:   enabled,
-		Comment:   "mkpk-tt dst-nat " + serviceName,
-		DstPort:   dstPort,
-		ToAddress: toAddress,
-		ToPort:    toPort,
+	if err := admin.SaveConfig(*configPath, cfg); err != nil {
+		return err
 	}
+	svc := cfg.Services[*name]
+	fmt.Printf("service added config=%s name=%s service_name=%s stage1=%d stage2=%d token=%d nat_enabled=%t nat_dst_port=%d nat_to=%s:%d\n",
+		*configPath, *name, svc.ServiceName, svc.Stage1Port, svc.Stage2Port, svc.TokenPort, svc.NAT.Enabled, svc.NAT.DstPort, svc.NAT.ToAddress, svc.NAT.ToPort)
+	return nil
 }
 
 func clientCmd(args []string) error {
@@ -335,44 +229,25 @@ func clientCmd(args []string) error {
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
-	if *name == "" {
-		return fmt.Errorf("--name is required")
-	}
-	if *serviceName == "" {
-		return fmt.Errorf("--service is required")
-	}
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return err
 	}
-	if _, ok := cfg.Services[*serviceName]; !ok {
-		return fmt.Errorf("unknown service %q", *serviceName)
-	}
-	if _, ok := cfg.Clients[*name]; ok && !*force {
-		return fmt.Errorf("client %q already exists; use --force to replace", *name)
-	}
-	id := *clientID
-	if id == "" {
-		id = *name
-	}
-	psk := *pskFlag
-	pskSource := "provided"
-	if psk == "" {
-		psk, err = generateSecret(32)
-		if err != nil {
-			return err
-		}
-		pskSource = "generated"
-	}
-	cfg.Clients[*name] = config.Client{
-		ClientID: id,
+	res, err := admin.AddClient(cfg, admin.ClientOptions{
+		Name:     *name,
+		ClientID: *clientID,
 		Service:  *serviceName,
-		PSK:      psk,
-	}
-	if err := writeConfig(*configPath, cfg); err != nil {
+		PSK:      *pskFlag,
+		Force:    *force,
+	})
+	if err != nil {
 		return err
 	}
-	fmt.Printf("client added config=%s name=%s client_id=%s service=%s psk=%s\n", *configPath, *name, id, *serviceName, pskSource)
+	if err := admin.SaveConfig(*configPath, res.Config); err != nil {
+		return err
+	}
+	cl := res.Config.Clients[*name]
+	fmt.Printf("client added config=%s name=%s client_id=%s service=%s psk=%s\n", *configPath, *name, cl.ClientID, *serviceName, res.PSKSource)
 	return nil
 }
 
@@ -422,17 +297,7 @@ func routerosCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	var rendered string
-	if *clientName == "" {
-		rendered, err = routeros.RenderConfig(cfg)
-	} else {
-		var res config.Resolved
-		res, err = cfg.Resolve(*clientName)
-		if err != nil {
-			return err
-		}
-		rendered, err = routeros.Render(res)
-	}
+	rendered, err := admin.Render(cfg, *clientName)
 	if err != nil {
 		return err
 	}
@@ -463,162 +328,103 @@ func deployCmd(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return err
 	}
-	addr := *address
-	if addr == "" {
-		addr = cfg.Router.Address
+	opts := admin.DeployOptions{
+		Address: *address,
+		Port:    *port,
+		Auth: deploy.Auth{
+			User:     *user,
+			KeyPath:  *keyPath,
+			KeyPass:  *keyPass,
+			UseAgent: *useAgent,
+			Password: *password,
+		},
 	}
-	if addr == "" {
-		return fmt.Errorf("router address is required (--address or router.address)")
-	}
-
-	client, err := deploy.Connect(addr, *port, deploy.Auth{
-		User:     *user,
-		KeyPath:  *keyPath,
-		KeyPass:  *keyPass,
-		UseAgent: *useAgent,
-		Password: *password,
-	})
-	if err != nil {
-		return err
-	}
-	defer client.Close()
 
 	switch sub {
 	case "status":
-		state, err := client.Detect()
+		st, err := admin.Status(cfg, opts)
 		if err != nil {
 			return err
 		}
-		desired := cfg.Hash()
-		if !state.Installed {
-			fmt.Printf("router=%s installed=false desired_hash=%s\n", addr, desired)
+		if !st.Installed {
+			fmt.Printf("router=%s installed=false desired_hash=%s\n", st.Router, st.DesiredHash)
 			return nil
 		}
 		fmt.Printf("router=%s installed=true up_to_date=%t installed_hash=%s desired_hash=%s\n",
-			addr, state.Hash == desired, state.Hash, desired)
+			st.Router, st.UpToDate, st.InstalledHash, st.DesiredHash)
 		return nil
 
 	case "uninstall":
-		if *dryRun {
+		addr, applied, err := admin.Uninstall(cfg, opts, *dryRun)
+		if err != nil {
+			return err
+		}
+		if !applied {
 			fmt.Printf("router=%s would uninstall mkpk-tt-* layer\n", addr)
 			return nil
-		}
-		if err := client.Uninstall(); err != nil {
-			return err
 		}
 		fmt.Printf("router=%s uninstalled\n", addr)
 		return nil
 
-	default: // install / update
-		rendered, err := routeros.RenderConfig(cfg)
+	default:
+		res, err := admin.Apply(cfg, opts, *force, *dryRun)
 		if err != nil {
 			return err
 		}
-		desired := cfg.Hash()
-		state, err := client.Detect()
-		if err != nil {
-			return err
+		switch {
+		case res.Action == "skip":
+			fmt.Printf("router=%s already up to date hash=%s\n", res.Router, res.Hash)
+		case !res.Applied:
+			fmt.Printf("router=%s would %s installed_hash=%s desired_hash=%s\n", res.Router, res.Action, res.InstalledHash, res.Hash)
+		default:
+			fmt.Printf("router=%s %s ok hash=%s\n", res.Router, res.Action, res.Hash)
 		}
-		if state.Installed && state.Hash == desired && !*force {
-			fmt.Printf("router=%s already up to date hash=%s\n", addr, desired)
-			return nil
-		}
-		action := "install"
-		if state.Installed {
-			action = "update"
-		}
-		if *dryRun {
-			fmt.Printf("router=%s would %s installed_hash=%s desired_hash=%s\n", addr, action, state.Hash, desired)
-			return nil
-		}
-		if err := client.Deploy([]byte(rendered)); err != nil {
-			return err
-		}
-		fmt.Printf("router=%s %s ok hash=%s\n", addr, action, desired)
 		return nil
 	}
 }
 
-func writeConfig(path string, cfg config.Config) error {
-	if err := cfg.Validate(); err != nil {
-		return err
-	}
-	data, err := yaml.Marshal(cfg)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0600)
-}
-
-func printConfigSummary(cfg config.Config, path string) {
+func printSummary(path string, s admin.Summary) {
 	fmt.Printf("config=%s status=valid\n", path)
-	fmt.Printf("router name=%s address=%s\n", cfg.Router.Name, cfg.Router.Address)
+	fmt.Printf("router name=%s address=%s\n", s.Router.Name, s.Router.Address)
 	fmt.Printf("defaults bucket_seconds=%d stage_timeout=%s token_hit_timeout=%s allowed_timeout=%s used_timeout=%s\n",
-		cfg.Defaults.BucketSeconds,
-		cfg.Defaults.StageTimeout,
-		cfg.Defaults.TokenHitTimeout,
-		cfg.Defaults.AllowedTimeout,
-		cfg.Defaults.UsedTimeout,
-	)
-	serviceNames := sortedServiceNames(cfg.Services)
-	clientNames := sortedClientNames(cfg.Clients)
-	fmt.Printf("services count=%d names=%s\n", len(serviceNames), joinNames(serviceNames))
-	for _, name := range serviceNames {
-		svc := cfg.Services[name]
+		s.Defaults.BucketSeconds, s.Defaults.StageTimeout, s.Defaults.TokenHitTimeout, s.Defaults.AllowedTimeout, s.Defaults.UsedTimeout)
+	fmt.Printf("services count=%d names=%s\n", len(s.Services), joinServiceNames(s.Services))
+	for _, svc := range s.Services {
 		fmt.Printf("service name=%s service_name=%s stage1=%d stage2=%d token=%d allowed_list=%s nat_enabled=%t nat_dst_port=%d nat_to=%s:%d notify_enabled=%t notify_channel=%s\n",
-			name,
-			svc.ServiceName,
-			svc.Stage1Port,
-			svc.Stage2Port,
-			svc.TokenPort,
-			svc.AllowedList,
-			svc.NAT.Enabled,
-			svc.NAT.DstPort,
-			svc.NAT.ToAddress,
-			svc.NAT.ToPort,
-			svc.Notify.Enabled,
-			svc.Notify.Channel,
-		)
+			svc.Name, svc.ServiceName, svc.Stage1Port, svc.Stage2Port, svc.TokenPort, svc.AllowedList,
+			svc.NATEnabled, svc.NATDstPort, svc.NATToAddress, svc.NATToPort, svc.NotifyEnabled, svc.NotifyChannel)
 	}
-	fmt.Printf("clients count=%d names=%s\n", len(clientNames), joinNames(clientNames))
-	for _, name := range clientNames {
-		client := cfg.Clients[name]
-		fmt.Printf("client name=%s client_id=%s service=%s psk=set\n", name, client.ClientID, client.Service)
+	fmt.Printf("clients count=%d names=%s\n", len(s.Clients), joinClientNames(s.Clients))
+	for _, cl := range s.Clients {
+		fmt.Printf("client name=%s client_id=%s service=%s psk=set\n", cl.Name, cl.ClientID, cl.Service)
 	}
 }
 
-func sortedServiceNames(services map[string]config.Service) []string {
+func joinServiceNames(services []admin.ServiceSummary) string {
 	names := make([]string, 0, len(services))
-	for name := range services {
-		names = append(names, name)
+	for _, s := range services {
+		names = append(names, s.Name)
 	}
-	sort.Strings(names)
-	return names
+	return joinNames(names)
 }
 
-func sortedClientNames(clients map[string]config.Client) []string {
+func joinClientNames(clients []admin.ClientSummary) string {
 	names := make([]string, 0, len(clients))
-	for name := range clients {
-		names = append(names, name)
+	for _, c := range clients {
+		names = append(names, c.Name)
 	}
-	sort.Strings(names)
-	return names
+	return joinNames(names)
 }
 
 func joinNames(names []string) string {
 	if len(names) == 0 {
 		return "-"
 	}
-	out := names[0]
-	for _, name := range names[1:] {
-		out += "," + name
-	}
-	return out
+	return strings.Join(names, ",")
 }
 
 func printWindowDebug(window token.Window) {
