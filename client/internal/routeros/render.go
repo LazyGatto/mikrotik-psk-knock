@@ -3,63 +3,127 @@ package routeros
 import (
 	"bytes"
 	"fmt"
+	"sort"
 	"text/template"
 
 	"mikrotik-psk-knock/client/internal/config"
 )
 
-type renderData struct {
-	RouterName      string
-	Service         string
-	ClientID        string
-	PSK             string
-	BucketSeconds   int64
-	Stage1Port      int
-	Stage2Port      int
-	TokenPort       int
-	AllowedList     string
-	StageTimeout    string
-	TokenHitTimeout string
-	AllowedTimeout  string
-	UsedTimeout     string
-	NotifyEnabled   string
-	NotifyURL       string
-	NATEnabled      string
-	NATComment      string
-	NATDstPort      int
-	NATToAddress    string
-	NATToPort       int
+type svcData struct {
+	Key          string
+	Stage1Port   int
+	Stage2Port   int
+	TokenPort    int
+	AllowedList  string // plain, validated safe name
+	NATDisabled  string // "yes" / "no"
+	NATComment   string // ros-quoted
+	NATDstPort   int
+	NATToAddress string // ros-quoted
+	NATToPort    int
 }
 
-func Render(res config.Resolved) (string, error) {
-	data := renderData{
-		RouterName:      rosString(res.Config.Router.Name),
-		Service:         rosString(res.Service.ServiceName),
-		ClientID:        rosString(res.Client.ClientID),
-		PSK:             rosString(res.Client.PSK),
-		BucketSeconds:   res.Config.Defaults.BucketSeconds,
-		Stage1Port:      res.Service.Stage1Port,
-		Stage2Port:      res.Service.Stage2Port,
-		TokenPort:       res.Service.TokenPort,
-		AllowedList:     rosString(res.Service.AllowedList),
-		StageTimeout:    res.Config.Defaults.StageTimeout,
-		TokenHitTimeout: res.Config.Defaults.TokenHitTimeout,
-		AllowedTimeout:  res.Config.Defaults.AllowedTimeout,
-		UsedTimeout:     res.Config.Defaults.UsedTimeout,
-		NotifyEnabled:   rosBool(res.Service.Notify.Enabled),
-		NotifyURL:       rosString(res.Service.Notify.URL),
-		NATEnabled:      rosBool(res.Service.NAT.Enabled),
-		NATComment:      rosString(res.Service.NAT.Comment),
-		NATDstPort:      res.Service.NAT.DstPort,
-		NATToAddress:    rosString(res.Service.NAT.ToAddress),
-		NATToPort:       res.Service.NAT.ToPort,
+type cliData struct {
+	Key            string
+	ServiceKey     string
+	Service        string // ros-quoted service_name
+	ClientID       string // ros-quoted
+	PSK            string // ros-quoted
+	TokenPort      int
+	AllowedList    string // plain, validated safe name
+	AllowedListStr string // ros-quoted
+	AllowedTimeout string // plain
+	UsedTimeout    string // plain
+	NotifyEnabled  string // "true" / "false"
+	NotifyURL      string // ros-quoted
+}
+
+type renderConfigData struct {
+	BucketSeconds   int64
+	StageTimeout    string
+	TokenHitTimeout string
+	Services        []svcData
+	Clients         []cliData
+}
+
+// RenderConfig renders every service and client in cfg into per-profile RouterOS
+// objects. cfg is expected to be already validated (config.Load validates it).
+func RenderConfig(cfg config.Config) (string, error) {
+	data := renderConfigData{
+		BucketSeconds:   cfg.Defaults.BucketSeconds,
+		StageTimeout:    cfg.Defaults.StageTimeout,
+		TokenHitTimeout: cfg.Defaults.TokenHitTimeout,
+	}
+
+	for _, k := range sortedKeys(cfg.Services) {
+		s := cfg.Services[k]
+		data.Services = append(data.Services, svcData{
+			Key:          k,
+			Stage1Port:   s.Stage1Port,
+			Stage2Port:   s.Stage2Port,
+			TokenPort:    s.TokenPort,
+			AllowedList:  s.AllowedList,
+			NATDisabled:  rosDisabled(s.NAT.Enabled),
+			NATComment:   rosString(s.NAT.Comment),
+			NATDstPort:   s.NAT.DstPort,
+			NATToAddress: rosString(s.NAT.ToAddress),
+			NATToPort:    s.NAT.ToPort,
+		})
+	}
+
+	for _, k := range sortedKeys(cfg.Clients) {
+		c := cfg.Clients[k]
+		s, ok := cfg.Services[c.Service]
+		if !ok {
+			return "", fmt.Errorf("client %q references unknown service %q", k, c.Service)
+		}
+		data.Clients = append(data.Clients, cliData{
+			Key:            k,
+			ServiceKey:     c.Service,
+			Service:        rosString(s.ServiceName),
+			ClientID:       rosString(c.ClientID),
+			PSK:            rosString(c.PSK),
+			TokenPort:      s.TokenPort,
+			AllowedList:    s.AllowedList,
+			AllowedListStr: rosString(s.AllowedList),
+			AllowedTimeout: cfg.Defaults.AllowedTimeout,
+			UsedTimeout:    cfg.Defaults.UsedTimeout,
+			NotifyEnabled:  rosBool(s.Notify.Enabled),
+			NotifyURL:      rosString(s.Notify.URL),
+		})
 	}
 
 	var out bytes.Buffer
-	if err := scriptTemplate.Execute(&out, data); err != nil {
+	if err := configTemplate.Execute(&out, data); err != nil {
 		return "", err
 	}
 	return out.String(), nil
+}
+
+// Render keeps the single-client entry point by rendering a config that contains
+// only the resolved service and client.
+func Render(res config.Resolved) (string, error) {
+	serviceKey := res.Client.Service
+	if serviceKey == "" {
+		serviceKey = res.Service.ServiceName
+	}
+	clientKey := res.Client.ClientID
+	cfg := res.Config
+	cfg.Services = map[string]config.Service{serviceKey: res.Service}
+	cfg.Clients = map[string]config.Client{clientKey: {
+		ClientID: res.Client.ClientID,
+		Service:  serviceKey,
+		PSK:      res.Client.PSK,
+	}}
+	return RenderConfig(cfg)
+}
+
+func sortedKeys[T any](m map[string]T) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func rosBool(v bool) string {
@@ -67,6 +131,13 @@ func rosBool(v bool) string {
 		return "true"
 	}
 	return "false"
+}
+
+func rosDisabled(enabled bool) string {
+	if enabled {
+		return "no"
+	}
+	return "yes"
 }
 
 func rosString(v string) string {
@@ -88,8 +159,8 @@ func rosString(v string) string {
 	return out.String()
 }
 
-var scriptTemplate = template.Must(template.New("routeros").Parse(fmt.Sprintf(`# Generated by mkpk-provision routeros render.
-# This renders one client/service into the currently verified single-profile RouterOS scheme.
+var configTemplate = template.Must(template.New("routeros").Parse(`# Generated by mkpk-provision routeros render (multi-profile).
+# Renders all services and clients from the mkpk config into per-profile RouterOS objects.
 
 /system scheduler remove [find where name~"^mkpk-tt-"]
 /system script remove [find where name~"^mkpk-tt-"]
@@ -97,75 +168,36 @@ var scriptTemplate = template.Must(template.New("routeros").Parse(fmt.Sprintf(`#
 /ip firewall nat remove [find where comment~"^mkpk-tt "]
 /ip firewall address-list remove [find where list~"^mkpk-tt-"]
 
-/system script
-add name="mkpk-tt-profile-demo" policy=read,write,test source={
-    :global mkpkTtService {{.Service}}
-    :global mkpkTtClientId {{.ClientID}}
-    :global mkpkTtPsk {{.PSK}}
-    :global mkpkTtTokenPort {{.TokenPort}}
-    :global mkpkTtAllowedList {{.AllowedList}}
-    :global mkpkTtAllowedTimeout "{{.AllowedTimeout}}"
-    :global mkpkTtUsedTimeout "{{.UsedTimeout}}"
-    :global mkpkTtNotifyEnabled {{.NotifyEnabled}}
-    :global mkpkTtNotifyUrl {{.NotifyURL}}
-    :global mkpkTtNatEnabled {{.NATEnabled}}
-    :global mkpkTtNatComment {{.NATComment}}
-    :global mkpkTtNatDstPort {{.NATDstPort}}
-    :global mkpkTtNatToAddress {{.NATToAddress}}
-    :global mkpkTtNatToPort {{.NATToPort}}
-}
-
 /ip firewall filter
-add chain=input action=add-src-to-address-list protocol=udp dst-port={{.Stage1Port}} \
-    address-list=mkpk-tt-stage1 address-list-timeout={{.StageTimeout}} \
-    comment="mkpk-tt stage1"
+{{range .Services}}add chain=input action=add-src-to-address-list protocol=udp dst-port={{.Stage1Port}} \
+    address-list=mkpk-tt-stage1-{{.Key}} address-list-timeout={{$.StageTimeout}} \
+    comment="mkpk-tt stage1 {{.Key}}"
 add chain=input action=add-src-to-address-list protocol=udp dst-port={{.Stage2Port}} \
-    src-address-list=mkpk-tt-stage1 \
-    address-list=mkpk-tt-stage2 address-list-timeout={{.StageTimeout}} \
-    comment="mkpk-tt stage2"
+    src-address-list=mkpk-tt-stage1-{{.Key}} \
+    address-list=mkpk-tt-stage2-{{.Key}} address-list-timeout={{$.StageTimeout}} \
+    comment="mkpk-tt stage2 {{.Key}}"
+{{end}}{{range .Clients}}add chain=input action=add-src-to-address-list protocol=udp dst-port={{.TokenPort}} \
+    src-address-list=mkpk-tt-stage2-{{.ServiceKey}} content="mkpk-tt-token-not-initialized" \
+    address-list=mkpk-tt-hit-now-{{.Key}} address-list-timeout={{$.TokenHitTimeout}} disabled=yes \
+    comment="mkpk-tt token now {{.Key}}"
 add chain=input action=add-src-to-address-list protocol=udp dst-port={{.TokenPort}} \
-    src-address-list=mkpk-tt-stage2 content="mkpk-tt-token-not-initialized" \
-    address-list=mkpk-tt-token-hit-now address-list-timeout={{.TokenHitTimeout}} disabled=yes \
-    comment="mkpk-tt token now"
-add chain=input action=add-src-to-address-list protocol=udp dst-port={{.TokenPort}} \
-    src-address-list=mkpk-tt-stage2 content="mkpk-tt-token-not-initialized" \
-    address-list=mkpk-tt-token-hit-prev address-list-timeout={{.TokenHitTimeout}} disabled=yes \
-    comment="mkpk-tt token prev"
-
-%s
-`, tailTemplate)))
-
-const tailTemplate = `/system script
+    src-address-list=mkpk-tt-stage2-{{.ServiceKey}} content="mkpk-tt-token-not-initialized" \
+    address-list=mkpk-tt-hit-prev-{{.Key}} address-list-timeout={{$.TokenHitTimeout}} disabled=yes \
+    comment="mkpk-tt token prev {{.Key}}"
+{{end}}
+/system script
 add name="mkpk-tt-apply-service" policy=read,write,test source={
-    /system script run mkpk-tt-profile-demo
-
-    :global mkpkTtAllowedList
-    :global mkpkTtNatEnabled
-    :global mkpkTtNatComment
-    :global mkpkTtNatDstPort
-    :global mkpkTtNatToAddress
-    :global mkpkTtNatToPort
-
-    :local natDisabled true
-    :if ($mkpkTtNatEnabled = true) do={
-        :set natDisabled false
-    }
-
-    :local natRule [/ip firewall nat find where comment=$mkpkTtNatComment]
-    :if ([:len $natRule] = 0) do={
-        /ip firewall nat add chain=dstnat action=dst-nat protocol=tcp \
-            dst-port=$mkpkTtNatDstPort src-address-list=$mkpkTtAllowedList \
-            to-addresses=$mkpkTtNatToAddress to-ports=$mkpkTtNatToPort \
-            disabled=$natDisabled comment=$mkpkTtNatComment
-        :log info ("mkpk-tt service nat created comment=" . $mkpkTtNatComment)
+{{range .Services}}    :if ([:len [/ip firewall nat find where comment={{.NATComment}}]] = 0) do={
+        /ip firewall nat add chain=dstnat action=dst-nat protocol=tcp dst-port={{.NATDstPort}} \
+            src-address-list={{.AllowedList}} to-addresses={{.NATToAddress}} to-ports={{.NATToPort}} \
+            disabled={{.NATDisabled}} comment={{.NATComment}}
+        :log info ("mkpk-tt service nat created comment=" . {{.NATComment}})
     } else={
-        /ip firewall nat set $natRule chain=dstnat action=dst-nat protocol=tcp \
-            dst-port=$mkpkTtNatDstPort src-address-list=$mkpkTtAllowedList \
-            to-addresses=$mkpkTtNatToAddress to-ports=$mkpkTtNatToPort \
-            disabled=$natDisabled
-        :log info ("mkpk-tt service nat updated comment=" . $mkpkTtNatComment)
+        /ip firewall nat set [/ip firewall nat find where comment={{.NATComment}}] chain=dstnat action=dst-nat protocol=tcp dst-port={{.NATDstPort}} \
+            src-address-list={{.AllowedList}} to-addresses={{.NATToAddress}} to-ports={{.NATToPort}} disabled={{.NATDisabled}}
+        :log info ("mkpk-tt service nat updated comment=" . {{.NATComment}})
     }
-}
+{{end}}}
 
 add name="mkpk-tt-notify" policy=read,write,test source={
     :global mkpkTtNotifyEnabled
@@ -196,25 +228,17 @@ add name="mkpk-tt-notify" policy=read,write,test source={
     :return 0
 }
 
-add name="mkpk-tt-poller" policy=read,write,test source={
-    /system script run mkpk-tt-profile-demo
-
-    :global mkpkTtService
-    :global mkpkTtClientId
-    :global mkpkTtPsk
-    :global mkpkTtTokenPort
-    :global mkpkTtAllowedList
-    :global mkpkTtAllowedTimeout
-    :global mkpkTtUsedTimeout
-
-    :local service $mkpkTtService
-    :local clientId $mkpkTtClientId
-    :local psk $mkpkTtPsk
-    :local tokenPort $mkpkTtTokenPort
-    :local allowedList $mkpkTtAllowedList
-    :local allowedTimeout $mkpkTtAllowedTimeout
-    :local usedTimeout $mkpkTtUsedTimeout
-    :local nowBucket ([:timestamp] / {{.BucketSeconds}}s)
+{{range .Clients}}add name="mkpk-tt-poller-{{.Key}}" policy=read,write,test source={
+    :local service {{.Service}}
+    :local clientId {{.ClientID}}
+    :local psk {{.PSK}}
+    :local tokenPort {{.TokenPort}}
+    :local allowedList {{.AllowedListStr}}
+    :local allowedTimeout "{{.AllowedTimeout}}"
+    :local usedTimeout "{{.UsedTimeout}}"
+    :local notifyEnabled {{.NotifyEnabled}}
+    :local notifyUrl {{.NotifyURL}}
+    :local nowBucket ([:timestamp] / {{$.BucketSeconds}}s)
     :local prevBucket ($nowBucket - 1)
 
     :local nowMsg ($psk . "|v1|" . $service . "|" . $clientId . "|" . $nowBucket . "|" . $psk)
@@ -222,11 +246,11 @@ add name="mkpk-tt-poller" policy=read,write,test source={
     :local nowToken [:convert $nowMsg from=raw to=hex transform=sha512]
     :local prevToken [:convert $prevMsg from=raw to=hex transform=sha512]
 
-    :local nowRule [/ip firewall filter find where comment="mkpk-tt token now"]
-    :local prevRule [/ip firewall filter find where comment="mkpk-tt token prev"]
+    :local nowRule [/ip firewall filter find where comment="mkpk-tt token now {{.Key}}"]
+    :local prevRule [/ip firewall filter find where comment="mkpk-tt token prev {{.Key}}"]
 
     :if (([:len $nowRule] = 0) || ([:len $prevRule] = 0)) do={
-        :log error "mkpk-tt token rules missing; fail-closed"
+        :log error "mkpk-tt token rules missing for {{.Key}}; fail-closed"
         :return 0
     }
 
@@ -237,8 +261,8 @@ add name="mkpk-tt-poller" policy=read,write,test source={
         /ip firewall filter set $prevRule content=$prevToken disabled=no dst-port=$tokenPort
     }
 
-    :local nowHits [/ip firewall address-list find where list="mkpk-tt-token-hit-now"]
-    :local prevHits [/ip firewall address-list find where list="mkpk-tt-token-hit-prev"]
+    :local nowHits [/ip firewall address-list find where list="mkpk-tt-hit-now-{{.Key}}"]
+    :local prevHits [/ip firewall address-list find where list="mkpk-tt-hit-prev-{{.Key}}"]
     :local hitCount ([:len $nowHits] + [:len $prevHits])
 
     :if ($hitCount = 0) do={
@@ -253,11 +277,11 @@ add name="mkpk-tt-poller" policy=read,write,test source={
         :set selectedHits $prevHits
     }
 
-    :local usedList ("mkpk-tt-used-" . $selectedBucket)
+    :local usedList ("mkpk-tt-used-{{.Key}}-" . $selectedBucket)
     :local used [/ip firewall address-list find where list=$usedList]
 
     :if ([:len $used] > 0) do={
-        :log warning ("mkpk-tt replay ignored; bucket already used; hits=" . $hitCount)
+        :log warning ("mkpk-tt replay ignored for {{.Key}}; bucket already used; hits=" . $hitCount)
         /ip firewall address-list remove $nowHits
         /ip firewall address-list remove $prevHits
         :return 0
@@ -265,7 +289,7 @@ add name="mkpk-tt-poller" policy=read,write,test source={
 
     :if ($hitCount > 1) do={
         /ip firewall address-list add list=$usedList address=127.0.0.1 timeout=$usedTimeout comment=("bucket=" . $selectedBucket)
-        :log warning ("mkpk-tt collision/replay suspicion; hits=" . $hitCount . "; bucket burned")
+        :log warning ("mkpk-tt collision/replay suspicion for {{.Key}}; hits=" . $hitCount . "; bucket burned")
         /ip firewall address-list remove $nowHits
         /ip firewall address-list remove $prevHits
         :return 0
@@ -278,10 +302,12 @@ add name="mkpk-tt-poller" policy=read,write,test source={
     /ip firewall address-list remove [find where list=$allowedList address=$src]
     /ip firewall address-list add list=$allowedList address=$src timeout=$allowedTimeout \
         comment=("mkpk-tt client_id=" . $clientId . "; mode=udp-token; service=" . $service . "; bucket=" . $selectedBucket)
-    :log info ("mkpk-tt allowed src=" . $src . " ttl=" . $allowedTimeout . " bucket=" . $selectedBucket)
+    :log info ("mkpk-tt allowed src=" . $src . " ttl=" . $allowedTimeout . " bucket=" . $selectedBucket . " client={{.Key}}")
     /ip firewall address-list remove $nowHits
     /ip firewall address-list remove $prevHits
 
+    :global mkpkTtNotifyEnabled $notifyEnabled
+    :global mkpkTtNotifyUrl $notifyUrl
     :global mkpkTtNotifyRouter [/system identity get name]
     :global mkpkTtNotifyService $service
     :global mkpkTtNotifyClientId $clientId
@@ -293,22 +319,14 @@ add name="mkpk-tt-poller" policy=read,write,test source={
     /system script run mkpk-tt-notify
     :return 0
 }
-
+{{end}}
 add name="mkpk-tt-startup" policy=read,write,test source={
     :local invalidContent "mkpk-tt-token-not-initialized"
-    :local nowRule [/ip firewall filter find where comment="mkpk-tt token now"]
-    :local prevRule [/ip firewall filter find where comment="mkpk-tt token prev"]
-
-    :if ([:len $nowRule] > 0) do={
-        /ip firewall filter set $nowRule content=$invalidContent disabled=yes
+    :foreach rule in=[/ip firewall filter find where comment~"^mkpk-tt token "] do={
+        /ip firewall filter set $rule content=$invalidContent disabled=yes
     }
-    :if ([:len $prevRule] > 0) do={
-        /ip firewall filter set $prevRule content=$invalidContent disabled=yes
-    }
-
-    /ip firewall address-list remove [find where list~"^mkpk-tt-token-hit"]
+    /ip firewall address-list remove [find where list~"^mkpk-tt-hit-"]
     /system script run mkpk-tt-apply-service
-    /system script run mkpk-tt-poller
     :log info "mkpk-tt startup guard applied"
     :return 0
 }
@@ -317,13 +335,13 @@ add name="mkpk-tt-startup" policy=read,write,test source={
 add name="mkpk-tt-startup" start-time=startup \
     on-event="/system script run mkpk-tt-startup" \
     policy=read,write,test comment="mkpk-tt fail-closed startup guard"
-add name="mkpk-tt-poller" interval=1s start-time=startup \
-    on-event="/system script run mkpk-tt-poller" \
-    policy=read,write,test comment="mkpk-tt update tokens and poll hits"
-add name="mkpk-tt-install" interval=1s \
+{{range .Clients}}add name="mkpk-tt-poller-{{.Key}}" interval=1s start-time=startup \
+    on-event="/system script run mkpk-tt-poller-{{.Key}}" \
+    policy=read,write,test comment="mkpk-tt poll {{.Key}}"
+{{end}}add name="mkpk-tt-install" interval=1s \
     on-event="/system scheduler remove [find where name=\"mkpk-tt-install\"]; /system script run mkpk-tt-startup" \
     policy=read,write,test comment="mkpk-tt one-shot post-import init"
 
 /system script run mkpk-tt-apply-service
 :log info "mkpk-tt installed"
-`
+`))

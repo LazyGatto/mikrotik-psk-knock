@@ -51,6 +51,45 @@ func TestValidateRejectsUsedTimeoutShorterThanAcceptedBuckets(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsUnsafeServiceName(t *testing.T) {
+	cfg := validConfig()
+	svc := cfg.Services["demo-service"]
+	delete(cfg.Services, "demo-service")
+	cfg.Services["bad name"] = svc
+	client := cfg.Clients["demo-client"]
+	client.Service = "bad name"
+	cfg.Clients["demo-client"] = client
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want unsafe service name error")
+	}
+}
+
+func TestValidateRejectsUnsafeAllowedList(t *testing.T) {
+	cfg := validConfig()
+	svc := cfg.Services["demo-service"]
+	svc.AllowedList = "bad list"
+	cfg.Services["demo-service"] = svc
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want unsafe allowed_list error")
+	}
+}
+
+func TestApplyDefaultsPerServiceAllowedList(t *testing.T) {
+	cfg := Config{
+		Services: map[string]Service{
+			"ssh-home": {Stage1Port: 1, Stage2Port: 2, TokenPort: 3},
+		},
+		Clients: map[string]Client{},
+	}
+	cfg.applyDefaults()
+
+	if got := cfg.Services["ssh-home"].AllowedList; got != "mkpk-tt-allowed-ssh-home" {
+		t.Fatalf("allowed_list = %q, want mkpk-tt-allowed-ssh-home", got)
+	}
+}
+
 func validConfig() Config {
 	return Config{
 		Defaults: Defaults{

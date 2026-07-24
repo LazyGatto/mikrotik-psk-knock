@@ -56,8 +56,15 @@
 UDP `content`, обновление rule content, scheduler 1s и bridge `token-hit -> scheduler -> allowed`
 подтверждены на CHR.
 
-Следующий полезный шаг: улучшать machine-readable runtime output и готовить multi-profile RouterOS
-layout. Минимальный provisioning flow уже собран в `mkpk-provision`, а everyday runtime flow - в `mkpk`.
+Multi-profile RouterOS render реализован и проверен end-to-end на живом CHR (ROUTER-A, 7.23.2):
+`mkpk-provision routeros render` без `--client` рендерит все services/clients в per-profile объекты с
+per-service изоляцией allowed-list. Подтверждено: per-client pollers поднимают token rules после import
+без reboot, end-to-end knock открывает observed source IP, per-service изоляция allowed-list работает
+(`ca`->svca не открывает svcb), per-client used-marker/replay-путь работает. Детали в
+[multi-profile-render.md](multi-profile-render.md).
+
+Следующий полезный шаг: нагрузочный тест `content`/N планировщиков 1с на большем числе клиентов; либо
+переход к оставшимся трекам (notify URL-encoding/JSON, каналы уведомлений, admin/SSH режим).
 
 ## Этап 1: исследование RouterOS
 
@@ -95,6 +102,11 @@ layout. Минимальный provisioning flow уже собран в `mkpk-pr
 - Реализован UDP staged knock transport.
 - Реализован YAML profiles/config.
 - Реализован RouterOS `.rsc` render для текущей single-profile схемы.
+- Реализован multi-profile RouterOS render: все services/clients в per-profile объекты, per-service
+  allowed-list изоляция, per-client poller/scheduler; валидация безопасных имён services/clients.
+- Проверено на CHR (2 services / 2 clients): pollers поднимают token rules после import без reboot,
+  end-to-end knock открывает observed source IP, per-service изоляция allowed-list и per-client
+  used-marker/replay работают (см. [multi-profile-render.md](multi-profile-render.md)).
 - Добавлено: `mkpk-provision profile init` для создания стартового YAML с generated PSK.
 - Добавлено: `mkpk-provision service add` для добавления service/NAT target без ручного редактирования YAML.
 - Добавлено: `mkpk-provision client add` для добавления roaming clients без ручного редактирования YAML.

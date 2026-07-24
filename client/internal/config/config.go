@@ -101,7 +101,7 @@ func (c *Config) applyDefaults() {
 			svc.ServiceName = name
 		}
 		if svc.AllowedList == "" {
-			svc.AllowedList = "mkpk-tt-allowed"
+			svc.AllowedList = "mkpk-tt-allowed-" + name
 		}
 		if svc.NAT.Comment == "" {
 			svc.NAT.Comment = "mkpk-tt dst-nat " + name
@@ -144,6 +144,12 @@ func (c Config) Validate() error {
 		return fmt.Errorf("defaults.used_timeout must be at least %s to cover current and previous token buckets", minUsedTimeout)
 	}
 	for name, svc := range c.Services {
+		if !isSafeName(name) {
+			return fmt.Errorf("service key %q must match ^[A-Za-z0-9][A-Za-z0-9_-]*$", name)
+		}
+		if !isSafeName(svc.AllowedList) {
+			return fmt.Errorf("service %q allowed_list %q must match ^[A-Za-z0-9][A-Za-z0-9_-]*$", name, svc.AllowedList)
+		}
 		if err := validatePort("stage1_port", svc.Stage1Port); err != nil {
 			return fmt.Errorf("service %q %w", name, err)
 		}
@@ -167,6 +173,9 @@ func (c Config) Validate() error {
 		}
 	}
 	for name, client := range c.Clients {
+		if !isSafeName(name) {
+			return fmt.Errorf("client key %q must match ^[A-Za-z0-9][A-Za-z0-9_-]*$", name)
+		}
 		if client.Service == "" {
 			return fmt.Errorf("client %q service is required", name)
 		}
@@ -197,6 +206,23 @@ func validatePort(name string, port int) error {
 		return fmt.Errorf("%s must be between 1 and 65535", name)
 	}
 	return nil
+}
+
+func isSafeName(v string) bool {
+	if v == "" {
+		return false
+	}
+	for i, r := range v {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			continue
+		case (r == '-' || r == '_') && i > 0:
+			continue
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func isSafePSK(v string) bool {

@@ -54,5 +54,6 @@ MikroTik
 - [docs/threat-model.md](docs/threat-model.md) - модель угроз и ограничения.
 - [docs/open-questions.md](docs/open-questions.md) - открытые вопросы и принятые концептуальные решения.
 - [docs/profile-format.md](docs/profile-format.md) - текущий формат persistent RouterOS profile script.
+- [docs/multi-profile-render.md](docs/multi-profile-render.md) - схема multi-profile RouterOS render.
 - [docs/roadmap.md](docs/roadmap.md) - план дальнейшей работы.
 - [agent/instructions.md](agent/instructions.md) - инструкции для будущего агента/разработчика.

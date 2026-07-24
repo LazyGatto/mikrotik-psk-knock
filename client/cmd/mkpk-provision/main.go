@@ -59,7 +59,7 @@ func usage() {
   mkpk-provision service add --config mkpk.yaml --name ssh --stage1-port 41011 --stage2-port 41012 --token-port 41013 --nat-dst-port 2022 --nat-to-address 192.0.2.10 --nat-to-port 22
   mkpk-provision client add --config mkpk.yaml --name laptop --service service
   mkpk-provision token --config mkpk.yaml --client laptop [--bucket N] [--debug]
-  mkpk-provision routeros render --config mkpk.yaml --client laptop [--out generated.rsc]
+  mkpk-provision routeros render --config mkpk.yaml [--client laptop] [--out generated.rsc]
 `)
 }
 
@@ -169,7 +169,7 @@ func initialConfig(routerName, routerAddress, serviceName, clientName, psk strin
 				Stage1Port:  41001,
 				Stage2Port:  41002,
 				TokenPort:   41003,
-				AllowedList: "mkpk-tt-allowed",
+				AllowedList: "mkpk-tt-allowed-" + serviceName,
 				NAT:         initialNAT(serviceName, false, 2222, "192.0.2.10", 22),
 				Notify:      config.Notify{Enabled: false, URL: ""},
 			},
@@ -195,7 +195,7 @@ func serviceCmd(args []string) error {
 	stage1Port := fs.Int("stage1-port", 0, "stage1 UDP port")
 	stage2Port := fs.Int("stage2-port", 0, "stage2 UDP port")
 	tokenPort := fs.Int("token-port", 0, "token UDP port")
-	allowedList := fs.String("allowed-list", "mkpk-tt-allowed", "RouterOS allowed address-list")
+	allowedList := fs.String("allowed-list", "", "RouterOS allowed address-list; mkpk-tt-allowed-<name> when empty")
 	natEnabled := fs.Bool("nat-enabled", false, "enable generated dst-nat rule")
 	natComment := fs.String("nat-comment", "", "stable RouterOS NAT rule comment")
 	natDstPort := fs.Int("nat-dst-port", 0, "external TCP dst-nat port")
@@ -243,12 +243,16 @@ func serviceCmd(args []string) error {
 	if comment == "" {
 		comment = "mkpk-tt dst-nat " + *name
 	}
+	allowed := *allowedList
+	if allowed == "" {
+		allowed = "mkpk-tt-allowed-" + *name
+	}
 	cfg.Services[*name] = config.Service{
 		ServiceName: id,
 		Stage1Port:  *stage1Port,
 		Stage2Port:  *stage2Port,
 		TokenPort:   *tokenPort,
-		AllowedList: *allowedList,
+		AllowedList: allowed,
 		NAT: config.NAT{
 			Enabled:   *natEnabled,
 			Comment:   comment,
@@ -371,16 +375,26 @@ func routerosCmd(args []string) error {
 	}
 	fs := flag.NewFlagSet("routeros render", flag.ContinueOnError)
 	configPath := fs.String("config", "mkpk.yaml", "config path")
-	clientName := fs.String("client", "", "client name")
+	clientName := fs.String("client", "", "client name; renders all clients when empty")
 	outPath := fs.String("out", "", "output .rsc path; stdout when empty")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
-	res, err := loadResolved(*configPath, *clientName)
+	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return err
 	}
-	rendered, err := routeros.Render(res)
+	var rendered string
+	if *clientName == "" {
+		rendered, err = routeros.RenderConfig(cfg)
+	} else {
+		var res config.Resolved
+		res, err = cfg.Resolve(*clientName)
+		if err != nil {
+			return err
+		}
+		rendered, err = routeros.Render(res)
+	}
 	if err != nil {
 		return err
 	}

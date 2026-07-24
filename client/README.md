@@ -33,9 +33,15 @@ go run ./cmd/mkpk-provision token --config testdata/mkpk.yaml --client demo-clie
 go run ./cmd/mkpk-provision routeros render --config testdata/mkpk.yaml --client demo-client --out ../routeros/generated-demo.rsc
 ```
 
-Текущий `mkpk-provision routeros render` намеренно рендерит один выбранный client/service в уже проверенную
-single-profile RouterOS схему. Config format допускает несколько services/clients, но multi-profile
-RouterOS runtime еще не реализован.
+`mkpk-provision routeros render` без `--client` рендерит все services и clients из конфига в
+per-profile RouterOS объекты (multi-profile). С `--client NAME` рендерится только один клиент и его
+service. Каждый service получает свой `allowed` address-list (`mkpk-tt-allowed-<service>`), stage-правила
+и NAT; каждый client — свои token-правила, hit-списки, poller и scheduler. Схема описана в
+[../docs/multi-profile-render.md](../docs/multi-profile-render.md).
+
+Multi-profile рендер проверен end-to-end на живом CHR (2 services / 2 clients): pollers поднимают token
+rules после import без reboot, knock открывает observed source IP, per-service изоляция allowed-list
+работает. Детали в [../docs/multi-profile-render.md](../docs/multi-profile-render.md).
 
 PSK в `testdata/mkpk.yaml` демонстрационный. Production-конфигурация не должна хранить реальные секреты
 в открытом репозитории. `psk` должен использовать base64url-safe ASCII alphabet: `A-Z`, `a-z`, `0-9`,
@@ -44,7 +50,8 @@ PSK в `testdata/mkpk.yaml` демонстрационный. Production-кон�
 ## Текущий статус проверки
 
 - `token` совпадает с shell `shasum -a 512` для RouterOS prototype formula.
-- `mkpk-provision routeros render` генерирует `.rsc`, который успешно импортируется на CHR.
+- `mkpk-provision routeros render` генерирует `.rsc`, который успешно импортируется на CHR
+  (проверено для single-profile и multi-profile).
 - `mkpk-provision routeros render` использует configured `defaults.bucket_seconds` в RouterOS poller, чтобы клиент и
   RouterOS считали один и тот же time bucket.
 - `mkpk-provision profile init` создает стартовый YAML с generated PSK и безопасными defaults.
