@@ -182,7 +182,21 @@ port-knocking остаётся исключительно client-side (UDP-token
 
 ## Этап 5: GUI
 
-- Обернуть profiles и actions в GUI.
-- Показывать статус последних knock attempts.
-- Добавить локальный лог.
-- Возможно добавить получение уведомлений/истории из внешнего канала.
+Согласованный план: deploy-ядро (`internal/admin`) → локальный веб-UI → десктоп (Wails). Ядро и веб уже
+есть; CLI и веб — тонкие фронтенды над одним ядром.
+
+Сделано:
+
+- Вынесено `internal/admin`-ядро: config-операции (init/add/remove service+client, secret, save,
+  summarize, render) и deploy-оркестрация (status/apply/uninstall) со структурами (json-теги).
+- Локальный веб-UI `mkpk-provision serve` (`internal/web`): просмотр/редактирование конфига, рендер
+  `.rsc`, deploy по SSH. Loopback-only, per-session токен + `Host`-guard (anti DNS-rebinding), ассеты
+  встроены через `embed`. Проверено: API (config/service/client/render/secret), auth-gate, host-guard,
+  и deploy status/apply(dry-run) до живого CHR.
+
+Дальше:
+
+- Десктоп-обёртка (Wails) поверх ядра.
+- Стриминг прогресса деплоя (SSE/websocket) вместо одного ответа.
+- Редактирование `router`/`defaults` в UI; управление несколькими роутерами.
+- Статус последних knock attempts, локальный лог, история уведомлений.

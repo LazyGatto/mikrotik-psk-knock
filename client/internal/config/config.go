@@ -18,16 +18,16 @@ type Config struct {
 }
 
 type Router struct {
-	Name    string `yaml:"name"`
-	Address string `yaml:"address"`
+	Name    string `yaml:"name" json:"name"`
+	Address string `yaml:"address" json:"address"`
 }
 
 type Defaults struct {
-	BucketSeconds   int64  `yaml:"bucket_seconds"`
-	StageTimeout    string `yaml:"stage_timeout"`
-	TokenHitTimeout string `yaml:"token_hit_timeout"`
-	AllowedTimeout  string `yaml:"allowed_timeout"`
-	UsedTimeout     string `yaml:"used_timeout"`
+	BucketSeconds   int64  `yaml:"bucket_seconds" json:"bucket_seconds"`
+	StageTimeout    string `yaml:"stage_timeout" json:"stage_timeout"`
+	TokenHitTimeout string `yaml:"token_hit_timeout" json:"token_hit_timeout"`
+	AllowedTimeout  string `yaml:"allowed_timeout" json:"allowed_timeout"`
+	UsedTimeout     string `yaml:"used_timeout" json:"used_timeout"`
 }
 
 type Service struct {
@@ -41,34 +41,34 @@ type Service struct {
 }
 
 type NAT struct {
-	Enabled   bool   `yaml:"enabled"`
-	Comment   string `yaml:"comment"`
-	DstPort   int    `yaml:"dst_port"`
-	ToAddress string `yaml:"to_address"`
-	ToPort    int    `yaml:"to_port"`
+	Enabled   bool   `yaml:"enabled" json:"enabled"`
+	Comment   string `yaml:"comment" json:"comment"`
+	DstPort   int    `yaml:"dst_port" json:"dst_port"`
+	ToAddress string `yaml:"to_address" json:"to_address"`
+	ToPort    int    `yaml:"to_port" json:"to_port"`
 }
 
 type Notify struct {
-	Enabled  bool           `yaml:"enabled"`
-	Channel  string         `yaml:"channel"` // "webhook" | "telegram" | "email"
-	URL      string         `yaml:"url"`     // webhook
-	Telegram NotifyTelegram `yaml:"telegram"`
-	Email    NotifyEmail    `yaml:"email"`
+	Enabled  bool           `yaml:"enabled" json:"enabled"`
+	Channel  string         `yaml:"channel" json:"channel"` // "webhook" | "telegram" | "email"
+	URL      string         `yaml:"url" json:"url"`         // webhook
+	Telegram NotifyTelegram `yaml:"telegram" json:"telegram"`
+	Email    NotifyEmail    `yaml:"email" json:"email"`
 }
 
 type NotifyTelegram struct {
-	BotToken string `yaml:"bot_token"`
-	ChatID   string `yaml:"chat_id"`
+	BotToken string `yaml:"bot_token" json:"bot_token"`
+	ChatID   string `yaml:"chat_id" json:"chat_id"`
 }
 
 type NotifyEmail struct {
-	To       string `yaml:"to"`
-	From     string `yaml:"from"`
-	Server   string `yaml:"server"`
-	Port     int    `yaml:"port"`
-	TLS      string `yaml:"tls"` // "no" | "yes" | "starttls"
-	User     string `yaml:"user"`
-	Password string `yaml:"password"`
+	To       string `yaml:"to" json:"to"`
+	From     string `yaml:"from" json:"from"`
+	Server   string `yaml:"server" json:"server"`
+	Port     int    `yaml:"port" json:"port"`
+	TLS      string `yaml:"tls" json:"tls"` // "no" | "yes" | "starttls"
+	User     string `yaml:"user" json:"user"`
+	Password string `yaml:"password" json:"password"`
 }
 
 type Client struct {

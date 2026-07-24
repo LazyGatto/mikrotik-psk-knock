@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mkpk provision</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<script>window.MKPK_TOKEN = "__MKPK_TOKEN__";</script>
+
+<header>
+  <h1>mkpk provision</h1>
+  <div class="meta"><span id="cfg-path">—</span> · <span id="cfg-hash" class="mono muted">—</span></div>
+</header>
+
+<div id="toast" class="toast hidden"></div>
+
+<main>
+  <section class="card">
+    <h2>Config</h2>
+    <div id="router-line" class="muted"></div>
+    <div id="defaults-line" class="muted mono small"></div>
+    <h3>Services</h3>
+    <table id="services"><thead><tr>
+      <th>name</th><th>ports (s1/s2/token)</th><th>allowed-list</th><th>nat</th><th>notify</th><th></th>
+    </tr></thead><tbody></tbody></table>
+    <h3>Clients</h3>
+    <table id="clients"><thead><tr>
+      <th>name</th><th>client_id</th><th>service</th><th>psk</th><th></th>
+    </tr></thead><tbody></tbody></table>
+  </section>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Add service</h2>
+      <form id="svc-form" class="form">
+        <label>name <input name="name" required></label>
+        <div class="row">
+          <label>stage1 <input name="stage1_port" type="number" required></label>
+          <label>stage2 <input name="stage2_port" type="number" required></label>
+          <label>token <input name="token_port" type="number" required></label>
+        </div>
+        <label>allowed_list <input name="allowed_list" placeholder="mkpk-tt-allowed-&lt;name&gt;"></label>
+        <fieldset><legend>NAT</legend>
+          <label class="inline"><input name="nat_enabled" type="checkbox"> enabled</label>
+          <div class="row">
+            <label>dst_port <input name="nat_dst_port" type="number" required></label>
+            <label>to_address <input name="nat_to_address" required></label>
+            <label>to_port <input name="nat_to_port" type="number" required></label>
+          </div>
+        </fieldset>
+        <fieldset><legend>Notify</legend>
+          <label class="inline"><input name="notify_enabled" type="checkbox"> enabled</label>
+          <label>channel
+            <select name="notify_channel" id="notify-channel">
+              <option value="webhook">webhook</option>
+              <option value="telegram">telegram</option>
+              <option value="email">email</option>
+            </select>
+          </label>
+          <div class="notify-fields" data-channel="webhook">
+            <label>url <input name="notify_url"></label>
+          </div>
+          <div class="notify-fields hidden" data-channel="telegram">
+            <label>bot_token <input name="tg_bot_token"></label>
+            <label>chat_id <input name="tg_chat_id"></label>
+          </div>
+          <div class="notify-fields hidden" data-channel="email">
+            <div class="row">
+              <label>to <input name="email_to"></label>
+              <label>from <input name="email_from"></label>
+            </div>
+            <div class="row">
+              <label>server <input name="email_server"></label>
+              <label>port <input name="email_port" type="number" placeholder="587"></label>
+              <label>tls <input name="email_tls" placeholder="starttls"></label>
+            </div>
+            <div class="row">
+              <label>user <input name="email_user"></label>
+              <label>password <input name="email_password" type="password"></label>
+            </div>
+          </div>
+        </fieldset>
+        <button type="submit">Add service</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2>Add client</h2>
+      <form id="cli-form" class="form">
+        <label>name <input name="name" required></label>
+        <label>service <select name="service" id="cli-service"></select></label>
+        <label>psk (empty → generated)
+          <span class="row nowrap">
+            <input name="psk" id="cli-psk">
+            <button type="button" id="gen-psk">generate</button>
+          </span>
+        </label>
+        <button type="submit">Add client</button>
+      </form>
+    </section>
+  </div>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Render</h2>
+      <div class="row nowrap">
+        <select id="render-client"><option value="">all clients</option></select>
+        <button id="render-btn">Render</button>
+        <button id="download-btn" type="button">Download .rsc</button>
+      </div>
+      <pre id="rsc" class="mono small hidden"></pre>
+    </section>
+
+    <section class="card">
+      <h2>Deploy (SSH)</h2>
+      <form id="deploy-form" class="form">
+        <div class="row">
+          <label>address <input name="address" placeholder="router.address"></label>
+          <label>port <input name="port" type="number" value="22"></label>
+        </div>
+        <div class="row">
+          <label>user <input name="user" value="admin"></label>
+          <label>key path <input name="key_path" placeholder="~/.ssh/id_ed25519"></label>
+        </div>
+        <div class="row">
+          <label>key pass <input name="key_pass" type="password"></label>
+          <label>password <input name="password" type="password"></label>
+        </div>
+        <label class="inline"><input name="use_agent" type="checkbox" checked> use ssh-agent</label>
+        <div class="row nowrap">
+          <label class="inline"><input name="force" type="checkbox"> force</label>
+          <label class="inline"><input name="dry_run" type="checkbox" checked> dry-run</label>
+        </div>
+        <div class="row nowrap">
+          <button type="button" data-action="status">Status</button>
+          <button type="button" data-action="apply">Apply</button>
+          <button type="button" data-action="uninstall" class="danger">Uninstall</button>
+        </div>
+      </form>
+      <pre id="deploy-out" class="mono small hidden"></pre>
+    </section>
+  </div>
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>

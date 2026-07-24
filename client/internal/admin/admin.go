@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 	"mikrotik-psk-knock/client/internal/config"
@@ -201,6 +202,34 @@ func AddClient(cfg config.Config, o ClientOptions) (AddClientResult, error) {
 	}
 	cfg.Clients[o.Name] = config.Client{ClientID: id, Service: o.Service, PSK: psk}
 	return AddClientResult{Config: cfg, PSKSource: source}, nil
+}
+
+// RemoveService removes a service. It refuses if any client still references it.
+func RemoveService(cfg config.Config, name string) (config.Config, error) {
+	if _, ok := cfg.Services[name]; !ok {
+		return cfg, fmt.Errorf("service %q not found", name)
+	}
+	var refs []string
+	for cn, c := range cfg.Clients {
+		if c.Service == name {
+			refs = append(refs, cn)
+		}
+	}
+	if len(refs) > 0 {
+		sort.Strings(refs)
+		return cfg, fmt.Errorf("service %q is referenced by clients: %s", name, strings.Join(refs, ", "))
+	}
+	delete(cfg.Services, name)
+	return cfg, nil
+}
+
+// RemoveClient removes a client.
+func RemoveClient(cfg config.Config, name string) (config.Config, error) {
+	if _, ok := cfg.Clients[name]; !ok {
+		return cfg, fmt.Errorf("client %q not found", name)
+	}
+	delete(cfg.Clients, name)
+	return cfg, nil
 }
 
 // Render renders the whole config, or a single client when clientName is set.

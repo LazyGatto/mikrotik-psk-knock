@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"mikrotik-psk-knock/client/internal/config"
 	"mikrotik-psk-knock/client/internal/deploy"
 	"mikrotik-psk-knock/client/internal/token"
+	"mikrotik-psk-knock/client/internal/web"
 )
 
 func main() {
@@ -43,6 +45,8 @@ func run(args []string) error {
 		return routerosCmd(args[1:])
 	case "deploy":
 		return deployCmd(args[1:])
+	case "serve":
+		return serveCmd(args[1:])
 	case "help", "-h", "--help":
 		usage()
 		return nil
@@ -61,6 +65,7 @@ func usage() {
   mkpk-provision token --config mkpk.yaml --client laptop [--bucket N] [--debug]
   mkpk-provision routeros render --config mkpk.yaml [--client laptop] [--out generated.rsc]
   mkpk-provision deploy [status|uninstall] --config mkpk.yaml --user admin [--key ~/.ssh/id_ed25519] [--address host]
+  mkpk-provision serve --config mkpk.yaml [--addr 127.0.0.1:8765]
 `)
 }
 
@@ -385,6 +390,23 @@ func deployCmd(args []string) error {
 		}
 		return nil
 	}
+}
+
+func serveCmd(args []string) error {
+	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
+	configPath := fs.String("config", "mkpk.yaml", "config path")
+	addr := fs.String("addr", "127.0.0.1:8765", "listen address (loopback only)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	token, err := admin.GenerateSecret(24)
+	if err != nil {
+		return err
+	}
+	srv := &http.Server{Addr: *addr, Handler: web.Handler(*configPath, token)}
+	fmt.Printf("mkpk provision UI: http://%s/\n", *addr)
+	fmt.Printf("config: %s (loopback only, Ctrl-C to stop)\n", *configPath)
+	return srv.ListenAndServe()
 }
 
 func printSummary(path string, s admin.Summary) {

@@ -34,7 +34,22 @@ go run ./cmd/mkpk-provision routeros render --config testdata/mkpk.yaml --client
 go run ./cmd/mkpk-provision deploy status --config mkpk.yaml --user admin
 go run ./cmd/mkpk-provision deploy --config mkpk.yaml --user admin --key ~/.ssh/id_ed25519 [--dry-run] [--force]
 go run ./cmd/mkpk-provision deploy uninstall --config mkpk.yaml --user admin
+go run ./cmd/mkpk-provision serve --config mkpk.yaml [--addr 127.0.0.1:8765]
 ```
+
+## Локальный веб-UI
+
+`mkpk-provision serve` поднимает локальный (только `127.0.0.1`) веб-UI поверх того же ядра
+`internal/admin`, что и CLI. В нём: просмотр и редактирование конфига (add/remove service и client,
+выбор канала notify, генерация PSK), рендер `.rsc` (просмотр/скачивание) и deploy по SSH
+(status/apply/uninstall с dry-run). Ассеты встроены в бинарник (`embed`), внешних зависимостей у фронта нет.
+
+Безопасность: сервер слушает только loopback; API закрыт per-session токеном, который инжектится в
+страницу (сторонние origin не могут его прочитать), плюс проверка `Host` — защита от DNS-rebinding.
+Секреты (PSK, SSH-ключ/пароль) не покидают машину оператора.
+
+Ядро (`internal/admin`) — единая точка: CLI и веб оба тонкие фронтенды над ним; дальше поверх него
+планируется десктоп-обёртка (Wails).
 
 ## Провижининг по SSH
 

@@ -262,6 +262,15 @@ func agentMethod() ssh.AuthMethod {
 	return ssh.PublicKeys(signers...)
 }
 
+func expandHome(path string) string {
+	if strings.HasPrefix(path, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, path[2:])
+		}
+	}
+	return path
+}
+
 func defaultKeyPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -277,6 +286,7 @@ func defaultKeyPath() string {
 }
 
 func keyMethod(path, pass string) (ssh.AuthMethod, error) {
+	path = expandHome(path)
 	key, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read key %s: %w", path, err)
