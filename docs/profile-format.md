@@ -42,8 +42,10 @@ add name="mkpk-tt-profile-demo" policy=read,write,test source={
 - `allowed_timeout` - время открытия observed source IP.
 - `used_timeout` - время жизни used-bucket marker. Должен быть не меньше `2 * bucket_seconds`, чтобы
   marker перекрывал полный интервал приема `now` и `prev` token buckets.
-- `notify_enabled` - включает webhook notification path.
-- `notify_url` - URL для `/tool fetch` POST после успешного allow.
+- `notify_enabled` - включает notification path после успешного allow.
+- `notify_channel` - канал уведомления: `webhook` или `telegram`.
+- `notify_url` - URL для webhook `/tool fetch` POST (канал `webhook`).
+- `notify_telegram_bot_token` / `notify_telegram_chat_id` - параметры канала `telegram`.
 - `nat_enabled` - включает созданный service `dst-nat` rule.
 - `nat_comment` - стабильный comment, по которому `mkpk-tt-apply-service` находит NAT rule.
 - `nat_dst_port` - внешний TCP port для `dstnat`.

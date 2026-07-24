@@ -136,6 +136,45 @@ func TestRenderNotifyUsesJSONPayload(t *testing.T) {
 	}
 }
 
+func TestRenderNotifyTelegramChannel(t *testing.T) {
+	cfg := config.Config{
+		Defaults: config.Defaults{BucketSeconds: 30, StageTimeout: "5s", TokenHitTimeout: "2s", AllowedTimeout: "3m", UsedTimeout: "65s"},
+		Services: map[string]config.Service{
+			"tg": {
+				ServiceName: "tg", Stage1Port: 41001, Stage2Port: 41002, TokenPort: 41003,
+				AllowedList: "mkpk-tt-allowed-tg",
+				NAT:         config.NAT{Comment: "mkpk-tt dst-nat tg", DstPort: 2222, ToAddress: "192.0.2.10", ToPort: 22},
+				Notify: config.Notify{
+					Enabled: true, Channel: "telegram",
+					Telegram: config.NotifyTelegram{BotToken: "123456:AA-bb_CC", ChatID: "-100200300"},
+				},
+			},
+		},
+		Clients: map[string]config.Client{
+			"phone": {ClientID: "phone", Service: "tg", PSK: "phone-psk"},
+		},
+	}
+
+	rendered, err := RenderConfig(cfg)
+	if err != nil {
+		t.Fatalf("RenderConfig() error = %v", err)
+	}
+
+	for _, want := range []string{
+		`:if ($mkpkTtNotifyChannel = "telegram")`,
+		`("https://api.telegram.org/bot" . $mkpkTtNotifyBotToken . "/sendMessage")`,
+		`("{\"chat_id\":\"" . $mkpkTtNotifyChatId . "\",\"text\":" . [:serialize $text to=json] . "}")`,
+		`:local notifyChannel "telegram"`,
+		`:local notifyBotToken "123456:AA-bb_CC"`,
+		`:local notifyChatId "-100200300"`,
+		`:global mkpkTtNotifyChannel $notifyChannel`,
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("rendered script missing %q:\n%s", want, rendered)
+		}
+	}
+}
+
 func resolvedConfig(bucketSeconds int64) config.Resolved {
 	cfg := config.Config{
 		Router: config.Router{Name: "test-router", Address: "router.example"},

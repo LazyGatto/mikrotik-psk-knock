@@ -34,7 +34,10 @@ type cliData struct {
 	AllowedTimeout string // plain
 	UsedTimeout    string // plain
 	NotifyEnabled  string // "true" / "false"
+	NotifyChannel  string // ros-quoted
 	NotifyURL      string // ros-quoted
+	NotifyBotToken string // ros-quoted
+	NotifyChatID   string // ros-quoted
 }
 
 type renderConfigData struct {
@@ -88,7 +91,10 @@ func RenderConfig(cfg config.Config) (string, error) {
 			AllowedTimeout: cfg.Defaults.AllowedTimeout,
 			UsedTimeout:    cfg.Defaults.UsedTimeout,
 			NotifyEnabled:  rosBool(s.Notify.Enabled),
+			NotifyChannel:  rosString(s.Notify.Channel),
 			NotifyURL:      rosString(s.Notify.URL),
+			NotifyBotToken: rosString(s.Notify.Telegram.BotToken),
+			NotifyChatID:   rosString(s.Notify.Telegram.ChatID),
 		})
 	}
 
@@ -201,7 +207,10 @@ add name="mkpk-tt-apply-service" policy=read,write,test source={
 
 add name="mkpk-tt-notify" policy=read,write,test source={
     :global mkpkTtNotifyEnabled
+    :global mkpkTtNotifyChannel
     :global mkpkTtNotifyUrl
+    :global mkpkTtNotifyBotToken
+    :global mkpkTtNotifyChatId
     :global mkpkTtNotifyRouter
     :global mkpkTtNotifyService
     :global mkpkTtNotifyClientId
@@ -214,11 +223,26 @@ add name="mkpk-tt-notify" policy=read,write,test source={
     :if ($mkpkTtNotifyEnabled != true) do={
         :return 0
     }
+
+    :if ($mkpkTtNotifyChannel = "telegram") do={
+        :if (([:len $mkpkTtNotifyBotToken] = 0) || ([:len $mkpkTtNotifyChatId] = 0)) do={
+            :log warning "mkpk-tt notify telegram missing bot_token/chat_id"
+            :return 0
+        }
+        :local text ("mkpk allowed src=" . $mkpkTtNotifySrc . " service=" . $mkpkTtNotifyService . " client_id=" . $mkpkTtNotifyClientId . " ttl=" . $mkpkTtNotifyTtl . " router=" . $mkpkTtNotifyRouter)
+        :local tgBody ("{\"chat_id\":\"" . $mkpkTtNotifyChatId . "\",\"text\":" . [:serialize $text to=json] . "}")
+        :do {
+            /tool fetch url=("https://api.telegram.org/bot" . $mkpkTtNotifyBotToken . "/sendMessage") http-method=post http-header-field="Content-Type: application/json" http-data=$tgBody keep-result=no
+        } on-error={
+            :log warning ("mkpk-tt notify telegram failed src=" . $mkpkTtNotifySrc . " service=" . $mkpkTtNotifyService)
+        }
+        :return 0
+    }
+
     :if ([:len $mkpkTtNotifyUrl] = 0) do={
         :log warning "mkpk-tt notify enabled but url is empty"
         :return 0
     }
-
     :local payload [:serialize {"router"=$mkpkTtNotifyRouter; "service"=$mkpkTtNotifyService; "client_id"=$mkpkTtNotifyClientId; "src"=$mkpkTtNotifySrc; "list"=$mkpkTtNotifyList; "ttl"=$mkpkTtNotifyTtl; "mode"="udp-token"; "bucket"=$mkpkTtNotifyBucket; "time"=$mkpkTtNotifyTime} to=json]
     :do {
         /tool fetch url=$mkpkTtNotifyUrl http-method=post http-header-field="Content-Type: application/json" http-data=$payload keep-result=no
@@ -237,7 +261,10 @@ add name="mkpk-tt-notify" policy=read,write,test source={
     :local allowedTimeout "{{.AllowedTimeout}}"
     :local usedTimeout "{{.UsedTimeout}}"
     :local notifyEnabled {{.NotifyEnabled}}
+    :local notifyChannel {{.NotifyChannel}}
     :local notifyUrl {{.NotifyURL}}
+    :local notifyBotToken {{.NotifyBotToken}}
+    :local notifyChatId {{.NotifyChatID}}
     :local nowBucket ([:timestamp] / {{$.BucketSeconds}}s)
     :local prevBucket ($nowBucket - 1)
 
@@ -307,7 +334,10 @@ add name="mkpk-tt-notify" policy=read,write,test source={
     /ip firewall address-list remove $prevHits
 
     :global mkpkTtNotifyEnabled $notifyEnabled
+    :global mkpkTtNotifyChannel $notifyChannel
     :global mkpkTtNotifyUrl $notifyUrl
+    :global mkpkTtNotifyBotToken $notifyBotToken
+    :global mkpkTtNotifyChatId $notifyChatId
     :global mkpkTtNotifyRouter [/system identity get name]
     :global mkpkTtNotifyService $service
     :global mkpkTtNotifyClientId $clientId

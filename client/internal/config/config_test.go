@@ -90,6 +90,58 @@ func TestApplyDefaultsPerServiceAllowedList(t *testing.T) {
 	}
 }
 
+func TestValidateAcceptsTelegramNotify(t *testing.T) {
+	cfg := validConfig()
+	svc := cfg.Services["demo-service"]
+	svc.Notify = Notify{
+		Enabled:  true,
+		Channel:  "telegram",
+		Telegram: NotifyTelegram{BotToken: "123456:AA-bb_CC", ChatID: "-100200300"},
+	}
+	cfg.Services["demo-service"] = svc
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestValidateRejectsBadTelegramToken(t *testing.T) {
+	cfg := validConfig()
+	svc := cfg.Services["demo-service"]
+	svc.Notify = Notify{
+		Enabled:  true,
+		Channel:  "telegram",
+		Telegram: NotifyTelegram{BotToken: "not-a-token", ChatID: "123"},
+	}
+	cfg.Services["demo-service"] = svc
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want bad telegram token error")
+	}
+}
+
+func TestValidateRejectsWebhookWithoutURL(t *testing.T) {
+	cfg := validConfig()
+	svc := cfg.Services["demo-service"]
+	svc.Notify = Notify{Enabled: true, Channel: "webhook", URL: ""}
+	cfg.Services["demo-service"] = svc
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want missing webhook url error")
+	}
+}
+
+func TestValidateRejectsUnknownNotifyChannel(t *testing.T) {
+	cfg := validConfig()
+	svc := cfg.Services["demo-service"]
+	svc.Notify = Notify{Enabled: true, Channel: "carrier-pigeon", URL: "https://x"}
+	cfg.Services["demo-service"] = svc
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want unknown channel error")
+	}
+}
+
 func validConfig() Config {
 	return Config{
 		Defaults: Defaults{

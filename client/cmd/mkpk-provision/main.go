@@ -201,8 +201,11 @@ func serviceCmd(args []string) error {
 	natDstPort := fs.Int("nat-dst-port", 0, "external TCP dst-nat port")
 	natToAddress := fs.String("nat-to-address", "", "internal service address")
 	natToPort := fs.Int("nat-to-port", 0, "internal service port")
-	notifyEnabled := fs.Bool("notify-enabled", false, "enable webhook notification")
+	notifyEnabled := fs.Bool("notify-enabled", false, "enable notification")
+	notifyChannel := fs.String("notify-channel", "webhook", "notification channel: webhook or telegram")
 	notifyURL := fs.String("notify-url", "", "webhook notification URL")
+	notifyTgToken := fs.String("notify-telegram-bot-token", "", "telegram bot token")
+	notifyTgChat := fs.String("notify-telegram-chat-id", "", "telegram chat id")
 	force := fs.Bool("force", false, "replace existing service")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
@@ -262,7 +265,12 @@ func serviceCmd(args []string) error {
 		},
 		Notify: config.Notify{
 			Enabled: *notifyEnabled,
+			Channel: *notifyChannel,
 			URL:     *notifyURL,
+			Telegram: config.NotifyTelegram{
+				BotToken: *notifyTgToken,
+				ChatID:   *notifyTgChat,
+			},
 		},
 	}
 	if err := writeConfig(*configPath, cfg); err != nil {
@@ -431,7 +439,7 @@ func printConfigSummary(cfg config.Config, path string) {
 	fmt.Printf("services count=%d names=%s\n", len(serviceNames), joinNames(serviceNames))
 	for _, name := range serviceNames {
 		svc := cfg.Services[name]
-		fmt.Printf("service name=%s service_name=%s stage1=%d stage2=%d token=%d allowed_list=%s nat_enabled=%t nat_dst_port=%d nat_to=%s:%d notify_enabled=%t\n",
+		fmt.Printf("service name=%s service_name=%s stage1=%d stage2=%d token=%d allowed_list=%s nat_enabled=%t nat_dst_port=%d nat_to=%s:%d notify_enabled=%t notify_channel=%s\n",
 			name,
 			svc.ServiceName,
 			svc.Stage1Port,
@@ -443,6 +451,7 @@ func printConfigSummary(cfg config.Config, path string) {
 			svc.NAT.ToAddress,
 			svc.NAT.ToPort,
 			svc.Notify.Enabled,
+			svc.Notify.Channel,
 		)
 	}
 	fmt.Printf("clients count=%d names=%s\n", len(clientNames), joinNames(clientNames))

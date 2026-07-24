@@ -47,8 +47,15 @@ type NAT struct {
 }
 
 type Notify struct {
-	Enabled bool   `yaml:"enabled"`
-	URL     string `yaml:"url"`
+	Enabled  bool           `yaml:"enabled"`
+	Channel  string         `yaml:"channel"` // "webhook" | "telegram"
+	URL      string         `yaml:"url"`     // webhook
+	Telegram NotifyTelegram `yaml:"telegram"`
+}
+
+type NotifyTelegram struct {
+	BotToken string `yaml:"bot_token"`
+	ChatID   string `yaml:"chat_id"`
 }
 
 type Client struct {
@@ -105,6 +112,9 @@ func (c *Config) applyDefaults() {
 		}
 		if svc.NAT.Comment == "" {
 			svc.NAT.Comment = "mkpk-tt dst-nat " + name
+		}
+		if svc.Notify.Channel == "" {
+			svc.Notify.Channel = "webhook"
 		}
 		c.Services[name] = svc
 	}
@@ -171,6 +181,9 @@ func (c Config) Validate() error {
 		if svc.NAT.ToAddress == "" {
 			return fmt.Errorf("service %q nat.to_address is required", name)
 		}
+		if err := validateNotify(svc.Notify); err != nil {
+			return fmt.Errorf("service %q %w", name, err)
+		}
 	}
 	for name, client := range c.Clients {
 		if !isSafeName(name) {
@@ -199,6 +212,66 @@ func (c Config) Resolve(clientName string) (Resolved, error) {
 	}
 	service := c.Services[client.Service]
 	return Resolved{Config: c, Client: client, Service: service}, nil
+}
+
+func validateNotify(n Notify) error {
+	if !n.Enabled {
+		return nil
+	}
+	switch n.Channel {
+	case "", "webhook":
+		if n.URL == "" {
+			return fmt.Errorf("notify.url is required for webhook channel")
+		}
+	case "telegram":
+		if !isTelegramToken(n.Telegram.BotToken) {
+			return fmt.Errorf("notify.telegram.bot_token must match ^[0-9]+:[A-Za-z0-9_-]+$")
+		}
+		if !isChatID(n.Telegram.ChatID) {
+			return fmt.Errorf("notify.telegram.chat_id must be an integer id")
+		}
+	default:
+		return fmt.Errorf("notify.channel %q must be webhook or telegram", n.Channel)
+	}
+	return nil
+}
+
+func isTelegramToken(v string) bool {
+	colon := -1
+	for i, r := range v {
+		if r == ':' {
+			colon = i
+			break
+		}
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	if colon <= 0 || colon == len(v)-1 {
+		return false
+	}
+	for _, r := range v[colon+1:] {
+		if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func isChatID(v string) bool {
+	if v == "" {
+		return false
+	}
+	for i, r := range v {
+		if r == '-' && i == 0 {
+			continue
+		}
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return v != "-"
 }
 
 func validatePort(name string, port int) error {
