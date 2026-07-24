@@ -23,21 +23,28 @@ type svcData struct {
 }
 
 type cliData struct {
-	Key            string
-	ServiceKey     string
-	Service        string // ros-quoted service_name
-	ClientID       string // ros-quoted
-	PSK            string // ros-quoted
-	TokenPort      int
-	AllowedList    string // plain, validated safe name
-	AllowedListStr string // ros-quoted
-	AllowedTimeout string // plain
-	UsedTimeout    string // plain
-	NotifyEnabled  string // "true" / "false"
-	NotifyChannel  string // ros-quoted
-	NotifyURL      string // ros-quoted
-	NotifyBotToken string // ros-quoted
-	NotifyChatID   string // ros-quoted
+	Key                 string
+	ServiceKey          string
+	Service             string // ros-quoted service_name
+	ClientID            string // ros-quoted
+	PSK                 string // ros-quoted
+	TokenPort           int
+	AllowedList         string // plain, validated safe name
+	AllowedListStr      string // ros-quoted
+	AllowedTimeout      string // plain
+	UsedTimeout         string // plain
+	NotifyEnabled       string // "true" / "false"
+	NotifyChannel       string // ros-quoted
+	NotifyURL           string // ros-quoted
+	NotifyBotToken      string // ros-quoted
+	NotifyChatID        string // ros-quoted
+	NotifyEmailTo       string // ros-quoted
+	NotifyEmailFrom     string // ros-quoted
+	NotifyEmailServer   string // ros-quoted
+	NotifyEmailPort     int
+	NotifyEmailTLS      string // ros-quoted
+	NotifyEmailUser     string // ros-quoted
+	NotifyEmailPassword string // ros-quoted
 }
 
 type renderConfigData struct {
@@ -80,21 +87,28 @@ func RenderConfig(cfg config.Config) (string, error) {
 			return "", fmt.Errorf("client %q references unknown service %q", k, c.Service)
 		}
 		data.Clients = append(data.Clients, cliData{
-			Key:            k,
-			ServiceKey:     c.Service,
-			Service:        rosString(s.ServiceName),
-			ClientID:       rosString(c.ClientID),
-			PSK:            rosString(c.PSK),
-			TokenPort:      s.TokenPort,
-			AllowedList:    s.AllowedList,
-			AllowedListStr: rosString(s.AllowedList),
-			AllowedTimeout: cfg.Defaults.AllowedTimeout,
-			UsedTimeout:    cfg.Defaults.UsedTimeout,
-			NotifyEnabled:  rosBool(s.Notify.Enabled),
-			NotifyChannel:  rosString(s.Notify.Channel),
-			NotifyURL:      rosString(s.Notify.URL),
-			NotifyBotToken: rosString(s.Notify.Telegram.BotToken),
-			NotifyChatID:   rosString(s.Notify.Telegram.ChatID),
+			Key:                 k,
+			ServiceKey:          c.Service,
+			Service:             rosString(s.ServiceName),
+			ClientID:            rosString(c.ClientID),
+			PSK:                 rosString(c.PSK),
+			TokenPort:           s.TokenPort,
+			AllowedList:         s.AllowedList,
+			AllowedListStr:      rosString(s.AllowedList),
+			AllowedTimeout:      cfg.Defaults.AllowedTimeout,
+			UsedTimeout:         cfg.Defaults.UsedTimeout,
+			NotifyEnabled:       rosBool(s.Notify.Enabled),
+			NotifyChannel:       rosString(s.Notify.Channel),
+			NotifyURL:           rosString(s.Notify.URL),
+			NotifyBotToken:      rosString(s.Notify.Telegram.BotToken),
+			NotifyChatID:        rosString(s.Notify.Telegram.ChatID),
+			NotifyEmailTo:       rosString(s.Notify.Email.To),
+			NotifyEmailFrom:     rosString(s.Notify.Email.From),
+			NotifyEmailServer:   rosString(s.Notify.Email.Server),
+			NotifyEmailPort:     s.Notify.Email.Port,
+			NotifyEmailTLS:      rosString(s.Notify.Email.TLS),
+			NotifyEmailUser:     rosString(s.Notify.Email.User),
+			NotifyEmailPassword: rosString(s.Notify.Email.Password),
 		})
 	}
 
@@ -211,6 +225,13 @@ add name="mkpk-tt-notify" policy=read,write,test source={
     :global mkpkTtNotifyUrl
     :global mkpkTtNotifyBotToken
     :global mkpkTtNotifyChatId
+    :global mkpkTtNotifyEmailTo
+    :global mkpkTtNotifyEmailFrom
+    :global mkpkTtNotifyEmailServer
+    :global mkpkTtNotifyEmailPort
+    :global mkpkTtNotifyEmailTls
+    :global mkpkTtNotifyEmailUser
+    :global mkpkTtNotifyEmailPassword
     :global mkpkTtNotifyRouter
     :global mkpkTtNotifyService
     :global mkpkTtNotifyClientId
@@ -235,6 +256,21 @@ add name="mkpk-tt-notify" policy=read,write,test source={
             /tool fetch url=("https://api.telegram.org/bot" . $mkpkTtNotifyBotToken . "/sendMessage") http-method=post http-header-field="Content-Type: application/json" http-data=$tgBody keep-result=no
         } on-error={
             :log warning ("mkpk-tt notify telegram failed src=" . $mkpkTtNotifySrc . " service=" . $mkpkTtNotifyService)
+        }
+        :return 0
+    }
+
+    :if ($mkpkTtNotifyChannel = "email") do={
+        :if (([:len $mkpkTtNotifyEmailServer] = 0) || ([:len $mkpkTtNotifyEmailTo] = 0)) do={
+            :log warning "mkpk-tt notify email missing server/to"
+            :return 0
+        }
+        :local subject ("mkpk allowed " . $mkpkTtNotifyService . " " . $mkpkTtNotifySrc)
+        :local body ("router=" . $mkpkTtNotifyRouter . "\nservice=" . $mkpkTtNotifyService . "\nclient_id=" . $mkpkTtNotifyClientId . "\nsrc=" . $mkpkTtNotifySrc . "\nlist=" . $mkpkTtNotifyList . "\nttl=" . $mkpkTtNotifyTtl . "\nbucket=" . $mkpkTtNotifyBucket . "\ntime=" . $mkpkTtNotifyTime)
+        :do {
+            /tool e-mail send to=$mkpkTtNotifyEmailTo from=$mkpkTtNotifyEmailFrom server=$mkpkTtNotifyEmailServer port=$mkpkTtNotifyEmailPort tls=$mkpkTtNotifyEmailTls user=$mkpkTtNotifyEmailUser password=$mkpkTtNotifyEmailPassword subject=$subject body=$body
+        } on-error={
+            :log warning ("mkpk-tt notify email failed src=" . $mkpkTtNotifySrc . " service=" . $mkpkTtNotifyService)
         }
         :return 0
     }
@@ -338,6 +374,13 @@ add name="mkpk-tt-notify" policy=read,write,test source={
     :global mkpkTtNotifyUrl $notifyUrl
     :global mkpkTtNotifyBotToken $notifyBotToken
     :global mkpkTtNotifyChatId $notifyChatId
+    :global mkpkTtNotifyEmailTo {{.NotifyEmailTo}}
+    :global mkpkTtNotifyEmailFrom {{.NotifyEmailFrom}}
+    :global mkpkTtNotifyEmailServer {{.NotifyEmailServer}}
+    :global mkpkTtNotifyEmailPort {{.NotifyEmailPort}}
+    :global mkpkTtNotifyEmailTls {{.NotifyEmailTLS}}
+    :global mkpkTtNotifyEmailUser {{.NotifyEmailUser}}
+    :global mkpkTtNotifyEmailPassword {{.NotifyEmailPassword}}
     :global mkpkTtNotifyRouter [/system identity get name]
     :global mkpkTtNotifyService $service
     :global mkpkTtNotifyClientId $clientId

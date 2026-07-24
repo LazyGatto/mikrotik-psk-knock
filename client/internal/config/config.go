@@ -48,14 +48,25 @@ type NAT struct {
 
 type Notify struct {
 	Enabled  bool           `yaml:"enabled"`
-	Channel  string         `yaml:"channel"` // "webhook" | "telegram"
+	Channel  string         `yaml:"channel"` // "webhook" | "telegram" | "email"
 	URL      string         `yaml:"url"`     // webhook
 	Telegram NotifyTelegram `yaml:"telegram"`
+	Email    NotifyEmail    `yaml:"email"`
 }
 
 type NotifyTelegram struct {
 	BotToken string `yaml:"bot_token"`
 	ChatID   string `yaml:"chat_id"`
+}
+
+type NotifyEmail struct {
+	To       string `yaml:"to"`
+	From     string `yaml:"from"`
+	Server   string `yaml:"server"`
+	Port     int    `yaml:"port"`
+	TLS      string `yaml:"tls"` // "no" | "yes" | "starttls"
+	User     string `yaml:"user"`
+	Password string `yaml:"password"`
 }
 
 type Client struct {
@@ -115,6 +126,14 @@ func (c *Config) applyDefaults() {
 		}
 		if svc.Notify.Channel == "" {
 			svc.Notify.Channel = "webhook"
+		}
+		if svc.Notify.Channel == "email" {
+			if svc.Notify.Email.Port == 0 {
+				svc.Notify.Email.Port = 587
+			}
+			if svc.Notify.Email.TLS == "" {
+				svc.Notify.Email.TLS = "starttls"
+			}
 		}
 		c.Services[name] = svc
 	}
@@ -230,10 +249,44 @@ func validateNotify(n Notify) error {
 		if !isChatID(n.Telegram.ChatID) {
 			return fmt.Errorf("notify.telegram.chat_id must be an integer id")
 		}
+	case "email":
+		if !isEmailAddr(n.Email.To) {
+			return fmt.Errorf("notify.email.to must be an email address")
+		}
+		if !isEmailAddr(n.Email.From) {
+			return fmt.Errorf("notify.email.from must be an email address")
+		}
+		if n.Email.Server == "" {
+			return fmt.Errorf("notify.email.server is required")
+		}
+		if n.Email.Port <= 0 || n.Email.Port > 65535 {
+			return fmt.Errorf("notify.email.port must be between 1 and 65535")
+		}
+		switch n.Email.TLS {
+		case "no", "yes", "starttls":
+		default:
+			return fmt.Errorf("notify.email.tls must be no, yes or starttls")
+		}
 	default:
-		return fmt.Errorf("notify.channel %q must be webhook or telegram", n.Channel)
+		return fmt.Errorf("notify.channel %q must be webhook, telegram or email", n.Channel)
 	}
 	return nil
+}
+
+func isEmailAddr(v string) bool {
+	at := -1
+	for i, r := range v {
+		if r == '@' {
+			if at != -1 {
+				return false
+			}
+			at = i
+		}
+		if r == ' ' || r == '"' || r == '\n' || r == '\r' {
+			return false
+		}
+	}
+	return at > 0 && at < len(v)-1
 }
 
 func isTelegramToken(v string) bool {

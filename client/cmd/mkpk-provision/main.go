@@ -206,6 +206,13 @@ func serviceCmd(args []string) error {
 	notifyURL := fs.String("notify-url", "", "webhook notification URL")
 	notifyTgToken := fs.String("notify-telegram-bot-token", "", "telegram bot token")
 	notifyTgChat := fs.String("notify-telegram-chat-id", "", "telegram chat id")
+	notifyEmailTo := fs.String("notify-email-to", "", "email recipient")
+	notifyEmailFrom := fs.String("notify-email-from", "", "email sender")
+	notifyEmailServer := fs.String("notify-email-server", "", "SMTP server host")
+	notifyEmailPort := fs.Int("notify-email-port", 0, "SMTP port (default 587)")
+	notifyEmailTLS := fs.String("notify-email-tls", "", "SMTP tls: no, yes or starttls (default starttls)")
+	notifyEmailUser := fs.String("notify-email-user", "", "SMTP username")
+	notifyEmailPassword := fs.String("notify-email-password", "", "SMTP password")
 	force := fs.Bool("force", false, "replace existing service")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
@@ -250,6 +257,16 @@ func serviceCmd(args []string) error {
 	if allowed == "" {
 		allowed = "mkpk-tt-allowed-" + *name
 	}
+	emailPort := *notifyEmailPort
+	emailTLS := *notifyEmailTLS
+	if *notifyChannel == "email" {
+		if emailPort == 0 {
+			emailPort = 587
+		}
+		if emailTLS == "" {
+			emailTLS = "starttls"
+		}
+	}
 	cfg.Services[*name] = config.Service{
 		ServiceName: id,
 		Stage1Port:  *stage1Port,
@@ -270,6 +287,15 @@ func serviceCmd(args []string) error {
 			Telegram: config.NotifyTelegram{
 				BotToken: *notifyTgToken,
 				ChatID:   *notifyTgChat,
+			},
+			Email: config.NotifyEmail{
+				To:       *notifyEmailTo,
+				From:     *notifyEmailFrom,
+				Server:   *notifyEmailServer,
+				Port:     emailPort,
+				TLS:      emailTLS,
+				User:     *notifyEmailUser,
+				Password: *notifyEmailPassword,
 			},
 		},
 	}

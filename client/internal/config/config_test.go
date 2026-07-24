@@ -142,6 +142,69 @@ func TestValidateRejectsUnknownNotifyChannel(t *testing.T) {
 	}
 }
 
+func TestValidateAcceptsEmailNotify(t *testing.T) {
+	cfg := validConfig()
+	svc := cfg.Services["demo-service"]
+	svc.Notify = Notify{
+		Enabled: true,
+		Channel: "email",
+		Email: NotifyEmail{
+			To: "alerts@example.com", From: "mkpk@example.com",
+			Server: "smtp.example.com", Port: 587, TLS: "starttls",
+		},
+	}
+	cfg.Services["demo-service"] = svc
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestValidateRejectsEmailWithoutServer(t *testing.T) {
+	cfg := validConfig()
+	svc := cfg.Services["demo-service"]
+	svc.Notify = Notify{
+		Enabled: true,
+		Channel: "email",
+		Email:   NotifyEmail{To: "a@b.co", From: "m@b.co", Port: 587, TLS: "starttls"},
+	}
+	cfg.Services["demo-service"] = svc
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want missing email server error")
+	}
+}
+
+func TestValidateRejectsEmailBadTLS(t *testing.T) {
+	cfg := validConfig()
+	svc := cfg.Services["demo-service"]
+	svc.Notify = Notify{
+		Enabled: true,
+		Channel: "email",
+		Email:   NotifyEmail{To: "a@b.co", From: "m@b.co", Server: "s", Port: 587, TLS: "ssl"},
+	}
+	cfg.Services["demo-service"] = svc
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want bad email tls error")
+	}
+}
+
+func TestApplyDefaultsEmailPortAndTLS(t *testing.T) {
+	cfg := Config{
+		Services: map[string]Service{
+			"s": {Stage1Port: 1, Stage2Port: 2, TokenPort: 3, Notify: Notify{Enabled: true, Channel: "email"}},
+		},
+		Clients: map[string]Client{},
+	}
+	cfg.applyDefaults()
+
+	got := cfg.Services["s"].Notify.Email
+	if got.Port != 587 || got.TLS != "starttls" {
+		t.Fatalf("email defaults = port %d tls %q, want 587/starttls", got.Port, got.TLS)
+	}
+}
+
 func validConfig() Config {
 	return Config{
 		Defaults: Defaults{

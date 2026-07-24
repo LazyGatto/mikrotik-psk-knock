@@ -326,10 +326,15 @@ time=<router timestamp>
 На CHR проверен HTTPS webhook path через `/tool fetch`: direct POST вернул HTTP 200, а успешный knock с
 включенным `mkpkTtNotifyEnabled=true` вызвал `mkpk-tt-notify` без локального `notify failed`.
 
-Notify поддерживает per-service выбор канала через `notify.channel`: `webhook` (POST JSON на
-произвольный URL) и `telegram` (POST `{chat_id,text}` на `https://api.telegram.org/bot<token>/sendMessage`).
-Ошибка доставки любого канала логируется и не откатывает уже добавленный `allowed` entry. Email и syslog
-пока не реализованы.
+Notify поддерживает per-service выбор канала через `notify.channel`:
+
+- `webhook` — POST JSON на произвольный URL;
+- `telegram` — POST `{chat_id,text}` на `https://api.telegram.org/bot<token>/sendMessage`;
+- `email` — `/tool e-mail send` с SMTP-параметрами (server/port/from/user/password/tls), переданными
+  inline на send-time, поэтому глобальный `/tool e-mail` роутера не мутируется.
+
+Ошибка доставки любого канала логируется и не откатывает уже добавленный `allowed` entry. Syslog пока
+не реализован как отдельный канал (успешный allow уже пишется в локальный лог `:log info`).
 
 Notify payload формируется как корректный JSON через RouterOS `[:serialize {...} to=json]` и
 отправляется с `Content-Type: application/json`. Это снимает прежнее ограничение сырого

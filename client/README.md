@@ -61,10 +61,11 @@ PSK в `testdata/mkpk.yaml` демонстрационный. Production-кон�
   `--psk` не передан явно.
 - `mkpk-provision config validate` загружает YAML, применяет defaults, проверяет инварианты и печатает
   summary без раскрытия PSK.
-- `mkpk-provision service add` поддерживает выбор канала уведомлений через `--notify-channel webhook`
-  (по умолчанию, с `--notify-url`) или `--notify-channel telegram`
-  (`--notify-telegram-bot-token`, `--notify-telegram-chat-id`). Telegram-канал проверен на CHR:
-  poller вызывает Bot API, ошибка доставки логируется и не откатывает `allowed` entry.
+- `mkpk-provision service add` поддерживает выбор канала уведомлений через `--notify-channel`:
+  `webhook` (по умолчанию, `--notify-url`), `telegram` (`--notify-telegram-bot-token`,
+  `--notify-telegram-chat-id`) или `email` (`--notify-email-to/-from/-server/-port/-tls/-user/-password`).
+  Telegram и email проверены на CHR: poller вызывает соответствующий транспорт, ошибка доставки
+  логируется и не откатывает `allowed` entry.
 - Сгенерированный `.rsc` создает one-shot `mkpk-tt-install`; после import token rules активируются без reboot.
 - `knock --debug` проверен на CHR: retry windows проходят stage1/stage2/token, `mkpk-tt-allowed`
   получает observed source IP.

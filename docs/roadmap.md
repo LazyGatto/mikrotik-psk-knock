@@ -67,7 +67,7 @@ Notify payload переведён на корректный JSON (`[:serialize .
 и проверен на CHR — прежнее ограничение сырого `key=value&...` снято.
 
 Следующий полезный шаг: нагрузочный тест `content`/N планировщиков 1с на большем числе клиентов; либо
-переход к оставшимся трекам (каналы уведомлений email/syslog, admin/SSH режим).
+переход к оставшимся трекам (syslog-канал уведомлений, admin/SSH режим).
 
 ## Этап 1: исследование RouterOS
 
@@ -94,7 +94,10 @@ Notify payload переведён на корректный JSON (`[:serialize .
   с `Content-Type: application/json` (снято ограничение сырого `key=value&...`).
 - Реализован и проверен на CHR Telegram-канал уведомлений (`notify.channel=telegram`, POST
   `{chat_id,text}` на Bot API) наряду с webhook; per-service выбор канала, graceful degradation при
-  ошибке доставки. Email/syslog остаются follow-up каналами.
+  ошибке доставки.
+- Реализован и проверен на CHR Email-канал (`notify.channel=email`, `/tool e-mail send` с inline
+  SMTP-параметрами, без мутации глобального `/tool e-mail`); валидация to/from/server/port/tls,
+  graceful degradation. Syslog остаётся follow-up.
 - Добавить logging и comments для address-list entries.
 - Проверено: после reboot scheduler пересчитывает token rules, dynamic `allowed` сбрасывается, post-reboot knock работает.
 - Проверено: persistent profile/client storage через отдельный RouterOS profile script.

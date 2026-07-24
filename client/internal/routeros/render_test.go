@@ -175,6 +175,46 @@ func TestRenderNotifyTelegramChannel(t *testing.T) {
 	}
 }
 
+func TestRenderNotifyEmailChannel(t *testing.T) {
+	cfg := config.Config{
+		Defaults: config.Defaults{BucketSeconds: 30, StageTimeout: "5s", TokenHitTimeout: "2s", AllowedTimeout: "3m", UsedTimeout: "65s"},
+		Services: map[string]config.Service{
+			"mail": {
+				ServiceName: "mail", Stage1Port: 41001, Stage2Port: 41002, TokenPort: 41003,
+				AllowedList: "mkpk-tt-allowed-mail",
+				NAT:         config.NAT{Comment: "mkpk-tt dst-nat mail", DstPort: 2222, ToAddress: "192.0.2.10", ToPort: 22},
+				Notify: config.Notify{
+					Enabled: true, Channel: "email",
+					Email: config.NotifyEmail{
+						To: "alerts@example.com", From: "mkpk@example.com",
+						Server: "smtp.example.com", Port: 587, TLS: "starttls", User: "u", Password: "p",
+					},
+				},
+			},
+		},
+		Clients: map[string]config.Client{
+			"phone": {ClientID: "phone", Service: "mail", PSK: "phone-psk"},
+		},
+	}
+
+	rendered, err := RenderConfig(cfg)
+	if err != nil {
+		t.Fatalf("RenderConfig() error = %v", err)
+	}
+
+	for _, want := range []string{
+		`:if ($mkpkTtNotifyChannel = "email")`,
+		`/tool e-mail send to=$mkpkTtNotifyEmailTo from=$mkpkTtNotifyEmailFrom server=$mkpkTtNotifyEmailServer`,
+		`:global mkpkTtNotifyEmailServer "smtp.example.com"`,
+		`:global mkpkTtNotifyEmailPort 587`,
+		`:global mkpkTtNotifyEmailTls "starttls"`,
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("rendered script missing %q:\n%s", want, rendered)
+		}
+	}
+}
+
 func resolvedConfig(bucketSeconds int64) config.Resolved {
 	cfg := config.Config{
 		Router: config.Router{Name: "test-router", Address: "router.example"},
