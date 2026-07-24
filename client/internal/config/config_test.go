@@ -205,6 +205,24 @@ func TestApplyDefaultsEmailPortAndTLS(t *testing.T) {
 	}
 }
 
+func TestConfigHashStableAndSensitive(t *testing.T) {
+	h1 := validConfig().Hash()
+	if h1 == "" {
+		t.Fatal("Hash() returned empty")
+	}
+	if h1 != validConfig().Hash() {
+		t.Fatal("Hash() not stable across identical configs")
+	}
+
+	c2 := validConfig()
+	client := c2.Clients["demo-client"]
+	client.PSK = "different-psk-value"
+	c2.Clients["demo-client"] = client
+	if c2.Hash() == h1 {
+		t.Fatal("Hash() did not change after config change")
+	}
+}
+
 func validConfig() Config {
 	return Config{
 		Defaults: Defaults{

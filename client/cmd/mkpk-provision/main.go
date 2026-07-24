@@ -12,6 +12,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 	"mikrotik-psk-knock/client/internal/config"
+	"mikrotik-psk-knock/client/internal/deploy"
 	"mikrotik-psk-knock/client/internal/routeros"
 	"mikrotik-psk-knock/client/internal/token"
 )
@@ -43,6 +44,8 @@ func run(args []string) error {
 		return tokenCmd(args[1:])
 	case "routeros":
 		return routerosCmd(args[1:])
+	case "deploy":
+		return deployCmd(args[1:])
 	case "help", "-h", "--help":
 		usage()
 		return nil
@@ -60,6 +63,7 @@ func usage() {
   mkpk-provision client add --config mkpk.yaml --name laptop --service service
   mkpk-provision token --config mkpk.yaml --client laptop [--bucket N] [--debug]
   mkpk-provision routeros render --config mkpk.yaml [--client laptop] [--out generated.rsc]
+  mkpk-provision deploy [status|uninstall] --config mkpk.yaml --user admin [--key ~/.ssh/id_ed25519] [--address host]
 `)
 }
 
@@ -437,6 +441,107 @@ func routerosCmd(args []string) error {
 		return nil
 	}
 	return os.WriteFile(*outPath, []byte(rendered), 0600)
+}
+
+func deployCmd(args []string) error {
+	sub := "install"
+	if len(args) > 0 && (args[0] == "status" || args[0] == "uninstall") {
+		sub = args[0]
+		args = args[1:]
+	}
+	fs := flag.NewFlagSet("deploy", flag.ContinueOnError)
+	configPath := fs.String("config", "mkpk.yaml", "config path")
+	address := fs.String("address", "", "router address override; router.address when empty")
+	user := fs.String("user", "admin", "SSH username")
+	port := fs.Int("port", 22, "SSH port")
+	keyPath := fs.String("key", "", "SSH private key path")
+	keyPass := fs.String("key-pass", "", "passphrase for the SSH key")
+	useAgent := fs.Bool("agent", true, "use ssh-agent if available")
+	password := fs.String("password", "", "SSH password (fallback)")
+	force := fs.Bool("force", false, "deploy even if the router is already up to date")
+	dryRun := fs.Bool("dry-run", false, "report the action without changing the router")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	addr := *address
+	if addr == "" {
+		addr = cfg.Router.Address
+	}
+	if addr == "" {
+		return fmt.Errorf("router address is required (--address or router.address)")
+	}
+
+	client, err := deploy.Connect(addr, *port, deploy.Auth{
+		User:     *user,
+		KeyPath:  *keyPath,
+		KeyPass:  *keyPass,
+		UseAgent: *useAgent,
+		Password: *password,
+	})
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	switch sub {
+	case "status":
+		state, err := client.Detect()
+		if err != nil {
+			return err
+		}
+		desired := cfg.Hash()
+		if !state.Installed {
+			fmt.Printf("router=%s installed=false desired_hash=%s\n", addr, desired)
+			return nil
+		}
+		fmt.Printf("router=%s installed=true up_to_date=%t installed_hash=%s desired_hash=%s\n",
+			addr, state.Hash == desired, state.Hash, desired)
+		return nil
+
+	case "uninstall":
+		if *dryRun {
+			fmt.Printf("router=%s would uninstall mkpk-tt-* layer\n", addr)
+			return nil
+		}
+		if err := client.Uninstall(); err != nil {
+			return err
+		}
+		fmt.Printf("router=%s uninstalled\n", addr)
+		return nil
+
+	default: // install / update
+		rendered, err := routeros.RenderConfig(cfg)
+		if err != nil {
+			return err
+		}
+		desired := cfg.Hash()
+		state, err := client.Detect()
+		if err != nil {
+			return err
+		}
+		if state.Installed && state.Hash == desired && !*force {
+			fmt.Printf("router=%s already up to date hash=%s\n", addr, desired)
+			return nil
+		}
+		action := "install"
+		if state.Installed {
+			action = "update"
+		}
+		if *dryRun {
+			fmt.Printf("router=%s would %s installed_hash=%s desired_hash=%s\n", addr, action, state.Hash, desired)
+			return nil
+		}
+		if err := client.Deploy([]byte(rendered)); err != nil {
+			return err
+		}
+		fmt.Printf("router=%s %s ok hash=%s\n", addr, action, desired)
+		return nil
+	}
 }
 
 func writeConfig(path string, cfg config.Config) error {

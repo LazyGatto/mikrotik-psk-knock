@@ -72,8 +72,11 @@ Data-driven poller реализован и проверен на CHR: один �
 вместо 21**, **~434 строки вместо ~2440**, дельта CPU ~12% вместо ~24%, пик rollover 50%→30%. Детали в
 [multi-profile-render.md](multi-profile-render.md).
 
-Следующий полезный шаг: оставшиеся треки (syslog-канал уведомлений, admin/SSH режим); flood-тест
-staged-портов под нагрузкой.
+SSH-провижининг реализован: `mkpk-provision deploy` ставит/обновляет/снимает mkpk-слой по SSH с
+detect по config-hash и verify (детали в Этапе 4). Runtime остаётся client-side UDP-token.
+
+Следующий полезный шаг: локальный веб-UI поверх deploy-ядра (затем Wails-десктоп); либо оставшиеся
+треки (syslog-канал, flood-тест staged-портов, мульти-роутер deploy).
 
 ## Этап 1: исследование RouterOS
 
@@ -150,15 +153,32 @@ staged-портов под нагрузкой.
 - Решено: remote clock check через SSH/API не входит в основной stealth UDP-token flow; если management channel доступен, это отдельный admin-mode, а не runtime-зависимость knock.
 - Добавить локальные diagnostics/presets для clock-skew сценариев без обратного канала.
 
-## Этап 4: Admin/SSH режим
+## Этап 4: SSH-провижининг (не runtime-режим)
 
-- Рассматривать SSH/API только как optional admin tooling для окружений, где management path уже допустим.
-- Не делать SSH/API зависимостью основного UDP-token режима: если SSH доступен снаружи, сам port-knocking теряет значительную часть смысла.
-- Сделано: CLI verbs разделены на provisioning/admin команды и runtime `check`/`knock`, чтобы mobile flow
-  не тянул management assumptions.
-- Проверить права RouterOS user/group для безопасного script run.
-- Реализовать явную admin-команду для прямого добавления observed/explicit src IP в address-list только при осознанном выборе этого режима.
-- Сравнить UX и threat model с основным stealth UDP-token режимом.
+Решение: SSH — это **только канал развёртывания** на роутер, к которому уже есть админ-доступ. Runtime
+port-knocking остаётся исключительно client-side (UDP-token). «Открыть доступ по SSH» как runtime-механизм
+не делаем: если SSH доступен снаружи, сам knock теряет смысл. Приложение по SSH лишь проверяет, установлен
+ли наш функционал, и при необходимости ставит/обновляет его.
+
+Сделано и проверено на CHR:
+
+- `mkpk-provision deploy` через SSH (`golang.org/x/crypto/ssh`; авторизация по ключу primary, пароль
+  fallback; host keys — trust-on-first-use через `~/.ssh/known_hosts`):
+  - **detect** — установлен ли mkpk и актуален ли: config-hash хранится в persistent-скрипте
+    `mkpk-tt-meta`, сравнивается с `config.Hash()`;
+  - **install/update** — SCP-загрузка `.rsc` + `/import` + удаление временного файла + verify поднятия
+    token-правил;
+  - **идемпотентность** — при совпадении hash деплой пропускается (`already up to date`);
+  - `deploy status`, `deploy uninstall`, `--dry-run`, `--force`.
+- Проверено на CHR: полный цикл status → install → status(up_to_date) → re-deploy(skip) →
+  drift(update) → uninstall → clean.
+
+Дальше (по согласованному плану):
+
+- Локальный веб-UI поверх того же deploy-ядра (`mkpk-provision serve`), затем упаковка в Wails-десктоп.
+- Мульти-роутер deploy (сейчас один `router` на конфиг).
+- Опционально: RouterOS user/group с минимальными правами под deploy-пользователя (сейчас обычный
+  админ-доступ).
 
 ## Этап 5: GUI
 

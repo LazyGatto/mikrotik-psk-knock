@@ -31,7 +31,24 @@ go run ./cmd/mkpk-provision client add --config mkpk.yaml --name phone --service
 go run ./cmd/mkpk-provision config validate --config testdata/mkpk.yaml
 go run ./cmd/mkpk-provision token --config testdata/mkpk.yaml --client demo-client --debug
 go run ./cmd/mkpk-provision routeros render --config testdata/mkpk.yaml --client demo-client --out ../routeros/generated-demo.rsc
+go run ./cmd/mkpk-provision deploy status --config mkpk.yaml --user admin
+go run ./cmd/mkpk-provision deploy --config mkpk.yaml --user admin --key ~/.ssh/id_ed25519 [--dry-run] [--force]
+go run ./cmd/mkpk-provision deploy uninstall --config mkpk.yaml --user admin
 ```
+
+## Провижининг по SSH
+
+`mkpk-provision deploy` разворачивает mkpk-слой на роутер по SSH. SSH — только канал развёртывания;
+runtime port-knocking остаётся client-side (UDP-token). Что делает `deploy`:
+
+- подключается (авторизация по ключу primary — `--key`/ssh-agent, `--password` fallback; host key через
+  trust-on-first-use в `~/.ssh/known_hosts`);
+- `detect` — определяет, установлен ли mkpk и совпадает ли его config-hash (хранится в persistent-скрипте
+  `mkpk-tt-meta`) с текущим конфигом;
+- при расхождении/отсутствии — SCP-загрузка сгенерированного `.rsc`, `/import`, verify поднятия
+  token-правил; при совпадении hash — пропускает (идемпотентно);
+- `deploy status` печатает состояние, `deploy uninstall` снимает весь `mkpk-tt-*` слой, `--dry-run`
+  показывает действие без изменений.
 
 `mkpk-provision routeros render` без `--client` рендерит все services и clients из конфига в
 per-profile RouterOS объекты (multi-profile). С `--client NAME` рендерится только один клиент и его

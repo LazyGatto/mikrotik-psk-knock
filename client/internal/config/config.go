@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"time"
@@ -222,6 +224,18 @@ func (c Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+// Hash returns a stable fingerprint of the configuration, used to detect whether
+// the RouterOS side is up to date. The rendered .rsc is a deterministic function
+// of the config, so hashing the marshaled config detects any drift.
+func (c Config) Hash() string {
+	data, err := yaml.Marshal(c)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 func (c Config) Resolve(clientName string) (Resolved, error) {

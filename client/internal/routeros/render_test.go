@@ -115,6 +115,20 @@ func TestRenderConfigMultiProfile(t *testing.T) {
 	}
 }
 
+func TestRenderStampsConfigHash(t *testing.T) {
+	cfg := multiConfig()
+	rendered, err := RenderConfig(cfg)
+	if err != nil {
+		t.Fatalf("RenderConfig() error = %v", err)
+	}
+	if !strings.Contains(rendered, `add name="mkpk-tt-meta"`) {
+		t.Fatalf("rendered script missing mkpk-tt-meta marker:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "mkpk-config-hash="+cfg.Hash()) {
+		t.Fatalf("rendered script does not stamp config hash %s:\n%s", cfg.Hash(), rendered)
+	}
+}
+
 func TestRenderConfigDeterministicOrdering(t *testing.T) {
 	a, err := RenderConfig(multiConfig())
 	if err != nil {

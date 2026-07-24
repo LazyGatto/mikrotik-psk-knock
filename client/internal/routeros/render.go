@@ -55,6 +55,7 @@ type renderConfigData struct {
 	Services        []svcData
 	Clients         []cliData
 	ClientsArray    string // RouterOS array-of-arrays literal for the data-driven poller
+	MetaHash        string // config fingerprint stamped into the persistent mkpk-tt-meta marker
 }
 
 // RenderConfig renders every service and client in cfg into per-profile RouterOS
@@ -114,6 +115,7 @@ func RenderConfig(cfg config.Config) (string, error) {
 		})
 	}
 	data.ClientsArray = buildClientsArray(data.Clients)
+	data.MetaHash = cfg.Hash()
 
 	var out bytes.Buffer
 	if err := configTemplate.Execute(&out, data); err != nil {
@@ -233,6 +235,7 @@ add chain=input action=add-src-to-address-list protocol=udp dst-port={{.TokenPor
     comment="mkpk-tt token prev {{.Key}}"
 {{end}}
 /system script
+add name="mkpk-tt-meta" policy=read source="# mkpk-version=1\n# mkpk-config-hash={{.MetaHash}}"
 add name="mkpk-tt-apply-service" policy=read,write,test source={
 {{range .Services}}    :if ([:len [/ip firewall nat find where comment={{.NATComment}}]] = 0) do={
         /ip firewall nat add chain=dstnat action=dst-nat protocol=tcp dst-port={{.NATDstPort}} \
