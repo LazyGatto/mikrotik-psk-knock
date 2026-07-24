@@ -66,13 +66,14 @@ per-service изоляцией allowed-list. Подтверждено: per-clien
 Notify payload переведён на корректный JSON (`[:serialize ... to=json]`, `Content-Type: application/json`)
 и проверен на CHR — прежнее ограничение сырого `key=value&...` снято.
 
-Нагрузочный тест N планировщиков 1с выполнен на CHR: 20 клиентов дают ~26% avg / ~50% peak CPU на
-1-CPU CHR (пик — синхронный rollover каждые 30с), рост ~линейный; для целевых единиц/низких десятков
-клиентов приемлемо, свыше — нужен data-driven poller. Детали и рекомендации в
+Data-driven poller реализован и проверен на CHR: один скрипт `mkpk-tt-poller` + один scheduler на все
+профили (вместо N pollers/schedulers). Массив клиентов кэшируется в global, токены пересчитываются только
+на границе bucket, а per-client обход идёт только когда есть hit. Итог для 20 клиентов: **2 scheduler
+вместо 21**, **~434 строки вместо ~2440**, дельта CPU ~12% вместо ~24%, пик rollover 50%→30%. Детали в
 [multi-profile-render.md](multi-profile-render.md).
 
-Следующий полезный шаг: data-driven poller (один scheduler на все профили) для масштабирования; либо
-переход к оставшимся трекам (syslog-канал уведомлений, admin/SSH режим); flood-тест staged-портов.
+Следующий полезный шаг: оставшиеся треки (syslog-канал уведомлений, admin/SSH режим); flood-тест
+staged-портов под нагрузкой.
 
 ## Этап 1: исследование RouterOS
 

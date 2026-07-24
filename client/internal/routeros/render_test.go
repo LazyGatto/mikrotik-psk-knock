@@ -27,7 +27,7 @@ func TestRenderIncludesSafePSKLiteral(t *testing.T) {
 		t.Fatalf("Render() error = %v", err)
 	}
 
-	if !strings.Contains(rendered, `:local psk "mkpk-prototype-psk"`) {
+	if !strings.Contains(rendered, `"psk"="mkpk-prototype-psk"`) {
 		t.Fatalf("rendered script does not include expected PSK literal:\n%s", rendered)
 	}
 }
@@ -38,10 +38,17 @@ func TestRenderSingleClientOnlyRendersThatClient(t *testing.T) {
 		t.Fatalf("Render() error = %v", err)
 	}
 
-	if !strings.Contains(rendered, `add name="mkpk-tt-poller-demo-client"`) {
-		t.Fatalf("rendered script missing poller for demo-client:\n%s", rendered)
+	// One shared data-driven poller, not per-client scripts.
+	if !strings.Contains(rendered, `add name="mkpk-tt-poller"`) {
+		t.Fatalf("rendered script missing shared poller:\n%s", rendered)
 	}
-	if strings.Contains(rendered, "mkpk-tt-poller-alice") {
+	if strings.Contains(rendered, `add name="mkpk-tt-poller-`) {
+		t.Fatalf("rendered script still uses per-client poller scripts:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, `"key"="demo-client"`) {
+		t.Fatalf("rendered client array missing demo-client:\n%s", rendered)
+	}
+	if strings.Contains(rendered, `"key"="alice"`) {
 		t.Fatalf("single-client render leaked another client:\n%s", rendered)
 	}
 }
@@ -64,20 +71,30 @@ func TestRenderConfigMultiProfile(t *testing.T) {
 		}
 	}
 
-	// Per-client token rules, hit lists, pollers and schedulers.
+	// Per-client token rules and hit lists, plus per-client entries in the
+	// single data-driven poller's client array.
 	for _, want := range []string{
 		`comment="mkpk-tt token now alice"`,
 		`comment="mkpk-tt token prev bob"`,
 		"address-list=mkpk-tt-hit-now-alice",
 		"address-list=mkpk-tt-hit-prev-bob",
-		`add name="mkpk-tt-poller-alice"`,
-		`add name="mkpk-tt-poller-bob"`,
-		`on-event="/system script run mkpk-tt-poller-alice"`,
-		`on-event="/system script run mkpk-tt-poller-bob"`,
+		`"key"="alice"`,
+		`"key"="bob"`,
 	} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("rendered script missing %q:\n%s", want, rendered)
 		}
+	}
+
+	// Exactly one poller script and one poller scheduler (no per-client pollers).
+	if strings.Contains(rendered, `add name="mkpk-tt-poller-`) {
+		t.Fatalf("rendered script still uses per-client poller scripts:\n%s", rendered)
+	}
+	if got := strings.Count(rendered, `add name="mkpk-tt-poller" policy=read,write,test source={`); got != 1 {
+		t.Fatalf("expected exactly one mkpk-tt-poller script, got %d:\n%s", got, rendered)
+	}
+	if got := strings.Count(rendered, `add name="mkpk-tt-poller" interval=1s`); got != 1 {
+		t.Fatalf("expected exactly one mkpk-tt-poller scheduler, got %d:\n%s", got, rendered)
 	}
 
 	// alice is on svc-a (token port 41003), bob on svc-b (token port 42003).
@@ -85,12 +102,12 @@ func TestRenderConfigMultiProfile(t *testing.T) {
 		t.Fatalf("alice token rule not gated on svc-a stage2:\n%s", rendered)
 	}
 
-	// Per-service allowed-list isolation in NAT and pollers.
+	// Per-service allowed-list isolation in NAT and client array.
 	for _, want := range []string{
 		"src-address-list=mkpk-tt-allowed-svc-a",
 		"src-address-list=mkpk-tt-allowed-svc-b",
-		`:local allowedList "mkpk-tt-allowed-svc-a"`,
-		`:local allowedList "mkpk-tt-allowed-svc-b"`,
+		`"allowedList"="mkpk-tt-allowed-svc-a"`,
+		`"allowedList"="mkpk-tt-allowed-svc-b"`,
 	} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("rendered script missing %q:\n%s", want, rendered)
@@ -164,10 +181,10 @@ func TestRenderNotifyTelegramChannel(t *testing.T) {
 		`:if ($mkpkTtNotifyChannel = "telegram")`,
 		`("https://api.telegram.org/bot" . $mkpkTtNotifyBotToken . "/sendMessage")`,
 		`("{\"chat_id\":\"" . $mkpkTtNotifyChatId . "\",\"text\":" . [:serialize $text to=json] . "}")`,
-		`:local notifyChannel "telegram"`,
-		`:local notifyBotToken "123456:AA-bb_CC"`,
-		`:local notifyChatId "-100200300"`,
-		`:global mkpkTtNotifyChannel $notifyChannel`,
+		`"notifyChannel"="telegram"`,
+		`"notifyBotToken"="123456:AA-bb_CC"`,
+		`"notifyChatId"="-100200300"`,
+		`:global mkpkTtNotifyChannel ($c->"notifyChannel")`,
 	} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("rendered script missing %q:\n%s", want, rendered)
@@ -205,9 +222,10 @@ func TestRenderNotifyEmailChannel(t *testing.T) {
 	for _, want := range []string{
 		`:if ($mkpkTtNotifyChannel = "email")`,
 		`/tool e-mail send to=$mkpkTtNotifyEmailTo from=$mkpkTtNotifyEmailFrom server=$mkpkTtNotifyEmailServer`,
-		`:global mkpkTtNotifyEmailServer "smtp.example.com"`,
-		`:global mkpkTtNotifyEmailPort 587`,
-		`:global mkpkTtNotifyEmailTls "starttls"`,
+		`"emailServer"="smtp.example.com"`,
+		`"emailPort"=587`,
+		`"emailTls"="starttls"`,
+		`:global mkpkTtNotifyEmailServer ($c->"emailServer")`,
 	} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("rendered script missing %q:\n%s", want, rendered)

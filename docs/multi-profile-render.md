@@ -38,9 +38,10 @@ Per-client (C = ключ клиента, на сервисе S):
   `"mkpk-tt token prev C"`, `dst-port=<S.token_port>`,
   `src-address-list=mkpk-tt-stage2-S`, `content=<token>`,
   `address-list=mkpk-tt-hit-now-C` / `mkpk-tt-hit-prev-C`;
-- used-marker list: `mkpk-tt-used-C-<bucket>`;
-- poller script: `mkpk-tt-poller-C`;
-- poller scheduler: `mkpk-tt-poller-C` (`interval=1s start-time=startup`).
+- used-marker list: `mkpk-tt-used-C-<bucket>`.
+
+Обработка всех клиентов идёт в одном скрипте `mkpk-tt-poller` (см. ниже), а не
+per-client.
 
 Несколько token-правил на одном token-порту сервиса различаются по `content`
 (разные 128-hex токены), поэтому пакет клиента C попадает только в его hit-list.
@@ -52,35 +53,44 @@ Per-client (C = ключ клиента, на сервисе S):
 Теперь default — `mkpk-tt-allowed-<service>`, поэтому knock клиента открывает
 только NAT его сервиса. Значение по-прежнему можно переопределить в конфиге.
 
-## Почему per-client scheduler, а не общий poller
+## Data-driven poller (один scheduler)
 
-Проверенный на CHR факт: `:return` из скрипта, запущенного через
-`/system script run`, прерывает остаток on-event/родительского списка команд
-(поэтому в single-profile self-remove в `mkpk-tt-install` шёл первым). Из-за
-этого последовательный прогон нескольких pollers, каждый со своими early
-`:return 0`, обрывался бы после первого.
+Обработка всех профилей идёт в одном скрипте `mkpk-tt-poller` с одним
+scheduler-ом `interval=1s`. Устройство:
 
-Решение: у каждого клиента собственный poller-скрипт и собственный scheduler
-`interval=1s`. Каждый `mkpk-tt-poller-C` — это почти дословная копия уже
-проверенного single-profile poller, специализированная под C (свои имена
-hit/used-списков, comment token-правил, инлайновые значения профиля). Это
-минимизирует риск RouterOS-семантики (никакой новой control-flow-логики), ценой
-N планировщиков по 1с. Для «нескольких roaming клиентов» это приемлемо; при
-масштабировании на многие десятки клиентов стоит вернуться к data-driven poller.
+- Таблица клиентов — RouterOS array-of-arrays (по одному associative-array на
+  клиента, ключи в кавычках: `{"key"="c1"; "service"="svca"; "psk"="..."; ...}`).
+  Строится один раз и кэшируется в global `mkpkTtClients` (пересборка литерала
+  каждый тик доминировала бы по CPU); сбрасывается при (re)import и теряется при
+  reboot, после чего poller строит её заново.
+- Логика вынесена в две `do={}`-функции: `refreshTokens` (пересчёт now/prev
+  token и запись в firewall rule) и `processHits` (перенос observed src в
+  allowed, used-marker, notify). Ранее это был проверенный single-profile poller.
+- **Bucket-cache**: `refreshTokens` вызывается по всем клиентам только когда
+  сменился bucket (global `mkpkTtBucket`), то есть раз в `bucket_seconds`, а не
+  каждую секунду. Это убирает per-second `sha512`-пересчёт.
+- **Hot-path guard**: каждую секунду делается один regex-find
+  `list~"^mkpk-tt-hit-"`; per-client `processHits` запускается только если
+  хоть один hit есть (редкий случай). В простое per-tick стоимость ~константна
+  независимо от N.
 
-Значения профиля (`service`, `client_id`, `psk`, `token_port`, `allowed_list`,
-таймауты, notify) инлайнятся как `:local` прямо в `mkpk-tt-poller-C`. Отдельный
-per-client profile-скрипт не используется: RouterOS globals глобальны по имени,
-и разделяемые имена секретов между профилями были бы хрупкими.
+Почему функции, а не отдельные скрипты: проверено на CHR, что `:return` из
+скрипта, запущенного через `/system script run`, прерывает остаток списка команд
+вызывающего. `:return` внутри `:foreach` завершил бы весь poller. А `:return`
+внутри `do={}`-функции завершает только функцию — поэтому ранние выходы
+(`hitCount=0`, `used`, collision) сохраняются, а `:foreach` продолжает по
+остальным клиентам. Проверено также: `do={}`-функция может писать в global,
+видимый отдельно запускаемому `mkpk-tt-notify`.
 
 ## Startup / install / fail-closed
 
 - `mkpk-tt-startup`: переводит все token-правила (`comment~"^mkpk-tt token "`) в
   `disabled=yes` + invalid content, чистит все hit-списки
-  (`list~"^mkpk-tt-hit-"`), затем запускает `mkpk-tt-apply-service`. Pollers НЕ
-  запускает (иначе снова проблема `:return`-цепочки).
-- Каждый `mkpk-tt-poller-C` (scheduler `interval=1s`) в течение ~1с сам
-  пересчитывает и включает свои token-правила. До этого — fail-closed.
+  (`list~"^mkpk-tt-hit-"`), сбрасывает global `mkpkTtBucket=0`, затем запускает
+  `mkpk-tt-apply-service`.
+- `mkpk-tt-poller` (scheduler `interval=1s`) на следующем тике видит, что
+  `nowBucket != mkpkTtBucket`, и через `refreshTokens` пересчитывает и включает
+  token-правила. До этого — fail-closed.
 - `mkpk-tt-install` (one-shot): сначала удаляет себя, затем запускает
   `mkpk-tt-startup`. Обеспечивает init без reboot после import.
 - `mkpk-tt-apply-service`: прямолинейный скрипт, для каждого сервиса создаёт или
@@ -94,7 +104,11 @@ per-client profile-скрипт не используется: RouterOS globals 
 /ip firewall filter remove [find where comment~"^mkpk-tt "]
 /ip firewall nat remove [find where comment~"^mkpk-tt "]
 /ip firewall address-list remove [find where list~"^mkpk-tt-"]
+/system script environment remove [find where name~"^mkpkTt"]
 ```
+
+Последняя строка сбрасывает mkpk globals (в т.ч. кэш `mkpkTtClients` и
+`mkpkTtBucket`), чтобы re-import не переиспользовал устаревшие данные профилей.
 
 Полный re-render всегда пересоздаёт весь `mkpk-tt-*` слой; частичное обновление
 отдельного профиля пока не поддерживается.
@@ -104,20 +118,23 @@ per-client profile-скрипт не используется: RouterOS globals 
 Проверено на CHR ROUTER-A (RouterOS 7.23.2) конфигом с 2 services (`svca`, `svcb`)
 и 2 clients (`ca`→svca, `cb`→svcb):
 
-- import создал ожидаемые объекты: 5 scripts (apply-service, notify, poller-ca,
-  poller-cb, startup), 3 scheduler (startup + 2 poller; install self-removed),
-  8 filter rules (4 stage + 4 token), 2 NAT;
-- **per-client pollers срабатывают после import без reboot** и заполняют token
-  content актуальными 128-hex токенами (главный риск дизайна снят);
-- RouterOS-side `sha512` совпал с client-side Go токеном для per-client формулы;
+Data-driven poller проверен на CHR конфигом с 20 клиентами (2 services) и
+функционально с 2 services / 2 clients:
+
+- import создал ожидаемые объекты: **4 scripts** (apply-service, notify, poller,
+  startup) и **2 scheduler** (startup + poller; install self-removed) независимо
+  от N; 2×N token rules, 2×N stage-lists по числу сервисов;
+- **poller срабатывает после import без reboot** и через bucket-cache refresh
+  заполняет token content актуальными 128-hex токенами (для 20 клиентов — все
+  40 token rules `disabled=no`); главный риск дизайна снят;
+- RouterOS-side `sha512` совпал с client-side Go токеном;
 - end-to-end knock (`stage1 -> stage2 -> token -> poller -> allowed`) сработал:
-  observed source IP попал в `mkpk-tt-allowed-svca` с корректным comment;
-- **per-service изоляция allowed-list подтверждена**: knock `ca` открыл только
-  `mkpk-tt-allowed-svca`, `mkpk-tt-allowed-svcb` остался пуст; knock `cb` открыл
-  только svcb; оба клиента работают независимо;
-- per-client used-marker и replay-путь работают: повторный knock в том же bucket
-  логируется `mkpk-tt replay ignored for <client>; bucket already used` и не
-  переоткрывает доступ.
+  observed source IP попал в `mkpk-tt-allowed-<svc>` с корректным comment;
+- **per-service изоляция allowed-list подтверждена**: knock клиента на svca открыл
+  только `mkpk-tt-allowed-svca`, svcb остался пуст;
+- used-marker и replay-путь работают через hit-guard: повторный knock в том же
+  bucket логируется `mkpk-tt replay ignored for <client>; bucket already used` и
+  не переоткрывает доступ.
 
 Практическая заметка по окружению: при отправке knock через VPN observed source
 IP может отличаться от «прямого» egress, а из-за variance UDP-потоков коротких
@@ -132,33 +149,27 @@ knock проходил стабильно. Это свойство клиент�
 Измерено на том же CHR (1 CPU, 2GHz, RouterOS 7.23.2), sampling `cpu-load` в одной
 SSH-сессии с `:delay 1s` (чтобы не мерить overhead от per-command SSH):
 
-| Состояние | avg CPU | пик |
-|---|---|---|
-| idle, mkpk не установлен | ~2% | ~5% |
-| 20 clients (20 pollers @1s) | ~26% | ~50% |
-| после удаления pollers | низкие единицы % | — |
+Сначала измерялась прежняя per-client схема (N pollers × N schedulers), затем —
+текущий data-driven poller (1 scheduler). Baseline на CHR шумит и дрейфует, важна
+дельта над baseline той же сессии.
 
-Выводы:
+| Схема (20 clients) | baseline | loaded avg | пик | дельта |
+|---|---|---|---|---|
+| per-client (20 pollers @1s) | ~2% | ~26% | ~50% | ~24% |
+| data-driven (1 poller, hit-guard) | ~9% | ~21% | ~30% | ~12% |
 
-- Per-client poller при `interval=1s` — доминирующая статья расхода CPU и растёт
-  примерно линейно по числу клиентов. ~20 клиентов уже занимают четверть-половину
-  одного CPU этого CHR.
-- Пик ~50% приходится на границу bucket (каждые 30с): все N поллеров одновременно
-  пересчитывают и переписывают `now`/`prev` token rules. Между границами полоса
-  ниже (~15-20% при N=20).
-- Steady-state удаление поллеров возвращает CPU к базовой линии — подтверждает,
-  что источник нагрузки именно они, а не firewall/`content`.
+Также структурно: data-driven даёт **2 scheduler вместо 21**, **4 script вместо
+23**, **~434 строки `.rsc` вместо ~2440** для 20 клиентов.
 
-Рекомендации по масштабированию:
+Что дало выигрыш:
 
-- Для целевого сценария (единицы/низкие десятки roaming-клиентов) текущая схема
-  приемлема.
-- Свыше ~низких десятков клиентов стоит перейти к **одному data-driven poller**
-  (один scheduler, `:foreach` по профилям) — это убирает per-client scheduler
-  overhead и синхронный rollover-burst.
-- Дешёвое смягчение burst без смены архитектуры: разнести poller-и по фазе
-  (разные `start-time`/jitter) или удлинить `interval`, приняв чуть большее replay
-  window.
+- Первая наивная консолидация (один poller, но пересбор client-массива и пересчёт
+  токенов каждый тик) CPU не улучшила — стоимость просто переехала из sha512 в
+  построение литерала.
+- Кэш `mkpkTtClients` (строить массив один раз) + **bucket-cache** (пересчёт
+  токенов только на границе bucket) + **hit-guard** (per-client обход только когда
+  есть hit) — в сумме примерно вдвое снизили дельту CPU и убрали синхронный
+  rollover-burst (пик 50%→30%).
 
 Замечание про `content`-matcher: token rule гейтится `src-address-list=stage2-<svc>`,
 поэтому случайный интернет-шум на token-порт отсекается дешёвой проверкой
@@ -168,6 +179,7 @@ address-list ещё до `content`-сравнения. Полноценный fl
 ## Ограничения / открытые вопросы
 
 - Deterministic-порядок объектов обеспечивается сортировкой ключей.
-- Масштабирование: см. нагрузочный тест выше — линейный рост CPU по числу
-  per-client поллеров; для больших N нужен data-driven poller.
+- Масштабирование: data-driven poller снял per-scheduler overhead и rollover-burst;
+  дельта CPU для 20 клиентов ~12%. Дальнейшее снижение (напр. более редкий refresh,
+  батч-обработка) — по мере необходимости.
 - Flood-тест staged-портов под нагрузкой ещё не выполнен.
