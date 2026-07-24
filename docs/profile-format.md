@@ -72,9 +72,9 @@ Notification hook реализован отдельным script `mkpk-tt-notify
 `allowed_list` entry и удаления `token-hit`. Если notification выключен или webhook падает, allow не
 откатывается; ошибка логируется локально.
 
-Текущий webhook payload является простым form-like `key=value&...` без полноценного URL-encoding. Это
-достаточно для demo values, но production-вариант должен ограничить допустимые символы или добавить
-корректное encoding/JSON-формирование.
+Webhook payload формируется как корректный JSON через `[:serialize {...} to=json]` и отправляется с
+`Content-Type: application/json`. Спецсимволы в значениях экранируются сериализатором, поэтому прежнее
+ограничение сырого `key=value&...` снято.
 
 ## Ограничения
 

@@ -219,9 +219,9 @@ add name="mkpk-tt-notify" policy=read,write,test source={
         :return 0
     }
 
-    :local payload ("router=" . $mkpkTtNotifyRouter . "&service=" . $mkpkTtNotifyService . "&client_id=" . $mkpkTtNotifyClientId . "&src=" . $mkpkTtNotifySrc . "&list=" . $mkpkTtNotifyList . "&ttl=" . $mkpkTtNotifyTtl . "&mode=udp-token&bucket=" . $mkpkTtNotifyBucket . "&time=" . $mkpkTtNotifyTime)
+    :local payload [:serialize {"router"=$mkpkTtNotifyRouter; "service"=$mkpkTtNotifyService; "client_id"=$mkpkTtNotifyClientId; "src"=$mkpkTtNotifySrc; "list"=$mkpkTtNotifyList; "ttl"=$mkpkTtNotifyTtl; "mode"="udp-token"; "bucket"=$mkpkTtNotifyBucket; "time"=$mkpkTtNotifyTime} to=json]
     :do {
-        /tool fetch url=$mkpkTtNotifyUrl http-method=post http-data=$payload keep-result=no
+        /tool fetch url=$mkpkTtNotifyUrl http-method=post http-header-field="Content-Type: application/json" http-data=$payload keep-result=no
     } on-error={
         :log warning ("mkpk-tt notify failed src=" . $mkpkTtNotifySrc . " service=" . $mkpkTtNotifyService)
     }
@@ -315,7 +315,7 @@ add name="mkpk-tt-notify" policy=read,write,test source={
     :global mkpkTtNotifyList $allowedList
     :global mkpkTtNotifyTtl $allowedTimeout
     :global mkpkTtNotifyBucket $selectedBucket
-    :global mkpkTtNotifyTime [:timestamp]
+    :global mkpkTtNotifyTime ([:timestamp] . "")
     /system script run mkpk-tt-notify
     :return 0
 }

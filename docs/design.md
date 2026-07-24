@@ -326,9 +326,12 @@ time=<router timestamp>
 На CHR проверен HTTPS webhook path через `/tool fetch`: direct POST вернул HTTP 200, а успешный knock с
 включенным `mkpkTtNotifyEnabled=true` вызвал `mkpk-tt-notify` без локального `notify failed`.
 
-Ограничение текущего hook: payload собирается как простой `key=value&...` без полноценного URL-encoding.
-Production-вариант должен либо ограничить символы в profile/service/router fields, либо перейти на
-корректно сформированный JSON/form payload.
+Notify payload формируется как корректный JSON через RouterOS `[:serialize {...} to=json]` и
+отправляется с `Content-Type: application/json`. Это снимает прежнее ограничение сырого
+`key=value&...` без экранирования: спецсимволы (`&`, `=`, `"`) в router identity / service / client_id
+экранируются сериализатором. Ключи JSON в array-литерале должны быть в кавычках (`"client_id"=...`),
+иначе RouterOS ломает разбор литерала. Проверено на CHR: POST на `postman-echo.com/post` вернул
+валидный распарсенный JSON, а успешный knock вызвал `mkpk-tt-notify` без `notify failed`.
 
 ## Вопросы реализации
 

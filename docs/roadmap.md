@@ -63,8 +63,11 @@ per-service изоляцией allowed-list. Подтверждено: per-clien
 (`ca`->svca не открывает svcb), per-client used-marker/replay-путь работает. Детали в
 [multi-profile-render.md](multi-profile-render.md).
 
+Notify payload переведён на корректный JSON (`[:serialize ... to=json]`, `Content-Type: application/json`)
+и проверен на CHR — прежнее ограничение сырого `key=value&...` снято.
+
 Следующий полезный шаг: нагрузочный тест `content`/N планировщиков 1с на большем числе клиентов; либо
-переход к оставшимся трекам (notify URL-encoding/JSON, каналы уведомлений, admin/SSH режим).
+переход к оставшимся трекам (каналы уведомлений email/Telegram/syslog, admin/SSH режим).
 
 ## Этап 1: исследование RouterOS
 
@@ -87,6 +90,8 @@ per-service изоляцией allowed-list. Подтверждено: per-clien
 - Проверено: disabled `dst-nat` demo-rule через `src-address-list`.
 - Проверено: notification script `mkpk-tt-notify`.
 - Проверено: webhook notification через `/tool fetch` до внешнего HTTPS endpoint.
+- Реализовано и проверено на CHR: notify payload как корректный JSON через `[:serialize ... to=json]`
+  с `Content-Type: application/json` (снято ограничение сырого `key=value&...`).
 - Добавить logging и comments для address-list entries.
 - Проверено: после reboot scheduler пересчитывает token rules, dynamic `allowed` сбрасывается, post-reboot knock работает.
 - Проверено: persistent profile/client storage через отдельный RouterOS profile script.

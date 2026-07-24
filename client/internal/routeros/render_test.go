@@ -112,6 +112,30 @@ func TestRenderConfigDeterministicOrdering(t *testing.T) {
 	}
 }
 
+func TestRenderNotifyUsesJSONPayload(t *testing.T) {
+	rendered, err := RenderConfig(multiConfig())
+	if err != nil {
+		t.Fatalf("RenderConfig() error = %v", err)
+	}
+
+	if !strings.Contains(rendered, `[:serialize {"router"=$mkpkTtNotifyRouter`) {
+		t.Fatalf("notify payload is not built via :serialize:\n%s", rendered)
+	}
+	// Keys must be quoted; bare underscore/camelCase keys break RouterOS array literals.
+	if !strings.Contains(rendered, `"client_id"=$mkpkTtNotifyClientId`) {
+		t.Fatalf("notify client_id key is not quoted:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, "to=json]") {
+		t.Fatalf("notify payload is not serialized to json:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, `http-header-field="Content-Type: application/json"`) {
+		t.Fatalf("notify fetch does not set json content-type:\n%s", rendered)
+	}
+	if strings.Contains(rendered, `"&service=" . $mkpkTtNotifyService`) {
+		t.Fatalf("notify still uses raw form-encoded concatenation:\n%s", rendered)
+	}
+}
+
 func resolvedConfig(bucketSeconds int64) config.Resolved {
 	cfg := config.Config{
 		Router: config.Router{Name: "test-router", Address: "router.example"},
