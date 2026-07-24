@@ -130,8 +130,13 @@ used_timeout >= 2 * bucket_size
 
 ## Profile storage
 
-Текущий проверенный прототип хранит profile/client параметры в отдельном persistent RouterOS script,
-например `mkpk-tt-profile-demo`. Основной poller запускает этот profile script и получает:
+> Актуально: раскладка ниже описывает ранний single-profile прототип. В текущей реализации параметры
+> конфиг-driven и инлайнятся в client-таблицу единого data-driven poller — см.
+> [multi-profile-render.md](multi-profile-render.md) и [profile-format.md](profile-format.md). Отдельного
+> `mkpk-tt-profile-*` скрипта больше нет.
+
+Ранний проверенный прототип хранил profile/client параметры в отдельном persistent RouterOS script,
+например `mkpk-tt-profile-demo`. Основной poller запускал этот profile script и получал:
 
 - `service`;
 - `client_id`;

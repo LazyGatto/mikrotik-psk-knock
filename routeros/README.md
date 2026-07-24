@@ -12,6 +12,9 @@ go run ./cmd/mkpk-provision routeros render --config testdata/mkpk.yaml --client
 `generated-*.rsc` игнорируются git. Они содержат profile values, включая PSK, и должны считаться
 секретными operational artifacts.
 
+На роутер `.rsc` обычно не копируется вручную, а разворачивается по SSH:
+`mkpk-provision deploy --config mkpk.yaml --user admin` (detect по config-hash, `/import`, verify).
+
 ## Прототипы
 
 - [prototype-stage-token.rsc](prototype-stage-token.rsc) - минимальный end-to-end прототип

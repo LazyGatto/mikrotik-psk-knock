@@ -428,5 +428,6 @@ client CLI/GUI
 - открывается только observed source IP;
 - token/PSK предпочтительно делать per-client;
 - при нескольких `token-hit` за polling interval нельзя открывать все адреса;
-- UDP-token и SSH/Ed25519 modes должны рассматриваться как два поддерживаемых режима;
-- оставшиеся вопросы в основном требуют проверки на живом RouterOS.
+- единственный runtime-режим — client-side UDP-token; SSH используется только для провижининга
+  (`mkpk-provision deploy`). Разделы про Ed25519/SSH/external verifier выше — это ранний brainstorming;
+  вариант «SSH как режим открытия доступа» отклонён (см. решение в open-questions.md).

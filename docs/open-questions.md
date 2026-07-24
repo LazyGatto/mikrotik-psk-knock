@@ -41,13 +41,13 @@ source IP RouterOS не создаст две одинаковые address-list 
 
 Per-profile общий секрет проще, но хуже для аудита и ротации: утечка одного PSK компрометирует всех пользователей профиля.
 
-### Клиент должен поддерживать UDP-token и SSH modes
+### Runtime — только UDP-token; SSH — только провижининг
 
-Статус: решено.
+Статус: решено (уточнено).
 
-UDP-token mode - ROS-only компромисс для окружений без внешнего verifier.
-
-SSH/Ed25519 mode - более строгий режим для окружений, где можно безопасно открыть management path и использовать SSH public-key authentication.
+Единственный runtime-механизм открытия доступа — client-side UDP-token. SSH используется исключительно
+как канал развёртывания (`mkpk-provision deploy`): установка/обновление/снятие mkpk-слоя на роутере. Идея
+«открыть доступ по SSH» как runtime-режим отклонена: если SSH доступен снаружи, сам knock теряет смысл.
 
 ## Требует проверки на RouterOS
 
@@ -110,28 +110,25 @@ resources: 1 CPU, 1GB RAM
 
 - UDP packet с payload `mkpk-token-test` сработал в `input` chain и добавил source IP в address-list;
 - UDP packet с неверным payload не сработал;
-- `content` выглядит пригодным для token-stage.
+- `content` принимает 128-символьный SHA512 hex token (проверено end-to-end).
 
-Остается проверить ограничения длины token и поведение под нагрузкой. `layer7-protocol` пока остается запасным вариантом.
+Открыто: полноценный flood-тест staged-портов под нагрузкой. `layer7-protocol` остаётся запасным вариантом.
 
 ### Обновление firewall rules scheduler-ом
 
-Статус: частично проверено на CHR RouterOS 7.23.2.
+Статус: проверено на CHR RouterOS 7.23.2.
 
-Результат:
-
-- `content` matcher можно менять через SSH/script;
-- после смены на `mkpk-token-updated` старый token не сработал, новый сработал.
-
-Остается проверить регулярное обновление scheduler-ом и схему rules для `now`/`now-1`.
+Data-driven poller (`mkpk-tt-poller`, `interval=1s`) регулярно поддерживает token-правила `now`/`prev`:
+пересчитывает и переписывает `content` на границе bucket (bucket-cache), старый token перестаёт
+работать, новый начинает. Проверено end-to-end.
 
 ### Минимальный scheduler interval
 
-Статус: базово проверено на CHR RouterOS 7.23.2.
+Статус: проверено на CHR RouterOS 7.23.2, включая нагрузку.
 
-Результат: scheduler с `interval=1s` работает. За `:delay 5s` тестовый счетчик увеличился на 4, то есть практически около 1 секунды, но с джиттером/стартовой задержкой.
-
-Остается проверить стабильность под нагрузкой и влияние на CPU.
+`interval=1s` работает (~1с с джиттером). Нагрузочный тест на 20 клиентов: data-driven poller даёт
+дельту CPU ~12% над baseline на 1-CPU CHR (детали и числа — в
+[multi-profile-render.md](multi-profile-render.md)).
 
 Это важно для replay window:
 
@@ -218,72 +215,44 @@ bucket и не добавляет никого в `allowed`.
 - неверный payload не создает token-hit и не открывает доступ;
 - replay/collision политика работает как в статическом прототипе.
 
-Ограничение прототипа: profile values (`service`, `client_id`, `psk`) пока hardcoded demo values внутри
-отдельного persistent profile script. Формат описан в [profile-format.md](profile-format.md).
+Ранее profile values были hardcoded в отдельном persistent profile script; теперь конфиг-driven — см.
+[profile-format.md](profile-format.md) и [multi-profile-render.md](multi-profile-render.md).
 
-### Persistent profile script
+### Хранение параметров профиля
 
-Статус: проверено в time-token прототипе.
+Статус: решено (эволюционировало).
 
-Profile/client параметры вынесены в отдельный persistent script `mkpk-tt-profile-demo`, который задает:
-
-- `service`;
-- `client_id`;
-- `psk`;
-- `token_port`;
-- `allowed_list`;
-- `allowed_timeout`;
-- `used_timeout`.
-
-Poller запускает profile script перед расчетом token. После reboot profile script сохранился, poller
-прочитал значения, пересчитал token rules, и post-reboot knock сработал.
-
-Ограничение: PSK хранится в RouterOS script source. Нужно отдельно определить права RouterOS users/groups,
-ротацию секретов и правила обращения с export/backup.
+Прошло три стадии: hardcoded demo → отдельный persistent `mkpk-tt-profile-demo` (`:global`) →
+**текущее**: значения инлайнятся в client-таблицу единого data-driven poller. Отдельного profile-скрипта
+больше нет. PSK/SMTP-пароли по-прежнему в source RouterOS-скриптов — нужно ограничение прав на чтение
+scripts и аккуратность с export/backup.
 
 ### Производительность `content` и `layer7-protocol`
 
-Статус: требует проверки на тестовом железе.
+Статус: частично проверено.
 
-Проверить CPU impact под:
-
-- случайным интернет-шумом;
-- targeted UDP flood на stage ports;
-- большим количеством неверных payload;
-- нормальным staged flow.
-
-Staged UDP должен снижать нагрузку, потому что token/content проверка применяется только после дешевых stages.
+Нагрузочный тест на 20 клиентов выполнен (CPU-дельта ~12% для data-driven poller, см.
+[multi-profile-render.md](multi-profile-render.md)). Открыто: полноценный flood-тест staged-портов
+(random noise, targeted UDP flood, много неверных payload). Staged UDP должен снижать нагрузку, т.к.
+token/content проверка применяется только после дешёвых stages и гейтится `src-address-list=stage2`.
 
 ### Уведомления
 
-Статус: webhook через `/tool fetch` проверен на CHR, остальные каналы требуют проверки.
+Статус: `webhook`, `telegram`, `email` реализованы и проверены на CHR; `syslog` — открыт.
 
-Проверить каналы:
+- payload — корректный JSON через `[:serialize ... to=json]`, `Content-Type: application/json`;
+- telegram — POST `{chat_id,text}` на Bot API; email — `/tool e-mail send` с inline SMTP-параметрами;
+- graceful degradation: ошибка доставки логируется и не откатывает allow (проверено с неверным
+  токеном/недоступным SMTP);
+- по умолчанию notify выключен.
 
-- `/tool e-mail`;
-- Проверено: `/tool fetch` на webhook;
-- Telegram bot API через HTTPS;
-- remote syslog.
+Открыто: канал remote `syslog` (по сути системный logging action, ортогонально).
 
-Требование: notification failure не должен отменять успешное добавление source IP в allowed list. Ошибка должна логироваться локально.
+### Безопасные права для deploy-пользователя
 
-Проверяемый прототип уже соблюдает это требование структурно: `mkpk-tt-poller` сначала добавляет
-observed source IP в `allowed`, удаляет `token-hit`, затем запускает `mkpk-tt-notify`; ошибка
-`/tool fetch` ловится через `on-error` и остается warning в локальном логе. По умолчанию webhook выключен через
-`mkpkTtNotifyEnabled=false`.
+Статус: открыто (hardening).
 
-Проверка на CHR: прямой `/tool fetch` POST на `https://postman-echo.com/post` вернул HTTP 200. При
-включенном webhook в demo profile успешный knock вызвал `mkpk-tt-notify`, `notify failed` в логе не
-появился.
-
-### Безопасные права для SSH/Ed25519 режима
-
-Статус: требует проверки.
-
-Проверить RouterOS user/group permissions для сценария:
-
-```text
-ssh client -> run конкретный script -> add observed/declared address to address-list
-```
-
-Важно понять, можно ли достаточно ограничить пользователя без OpenSSH-style `ForceCommand`.
+SSH теперь только провижининг (`mkpk-provision deploy`), а не runtime. Открытый вопрос сузился: можно ли
+завести RouterOS user/group с минимальными правами именно под deploy (импорт `.rsc`, управление
+`mkpk-tt-*`), не давая полный админ-доступ и, в частности, чтения секретов из export/scripts. Сейчас
+deploy рассчитан на обычный админ-доступ.

@@ -12,8 +12,8 @@
 - Добавлять успешный `src-address` в firewall address-list с timeout.
 - Держать `dst-nat` правила статическими, но ограниченными через `src-address-list`.
 - Отправлять уведомления при каждом добавлении нового адреса в разрешенный список.
-- В дальнейшем сделать клиентское приложение с CLI и GUI.
-- Отдельно рассмотреть SSH/Ed25519 режим как более строгую криптографическую альтернативу.
+- Сделать клиентское приложение с CLI (далее — локальный веб-UI и десктоп).
+- Провижининг на роутер выполнять по SSH; runtime port-knocking держать полностью на стороне клиента.
 
 ## Базовый поток
 
@@ -33,19 +33,28 @@ MikroTik
 
 ## Статус
 
-Сейчас это проектная заготовка с первично проверенной ROS-only базой на живом CHR: собраны требования, ограничения RouterOS, модель угроз, варианты архитектуры и реестр оставшихся вопросов.
+Рабочая ROS-only реализация с клиентским CLI и SSH-провижинингом; всё проверено end-to-end на живом
+CHR (RouterOS 7.23.2).
 
 Сделано:
 
-- зафиксирован ROS-only дизайн через staged UDP и PSK-derived time-token;
-- добавлена polling-модель `token-hit -> scheduler -> allowed` для сужения replay window;
-- закрыты основные концептуальные вопросы по dynamic/roaming clients, observed source IP и per-client PSK;
-- проверены ключевые RouterOS-примитивы на CHR: `sha512`, time bucket через `:timestamp`, UDP `content`, обновление rule content и scheduler 1s;
-- собран и проверен минимальный RouterOS end-to-end прототип `stage1 -> stage2 -> token-hit -> scheduler -> allowed`;
-- собран и проверен PSK-derived time-token прототип с RouterOS-side `sha512` и token rules для текущего/предыдущего bucket;
-- добавлены и проверены persistent profile script, startup guard, disabled `dst-nat` demo-rule и notification hook.
+- зафиксирован ROS-only дизайн через staged UDP и PSK-derived time-token; polling-модель
+  `token-hit -> poller -> allowed` для сужения replay window;
+- проверены на CHR ключевые RouterOS-примитивы: `sha512`, time bucket через `:timestamp`, UDP `content`,
+  обновление rule content, scheduler 1s, reboot-survival, startup guard;
+- **клиент** (Go): `mkpk` (runtime — `knock`, `check`) и `mkpk-provision` (admin — `secret`, `config`,
+  `profile`, `service`, `client`, `token`, `routeros render`, `deploy`);
+- **multi-profile render**: все services/clients в per-profile RouterOS-объекты с per-service изоляцией
+  `allowed`-list;
+- **data-driven poller**: один скрипт + один scheduler на все профили (вместо N), с кэшем и hit-guard;
+- **уведомления**: каналы `webhook`, `telegram`, `email` с graceful degradation;
+- **SSH-провижининг**: `mkpk-provision deploy` ставит/обновляет/снимает mkpk-слой по SSH с detect по
+  config-hash и verify;
+- фиксация used-marker `used_timeout >= 2*bucket_seconds`, валидация конфига (PSK-alphabet, имена, порты,
+  таймауты).
 
-Ближайший следующий шаг: перейти к клиентскому CLI и вынести ручной token helper в повторяемую команду.
+Следующий шаг: локальный веб-UI поверх deploy-ядра, затем упаковка в десктоп (Wails). План — в
+[docs/roadmap.md](docs/roadmap.md).
 
 ## Документы
 
@@ -53,7 +62,8 @@ MikroTik
 - [docs/design.md](docs/design.md) - первичный дизайн ROS-only решения.
 - [docs/threat-model.md](docs/threat-model.md) - модель угроз и ограничения.
 - [docs/open-questions.md](docs/open-questions.md) - открытые вопросы и принятые концептуальные решения.
-- [docs/profile-format.md](docs/profile-format.md) - текущий формат persistent RouterOS profile script.
-- [docs/multi-profile-render.md](docs/multi-profile-render.md) - схема multi-profile RouterOS render.
+- [docs/profile-format.md](docs/profile-format.md) - справочник полей конфига (service/client/notify/nat).
+- [docs/multi-profile-render.md](docs/multi-profile-render.md) - схема multi-profile render и data-driven poller.
 - [docs/roadmap.md](docs/roadmap.md) - план дальнейшей работы.
+- [client/README.md](client/README.md) - CLI, provisioning и deploy по SSH.
 - [agent/instructions.md](agent/instructions.md) - инструкции для будущего агента/разработчика.

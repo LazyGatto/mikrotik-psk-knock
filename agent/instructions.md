@@ -28,20 +28,16 @@ PSK time-token gated port opening for RouterOS
 - Не привязывать основной token к source IP, если это требует заранее известных адресов.
 - Для ROS-only replay mitigation рассматривать token-hit address-list и scheduler polling около 1s.
 - При нескольких hits одного token/bucket за polling interval не разрешать все адреса.
-- SSH/Ed25519 рассматривать как отдельный более строгий режим, а не смешивать с UDP-token без verifier.
+- SSH — только канал провижининга (`mkpk-provision deploy`), не runtime-режим открытия доступа.
+- Изменения в RouterOS-логике проверять на живом CHR перед фиксацией (RouterOS-семантика часто
+  неочевидна: `:return`-цепочки, single-element arrays, `:serialize` ключи, scp vs sftp и т.п.).
 
-## Перед имплементацией
+## Возможности RouterOS (проверены на CHR)
 
-Сначала проверить реальные возможности RouterOS:
-
-- `:convert` синтаксис и output для `sha512`;
-- получение time bucket;
-- firewall `content` matching по UDP payload;
-- обновление firewall rules scheduler-ом;
-- polling token-hit address-list с interval около 1s;
-- возможность надежно определить первый dynamic address-list entry;
-- производительность matcher-ов;
-- notification channels.
+Ключевые примитивы уже подтверждены: `:convert sha512`, time bucket (`:timestamp`), firewall `content`
+по UDP payload, регулярное обновление rules poller-ом, scheduler `interval=1s` (в т.ч. под нагрузкой),
+`do={}`-функции с `:return`, `:foreach` по массиву массивов, `:serialize ... to=json`, scp + `/import`,
+persistent-маркер для detect. Для нового RouterOS-поведения — сначала разведка на живом CHR.
 
 ## Документация
 
@@ -49,5 +45,7 @@ PSK time-token gated port opening for RouterOS
 
 - `docs/context.md` для решений и новых фактов;
 - `docs/design.md` для архитектуры;
+- `docs/multi-profile-render.md` для render/poller-раскладки;
 - `docs/threat-model.md` для security caveats;
+- `docs/open-questions.md` для статусов вопросов;
 - `docs/roadmap.md` для статуса работ.

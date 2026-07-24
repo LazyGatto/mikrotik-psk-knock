@@ -19,8 +19,8 @@ Runtime-доступ roaming клиента выполняется из unsafe �
 RouterOS и не должен полагаться на обратный management channel. Он отправляет только staged UDP knock и
 PSK-derived time-token; RouterOS открывает только observed source IP на короткий timeout.
 
-Break-glass/admin mode через SSH/API допустим как отдельный осознанный режим из safe среды, но не является
-частью основной security-модели stealth UDP-token flow.
+SSH используется только для провижининга (`mkpk-provision deploy`: install/update/uninstall mkpk-слоя) из
+safe среды. Runtime-режима открытия доступа по SSH нет — это не часть основной security-модели.
 
 ## Защищает от
 
@@ -30,6 +30,8 @@ Break-glass/admin mode через SSH/API допустим как отдельн
 - открытия доступа без знания PSK;
 - повторного использования старых токенов после истечения time bucket;
 - повторного использования уже принятого token/bucket после scheduler пометки `used`;
+- cross-service доступа: knock одного клиента открывает только `allowed`-list его сервиса (per-service
+  изоляция), а не NAT остальных сервисов;
 - незаметного открытия доступа, если включены уведомления.
 
 ## Не защищает полностью от
@@ -39,6 +41,8 @@ Break-glass/admin mode через SSH/API допустим как отдельн
   тот же polling interval, заставив RouterOS fail-closed сжечь bucket без открытия доступа;
 - активного MITM в момент knock;
 - компрометации клиента и утечки PSK;
+- компрометации машины оператора или SSH-доступа для провижининга (несёт PSK/SMTP-секреты и управляет
+  роутером);
 - компрометации MikroTik и чтения scripts/secrets;
 - DoS по UDP/firewall matcher;
 - ошибок конфигурации NAT/firewall.
