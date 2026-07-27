@@ -87,6 +87,47 @@ pre {
   overflow-x: auto;
   max-height: 340px;
 }
+.routerbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
+  flex-wrap: wrap;
+}
+.routerbar label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.spacer { flex: 1; }
+.inlineform { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+button.ghost { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+.badge { display: inline-block; background: #0d0f14; border: 1px solid var(--line); border-radius: 5px; padding: 1px 7px; font-size: 12px; font-family: ui-monospace, monospace; }
+.checkboxes { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; }
+.addbox { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.addbox summary { cursor: pointer; color: var(--accent); font-size: 13px; }
+.addbox .form { margin-top: 12px; }
+tr.off td { opacity: 0.5; }
+pre.wrap { white-space: pre-wrap; word-break: break-all; max-height: 300px; }
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
+}
+.modal-box {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 20px;
+  width: min(560px, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.modal-box h3 { margin: 0; font-size: 15px; }
+.modal-box textarea { background: #0d0f14; border: 1px solid var(--line); border-radius: 6px; color: var(--fg); padding: 10px; resize: vertical; }
 .toast {
   position: fixed;
   right: 20px;

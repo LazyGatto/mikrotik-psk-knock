@@ -203,23 +203,24 @@ safe-env). Терминология: роутер / сервис / юзер; т�
 
 Фазы (бэкенд-first, как с admin-ядром; каждый ROS-затрагивающий шаг — ре-верификация на CHR):
 
-**Фаза A — модель данных и ядро:**
-- `config`: `Config` → `routers` map (per-router `address`/`defaults`/`services`/`clients`); router-scoped
-  `Load`/`Validate`/`Resolve`; **config-hash per-router**.
-- `client.service` → `client.services[]`; рендер разворачивает пары (юзер×сервис), имена
-  `mkpk-tt-*-<user>-<service>`; `service.enabled` (рендер пропускает выключенные).
-- `admin`-ядро: операции router-scoped; тоггл сервиса; remove с проверкой ссылок.
-- Ре-верификация multi-service рендера на CHR (несколько сервисов у одного юзера, изоляция, hit/used).
+**Фаза A — модель данных и ядро — СДЕЛАНО, проверено на CHR:**
+- `config`: `Config` → `routers` map; router-scoped `Load`/`Validate`/`Resolve`; per-router hash.
+- `client.services[]`; рендер разворачивает пары (юзер×сервис), имена `mkpk-tt-*-<user>-<service>`;
+  `service.disabled` (рендер пропускает).
+- `admin`-ядро router-scoped; тоггл сервиса; remove с проверкой ссылок.
+- CHR: один юзер на двух сервисах, изоляция, router-scoped deploy.
 
-**Фаза B — раздача и клиент:**
-- `admin.ExportUser` → invite-blob (base64 мини-JSON) + CLI-команда экспорта.
-- Клиент: декод блоба → минимальный in-memory конфиг → переиспользование `mkpk knock` / `mkpk check`;
-  `mkpk knock --service`.
+**Фаза B — раздача и клиент — СДЕЛАНО, проверено на CHR:**
+- `internal/invite` (Blob + Encode/Decode base64url + ToRouter); `admin.ExportUser`;
+  `mkpk-provision export`; `mkpk knock/check --invite`.
+- CHR: knock через `--invite`-блоб открыл нужный сервис; unit-тест — токен из блоба == токен из конфига.
 
-**Фаза C — веб-UI по разделам:**
-- Разделы: Роутеры (список, detect/status) → drill-in → Сервисы / Юзеры.
-- Тоггл сервиса вкл/выкл; чекбоксы юзер×сервис; кнопка экспорта invite-blob per-user.
-- Фикс горизонтального скролла в рендере (ограничить блок, перенос/`max-height`).
+**Фаза C — веб-UI по разделам — СДЕЛАНО (backend/API проверены live; UI визуально — на тестировании):**
+- API: `/api/router` (add/remove), `/api/service/enable` (тоггл), `/api/export` (invite-blob); все
+  мутации router-scoped.
+- Фронтенд переписан: селектор роутера, per-router разделы Сервисы (тоггл/удаление) и Юзеры
+  (чекбоксы сервисов, кнопка invite → модалка с blob/copy/download), render (перенос строк, `max-height`),
+  deploy per-router.
 
 **Фаза D — позже:**
 - Клиентский GUI (список портов, open/closed через `check`, стук), поверх `mkpk`.

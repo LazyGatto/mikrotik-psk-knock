@@ -1,6 +1,9 @@
 const TOKEN = window.MKPK_TOKEN;
 const el = (id) => document.getElementById(id);
 
+let summary = { routers: [] };
+let current = "";
+
 async function api(method, path, body) {
   const opts = { method, headers: { "X-MKPK-Token": TOKEN } };
   if (body !== undefined) {
@@ -28,33 +31,50 @@ function toast(msg, isErr) {
   toastTimer = setTimeout(() => t.classList.add("hidden"), 4000);
 }
 
-function fillSelect(sel, values, firstLabel) {
-  const cur = sel.value;
-  sel.innerHTML = "";
-  if (firstLabel !== undefined) sel.append(new Option(firstLabel, ""));
-  values.forEach((v) => sel.append(new Option(v, v)));
-  if ([...sel.options].some((o) => o.value === cur)) sel.value = cur;
-}
-
 function td(html) {
   const c = document.createElement("td");
-  c.innerHTML = html;
+  if (html !== undefined) c.innerHTML = html;
   return c;
 }
 
-function renderConfig(data) {
-  const s = data.summary;
-  el("cfg-path").textContent = data.path;
-  el("cfg-hash").textContent = (data.hash || "").slice(0, 16);
-  el("router-line").textContent = `router: ${s.router.name || "—"} @ ${s.router.address || "—"}`;
-  const d = s.defaults;
-  el("defaults-line").textContent = `bucket=${d.bucket_seconds}s stage=${d.stage_timeout} hit=${d.token_hit_timeout} allowed=${d.allowed_timeout} used=${d.used_timeout}`;
+function routerObj() {
+  return summary.routers.find((r) => r.name === current);
+}
 
-  const st = el("services").querySelector("tbody");
-  st.innerHTML = "";
-  (s.services || []).forEach((svc) => {
+function applyConfig(data) {
+  el("cfg-path").textContent = data.path;
+  summary = data.summary || { routers: [] };
+  const names = summary.routers.map((r) => r.name);
+  if (!names.includes(current)) current = names[0] || "";
+  const sel = el("router-select");
+  sel.innerHTML = "";
+  names.forEach((n) => sel.append(new Option(n, n)));
+  sel.value = current;
+  render();
+}
+
+function render() {
+  const r = routerObj();
+  el("router-meta").textContent = r ? `${r.address} · ${(r.hash || "").slice(0, 12)}` : "no routers";
+  renderServices(r);
+  renderUsers(r);
+}
+
+function renderServices(r) {
+  const tb = el("services").querySelector("tbody");
+  tb.innerHTML = "";
+  (r?.services || []).forEach((svc) => {
     const tr = document.createElement("tr");
+    if (!svc.enabled) tr.className = "off";
+    const onCell = td();
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = svc.enabled;
+    cb.title = "enabled";
+    cb.onchange = () => toggleService(svc.name, cb.checked);
+    onCell.append(cb);
     tr.append(
+      onCell,
       td(`<span class="mono">${svc.name}</span>`),
       td(`<span class="mono">${svc.stage1_port}/${svc.stage2_port}/${svc.token_port}</span>`),
       td(`<span class="mono">${svc.allowed_list}</span>`),
@@ -64,93 +84,133 @@ function renderConfig(data) {
     const rm = document.createElement("button");
     rm.textContent = "✕";
     rm.className = "danger small";
-    rm.onclick = () => del("service", svc.name);
-    const c = document.createElement("td");
+    rm.onclick = () => delService(svc.name);
+    const c = td();
     c.append(rm);
     tr.append(c);
-    st.append(tr);
+    tb.append(tr);
   });
 
-  const ct = el("clients").querySelector("tbody");
-  ct.innerHTML = "";
-  (s.clients || []).forEach((cl) => {
+  const box = el("usr-services");
+  box.innerHTML = "";
+  (r?.services || []).forEach((svc) => {
+    const lab = document.createElement("label");
+    lab.className = "inline";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.value = svc.name;
+    lab.append(cb, document.createTextNode(" " + svc.name));
+    box.append(lab);
+  });
+}
+
+function renderUsers(r) {
+  const tb = el("users").querySelector("tbody");
+  tb.innerHTML = "";
+  (r?.clients || []).forEach((cl) => {
     const tr = document.createElement("tr");
+    const svcBadges = (cl.services || []).map((s) => `<span class="badge">${s}</span>`).join(" ") || "—";
     tr.append(
       td(`<span class="mono">${cl.name}</span>`),
       td(`<span class="mono">${cl.client_id}</span>`),
-      td(`<span class="mono">${cl.service}</span>`),
-      td(cl.psk_set ? "set" : "—"),
+      td(svcBadges),
     );
+    const exp = document.createElement("button");
+    exp.textContent = "invite";
+    exp.className = "small";
+    exp.onclick = () => exportUser(cl.name);
     const rm = document.createElement("button");
     rm.textContent = "✕";
     rm.className = "danger small";
-    rm.onclick = () => del("client", cl.name);
-    const c = document.createElement("td");
-    c.append(rm);
+    rm.onclick = () => delUser(cl.name);
+    const c = td();
+    c.append(exp, document.createTextNode(" "), rm);
     tr.append(c);
-    ct.append(tr);
+    tb.append(tr);
   });
-
-  fillSelect(el("cli-service"), (s.services || []).map((x) => x.name));
-  fillSelect(el("render-client"), (s.clients || []).map((x) => x.name), "all clients");
 }
 
 async function load() {
   try {
-    renderConfig(await api("GET", "/api/config"));
+    applyConfig(await api("GET", "/api/config"));
   } catch (e) {
     toast(e.message, true);
   }
 }
 
-async function del(kind, name) {
-  if (!confirm(`remove ${kind} ${name}?`)) return;
+// --- router bar ---
+el("router-select").addEventListener("change", (e) => {
+  current = e.target.value;
+  render();
+});
+el("add-router-btn").onclick = () => el("add-router-form").classList.remove("hidden");
+el("add-router-cancel").onclick = () => el("add-router-form").classList.add("hidden");
+el("add-router-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const g = (n) => e.target.elements[n];
   try {
-    renderConfig(await api("DELETE", `/api/${kind}?name=` + encodeURIComponent(name)));
-    toast(`${kind} removed`);
+    current = g("name").value.trim();
+    applyConfig(await api("POST", "/api/router", { name: current, address: g("address").value.trim() }));
+    e.target.reset();
+    e.target.classList.add("hidden");
+    toast("router added");
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+el("del-router-btn").onclick = async () => {
+  if (!current || !confirm(`remove router ${current} (and its services/users)?`)) return;
+  try {
+    applyConfig(await api("DELETE", "/api/router?name=" + encodeURIComponent(current)));
+    toast("router removed");
+  } catch (e) {
+    toast(e.message, true);
+  }
+};
+
+// --- services ---
+async function toggleService(name, enabled) {
+  try {
+    applyConfig(await api("POST", "/api/service/enable", { router: current, name, enabled }));
+  } catch (e) {
+    toast(e.message, true);
+    render();
+  }
+}
+async function delService(name) {
+  if (!confirm(`remove service ${name}?`)) return;
+  try {
+    applyConfig(await api("DELETE", `/api/service?router=${encodeURIComponent(current)}&name=${encodeURIComponent(name)}`));
+    toast("service removed");
   } catch (e) {
     toast(e.message, true);
   }
 }
-
 function syncNotify() {
   const ch = el("notify-channel").value;
   document.querySelectorAll(".notify-fields").forEach((f) => f.classList.toggle("hidden", f.dataset.channel !== ch));
 }
-
+el("notify-channel").addEventListener("change", syncNotify);
 el("svc-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const g = (n) => e.target.elements[n];
   const body = {
+    router: current,
     name: g("name").value.trim(),
     stage1_port: +g("stage1_port").value,
     stage2_port: +g("stage2_port").value,
     token_port: +g("token_port").value,
-    allowed_list: g("allowed_list").value.trim(),
-    nat: {
-      enabled: g("nat_enabled").checked,
-      dst_port: +g("nat_dst_port").value,
-      to_address: g("nat_to_address").value.trim(),
-      to_port: +g("nat_to_port").value,
-    },
+    nat: { enabled: g("nat_enabled").checked, dst_port: +g("nat_dst_port").value, to_address: g("nat_to_address").value.trim(), to_port: +g("nat_to_port").value },
     notify: {
       enabled: g("notify_enabled").checked,
       channel: g("notify_channel").value,
       url: g("notify_url").value.trim(),
       telegram: { bot_token: g("tg_bot_token").value.trim(), chat_id: g("tg_chat_id").value.trim() },
-      email: {
-        to: g("email_to").value.trim(),
-        from: g("email_from").value.trim(),
-        server: g("email_server").value.trim(),
-        port: +g("email_port").value || 0,
-        tls: g("email_tls").value.trim(),
-        user: g("email_user").value.trim(),
-        password: g("email_password").value,
-      },
+      email: { to: g("email_to").value.trim(), from: g("email_from").value.trim(), server: g("email_server").value.trim(), port: +g("email_port").value || 0, tls: g("email_tls").value.trim(), user: g("email_user").value.trim(), password: g("email_password").value },
     },
   };
   try {
-    renderConfig(await api("POST", "/api/service", body));
+    applyConfig(await api("POST", "/api/service", body));
     e.target.reset();
     syncNotify();
     toast("service added");
@@ -159,59 +219,90 @@ el("svc-form").addEventListener("submit", async (e) => {
   }
 });
 
-el("cli-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const g = (n) => e.target.elements[n];
-  const body = { name: g("name").value.trim(), service: g("service").value, psk: g("psk").value };
-  try {
-    renderConfig(await api("POST", "/api/client", body));
-    e.target.reset();
-    toast("client added");
-  } catch (err) {
-    toast(err.message, true);
-  }
-});
-
+// --- users ---
 el("gen-psk").onclick = async () => {
   try {
     const d = await api("GET", "/api/secret");
-    el("cli-psk").value = d.secret;
+    el("usr-psk").value = d.secret;
   } catch (e) {
     toast(e.message, true);
   }
 };
-
-el("notify-channel").addEventListener("change", syncNotify);
-
-async function renderRsc() {
-  const client = el("render-client").value;
-  return api("GET", "/api/render" + (client ? "?client=" + encodeURIComponent(client) : ""));
+el("usr-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const g = (n) => e.target.elements[n];
+  const services = [...el("usr-services").querySelectorAll("input:checked")].map((c) => c.value);
+  try {
+    applyConfig(await api("POST", "/api/client", { router: current, name: g("name").value.trim(), services, psk: g("psk").value }));
+    e.target.reset();
+    toast("user added");
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+async function delUser(name) {
+  if (!confirm(`remove user ${name}?`)) return;
+  try {
+    applyConfig(await api("DELETE", `/api/client?router=${encodeURIComponent(current)}&name=${encodeURIComponent(name)}`));
+    toast("user removed");
+  } catch (e) {
+    toast(e.message, true);
+  }
 }
+async function exportUser(name) {
+  try {
+    const d = await api("GET", `/api/export?router=${encodeURIComponent(current)}&user=${encodeURIComponent(name)}`);
+    el("invite-user").textContent = name;
+    el("invite-blob").value = d.blob;
+    el("invite-modal").dataset.user = name;
+    el("invite-modal").classList.remove("hidden");
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+el("invite-copy").onclick = async () => {
+  try {
+    await navigator.clipboard.writeText(el("invite-blob").value);
+    toast("copied");
+  } catch {
+    el("invite-blob").select();
+    toast("select+copy manually", true);
+  }
+};
+el("invite-download").onclick = () => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([el("invite-blob").value + "\n"], { type: "text/plain" }));
+  a.download = el("invite-modal").dataset.user + ".mkpk";
+  a.click();
+};
+el("invite-close").onclick = () => el("invite-modal").classList.add("hidden");
 
+// --- render ---
 el("render-btn").onclick = async () => {
   try {
-    el("rsc").textContent = await renderRsc();
+    el("rsc").textContent = await api("GET", "/api/render?router=" + encodeURIComponent(current));
     el("rsc").classList.remove("hidden");
   } catch (e) {
     toast(e.message, true);
   }
 };
-
 el("download-btn").onclick = async () => {
   try {
-    const text = await renderRsc();
+    const text = await api("GET", "/api/render?router=" + encodeURIComponent(current));
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
-    a.download = "mkpk.rsc";
+    a.download = current + ".rsc";
     a.click();
   } catch (e) {
     toast(e.message, true);
   }
 };
 
+// --- deploy ---
 function deployBody() {
   const g = (n) => el("deploy-form").elements[n];
   return {
+    router: current,
     address: g("address").value.trim(),
     port: +g("port").value || 22,
     user: g("user").value.trim(),
@@ -223,7 +314,6 @@ function deployBody() {
     dry_run: g("dry_run").checked,
   };
 }
-
 document.querySelectorAll("#deploy-form button[data-action]").forEach((btn) => {
   btn.onclick = async () => {
     const action = btn.dataset.action;
@@ -232,9 +322,7 @@ document.querySelectorAll("#deploy-form button[data-action]").forEach((btn) => {
     out.classList.remove("hidden");
     out.textContent = "… " + action;
     try {
-      const data = await api("POST", "/api/deploy/" + action, deployBody());
-      out.textContent = JSON.stringify(data, null, 2);
-      if (action !== "status") load();
+      out.textContent = JSON.stringify(await api("POST", "/api/deploy/" + action, deployBody()), null, 2);
     } catch (e) {
       out.textContent = "error: " + e.message;
     }

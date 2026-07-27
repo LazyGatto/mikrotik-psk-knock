@@ -36,8 +36,11 @@ func Handler(configPath, token string) http.Handler {
 	mux.HandleFunc("/style.css", s.static("assets/style.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("/api/config", s.auth(s.handleConfig))
 	mux.HandleFunc("/api/secret", s.auth(s.handleSecret))
+	mux.HandleFunc("/api/router", s.auth(s.handleRouter))
 	mux.HandleFunc("/api/service", s.auth(s.handleService))
+	mux.HandleFunc("/api/service/enable", s.auth(s.handleServiceEnable))
 	mux.HandleFunc("/api/client", s.auth(s.handleClient))
+	mux.HandleFunc("/api/export", s.auth(s.handleExport))
 	mux.HandleFunc("/api/render", s.auth(s.handleRender))
 	mux.HandleFunc("/api/deploy/status", s.auth(s.handleDeployStatus))
 	mux.HandleFunc("/api/deploy/apply", s.auth(s.handleDeployApply))
@@ -148,6 +151,90 @@ func (s *Server) handleSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"secret": secret})
+}
+
+type routerReq struct {
+	Name    string `json:"name"`
+	Address string `json:"address"`
+}
+
+func (s *Server) handleRouter(w http.ResponseWriter, r *http.Request) {
+	cfg, err := config.Load(s.configPath)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	switch r.Method {
+	case http.MethodPost:
+		var req routerReq
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json: "+err.Error())
+			return
+		}
+		cfg, err = admin.AddRouter(cfg, req.Name, req.Address)
+	case http.MethodDelete:
+		cfg, err = admin.RemoveRouter(cfg, r.URL.Query().Get("name"))
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := admin.SaveConfig(s.configPath, cfg); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeConfig(w, s.configPath, cfg)
+}
+
+type enableReq struct {
+	Router  string `json:"router"`
+	Name    string `json:"name"`
+	Enabled bool   `json:"enabled"`
+}
+
+func (s *Server) handleServiceEnable(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	cfg, err := config.Load(s.configPath)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var req enableReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json: "+err.Error())
+		return
+	}
+	cfg, err = admin.SetServiceEnabled(cfg, req.Router, req.Name, req.Enabled)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := admin.SaveConfig(s.configPath, cfg); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeConfig(w, s.configPath, cfg)
+}
+
+func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
+	cfg, err := config.Load(s.configPath)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	q := r.URL.Query()
+	blob, err := admin.ExportUser(cfg, q.Get("router"), q.Get("user"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"blob": blob})
 }
 
 type serviceReq struct {

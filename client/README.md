@@ -34,15 +34,30 @@ go run ./cmd/mkpk-provision routeros render --config testdata/mkpk.yaml --client
 go run ./cmd/mkpk-provision deploy status --config mkpk.yaml --user admin
 go run ./cmd/mkpk-provision deploy --config mkpk.yaml --user admin --key ~/.ssh/id_ed25519 [--dry-run] [--force]
 go run ./cmd/mkpk-provision deploy uninstall --config mkpk.yaml --user admin
+go run ./cmd/mkpk-provision export --config mkpk.yaml [--router r1] --user laptop --out laptop.mkpk
 go run ./cmd/mkpk-provision serve --config mkpk.yaml [--addr 127.0.0.1:8765]
+go run ./cmd/mkpk knock --invite @laptop.mkpk --service ssh-home [--check]
 ```
+
+Конфиг теперь мульти-роутерный (`routers:` map; сервисы и юзеры принадлежат роутеру). Admin-команды
+(`service add`, `client add`, `token`, `routeros render`, `deploy`, `export`) принимают `--router`
+(при одном роутере — необязательно). Юзер имеет набор сервисов (`client add --services a,b`), токен
+per-service, поэтому runtime `mkpk knock` берёт `--service`.
+
+## Раздача клиенту: invite-blob
+
+`mkpk-provision export --user <name>` выдаёт компактный base64-блоб с рантайм-конфигом **одного** юзера
+(адрес роутера, его PSK, его сервисы и порты) — не весь админский конфиг. Передавать только в safe-env.
+Клиент запускает `mkpk knock --invite @file.mkpk --service <name>` (или `--invite <blob>`) — без общего
+конфига. Формат — `internal/invite`; модель раздачи — в [../docs/admin-app.md](../docs/admin-app.md).
 
 ## Локальный веб-UI
 
 `mkpk-provision serve` поднимает локальный (только `127.0.0.1`) веб-UI поверх того же ядра
-`internal/admin`, что и CLI. В нём: просмотр и редактирование конфига (add/remove service и client,
-выбор канала notify, генерация PSK), рендер `.rsc` (просмотр/скачивание) и deploy по SSH
-(status/apply/uninstall с dry-run). Ассеты встроены в бинарник (`embed`), внешних зависимостей у фронта нет.
+`internal/admin`, что и CLI. Мульти-роутерный: сверху селектор роутера (add/remove), ниже per-router
+разделы — Сервисы (тоггл вкл/выкл, удаление, форма добавления) и Юзеры (чекбоксы сервисов, генерация
+PSK, кнопка **invite** → модалка с blob/copy/download), плюс render (`.rsc`) и deploy по SSH
+(status/apply/uninstall). Ассеты встроены в бинарник (`embed`), внешних зависимостей у фронта нет.
 
 Безопасность: сервер слушает только loopback; API закрыт per-session токеном, который инжектится в
 страницу (сторонние origin не могут его прочитать), плюс проверка `Host` — защита от DNS-rebinding.

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
@@ -65,6 +66,50 @@ func TestAddServicePersists(t *testing.T) {
 	}
 	if !strings.Contains(rr.Body.String(), `"name":"web"`) {
 		t.Fatalf("response missing new service: %s", rr.Body.String())
+	}
+}
+
+func do(t *testing.T, h http.Handler, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	var rdr *strings.Reader
+	if body != "" {
+		rdr = strings.NewReader(body)
+	}
+	var req *http.Request
+	if rdr != nil {
+		req = httptest.NewRequest(method, path, rdr)
+	} else {
+		req = httptest.NewRequest(method, path, nil)
+	}
+	req.Host = "127.0.0.1:8765"
+	req.Header.Set("X-MKPK-Token", "tok")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+	return rr
+}
+
+func TestRouterAddAndServiceEnableAndExport(t *testing.T) {
+	h := Handler(testConfigPath(t), "tok")
+
+	// add a second router
+	if rr := do(t, h, "POST", "/api/router", `{"name":"r2","address":"10.0.0.2"}`); rr.Code != 200 {
+		t.Fatalf("add router: %d %s", rr.Code, rr.Body.String())
+	}
+
+	// disable the demo service on r1
+	rr := do(t, h, "POST", "/api/service/enable", `{"router":"r1","name":"svc","enabled":false}`)
+	if rr.Code != 200 || !strings.Contains(rr.Body.String(), `"enabled":false`) {
+		t.Fatalf("disable service: %d %s", rr.Code, rr.Body.String())
+	}
+	// re-enable so export has an enabled service
+	if rr := do(t, h, "POST", "/api/service/enable", `{"router":"r1","name":"svc","enabled":true}`); rr.Code != 200 {
+		t.Fatalf("enable service: %d %s", rr.Code, rr.Body.String())
+	}
+
+	// export the demo user's invite blob
+	rr = do(t, h, "GET", "/api/export?router=r1&user=cli", "")
+	if rr.Code != 200 || !strings.Contains(rr.Body.String(), `"blob":`) {
+		t.Fatalf("export: %d %s", rr.Code, rr.Body.String())
 	}
 }
 
