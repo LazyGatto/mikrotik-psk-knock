@@ -97,6 +97,7 @@ func InitConfig(o InitOptions) (config.Config, error) {
 	}
 	router := config.Router{
 		Address:  o.RouterAddress,
+		Notify:   config.Notify{Channel: "webhook"},
 		Defaults: defaultDefaults(),
 		Services: map[string]config.Service{
 			o.ServiceName: {
@@ -104,7 +105,6 @@ func InitConfig(o InitOptions) (config.Config, error) {
 				Stage1Port:  41001, Stage2Port: 41002, TokenPort: 41003,
 				AllowedList: "mkpk-tt-allowed-" + o.ServiceName,
 				Target:      config.Target{Type: config.TargetForward, Protocol: "tcp", Comment: "mkpk-tt target " + o.ServiceName, Port: 2222, ToAddress: "192.0.2.10", ToPort: 22},
-				Notify:      config.Notify{Channel: "webhook"},
 			},
 		},
 	}
@@ -121,17 +121,18 @@ func InitConfig(o InitOptions) (config.Config, error) {
 	}, nil
 }
 
-// RouterOptions describes a router to create or update: its address plus the
-// SSH deploy credentials that live on the router.
+// RouterOptions describes a router to create or update: its address, the SSH
+// deploy credentials, and the per-router notification config.
 type RouterOptions struct {
 	Name    string
 	Address string
 	Deploy  config.Deploy
+	Notify  config.Notify
 }
 
-// SetRouter creates the router when absent (default timeouts, empty services and
-// clients) or updates its address and deploy credentials when present, keeping
-// its services and clients. This is the single add/edit entry point.
+// SetRouter creates the router when absent (default timeouts, empty services) or
+// updates its address, deploy credentials and notification config when present,
+// keeping its services. This is the single add/edit entry point.
 func SetRouter(cfg config.Config, o RouterOptions) (config.Config, error) {
 	if o.Name == "" || o.Address == "" {
 		return cfg, fmt.Errorf("router name and address are required")
@@ -139,6 +140,18 @@ func SetRouter(cfg config.Config, o RouterOptions) (config.Config, error) {
 	if o.Deploy.Port != 0 {
 		if o.Deploy.Port < 1 || o.Deploy.Port > 65535 {
 			return cfg, fmt.Errorf("deploy.port must be between 1 and 65535")
+		}
+	}
+	notify := o.Notify
+	if notify.Channel == "" {
+		notify.Channel = "webhook"
+	}
+	if notify.Channel == "email" {
+		if notify.Email.Port == 0 {
+			notify.Email.Port = 587
+		}
+		if notify.Email.TLS == "" {
+			notify.Email.TLS = "starttls"
 		}
 	}
 	r, ok := cfg.Routers[o.Name]
@@ -150,6 +163,7 @@ func SetRouter(cfg config.Config, o RouterOptions) (config.Config, error) {
 	}
 	r.Address = o.Address
 	r.Deploy = o.Deploy
+	r.Notify = notify
 	return putRouter(cfg, o.Name, r), nil
 }
 
@@ -170,7 +184,7 @@ func RemoveRouter(cfg config.Config, name string) (config.Config, error) {
 }
 
 // ServiceOptions describes a service to add. Zero AllowedList / Target.Comment /
-// Target.Protocol and email port/tls get sensible defaults.
+// Target.Protocol get sensible defaults. Notifications are per router, not here.
 type ServiceOptions struct {
 	Name        string
 	ServiceName string
@@ -180,7 +194,6 @@ type ServiceOptions struct {
 	TokenPort   int
 	AllowedList string
 	Target      config.Target
-	Notify      config.Notify
 	Force       bool
 }
 
@@ -263,18 +276,6 @@ func AddService(cfg config.Config, routerName string, o ServiceOptions) (config.
 	if allowed == "" {
 		allowed = "mkpk-tt-allowed-" + o.Name
 	}
-	notify := o.Notify
-	if notify.Channel == "" {
-		notify.Channel = "webhook"
-	}
-	if notify.Channel == "email" {
-		if notify.Email.Port == 0 {
-			notify.Email.Port = 587
-		}
-		if notify.Email.TLS == "" {
-			notify.Email.TLS = "starttls"
-		}
-	}
 	svc := config.Service{
 		ServiceName: id,
 		Disabled:    o.Disabled,
@@ -283,7 +284,6 @@ func AddService(cfg config.Config, routerName string, o ServiceOptions) (config.
 		TokenPort:   o.TokenPort,
 		AllowedList: allowed,
 		Target:      target,
-		Notify:      notify,
 	}
 	if err := validateService(o.Name, svc); err != nil {
 		return cfg, err
@@ -532,9 +532,27 @@ type RouterSummary struct {
 	Address  string           `json:"address"`
 	Hash     string           `json:"hash"`
 	Deploy   DeploySummary    `json:"deploy"`
+	Notify   NotifySummary    `json:"notify"`
 	Defaults config.Defaults  `json:"defaults"`
 	Services []ServiceSummary `json:"services"`
 	Clients  []ClientSummary  `json:"clients"`
+}
+
+// NotifySummary is a secret-free view of a router's notification config:
+// non-secret fields plus booleans for whether secrets are set.
+type NotifySummary struct {
+	Enabled      bool   `json:"enabled"`
+	Channel      string `json:"channel"`
+	URL          string `json:"url"`
+	TelegramChat string `json:"telegram_chat_id"`
+	BotTokenSet  bool   `json:"bot_token_set"`
+	EmailTo      string `json:"email_to"`
+	EmailFrom    string `json:"email_from"`
+	EmailServer  string `json:"email_server"`
+	EmailPort    int    `json:"email_port"`
+	EmailTLS     string `json:"email_tls"`
+	EmailUser    string `json:"email_user"`
+	EmailPassSet bool   `json:"email_password_set"`
 }
 
 // DeploySummary is a secret-free view of a router's SSH deploy credentials:
@@ -563,8 +581,6 @@ type ServiceSummary struct {
 	TargetPort      int    `json:"target_port"`
 	TargetToAddress string `json:"target_to_address"`
 	TargetToPort    int    `json:"target_to_port"`
-	NotifyEnabled   bool   `json:"notify_enabled"`
-	NotifyChannel   string `json:"notify_channel"`
 }
 
 type ClientSummary struct {
@@ -579,7 +595,7 @@ func Summarize(cfg config.Config) Summary {
 	var s Summary
 	for _, rn := range sortedKeys(cfg.Routers) {
 		r := cfg.Routers[rn]
-		rs := RouterSummary{Name: rn, Address: r.Address, Hash: cfg.RouterHash(rn), Deploy: deploySummary(r), Defaults: r.Defaults}
+		rs := RouterSummary{Name: rn, Address: r.Address, Hash: cfg.RouterHash(rn), Deploy: deploySummary(r), Notify: notifySummary(r.Notify), Defaults: r.Defaults}
 		for _, name := range sortedKeys(r.Services) {
 			svc := r.Services[name]
 			rs.Services = append(rs.Services, ServiceSummary{
@@ -595,8 +611,6 @@ func Summarize(cfg config.Config) Summary {
 				TargetPort:      svc.Target.Port,
 				TargetToAddress: svc.Target.ToAddress,
 				TargetToPort:    svc.Target.ToPort,
-				NotifyEnabled:   svc.Notify.Enabled,
-				NotifyChannel:   svc.Notify.Channel,
 			})
 		}
 		for _, un := range sortedKeys(cfg.Users) {
@@ -621,6 +635,23 @@ func Summarize(cfg config.Config) Summary {
 		s.Users = append(s.Users, us)
 	}
 	return s
+}
+
+func notifySummary(n config.Notify) NotifySummary {
+	return NotifySummary{
+		Enabled:      n.Enabled,
+		Channel:      n.Channel,
+		URL:          n.URL,
+		TelegramChat: n.Telegram.ChatID,
+		BotTokenSet:  n.Telegram.BotToken != "",
+		EmailTo:      n.Email.To,
+		EmailFrom:    n.Email.From,
+		EmailServer:  n.Email.Server,
+		EmailPort:    n.Email.Port,
+		EmailTLS:     n.Email.TLS,
+		EmailUser:    n.Email.User,
+		EmailPassSet: n.Email.Password != "",
+	}
 }
 
 func deploySummary(r config.Router) DeploySummary {

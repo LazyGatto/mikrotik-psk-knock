@@ -177,14 +177,15 @@ func (s *Server) handlePortsSuggest(w http.ResponseWriter, r *http.Request) {
 }
 
 type routerReq struct {
-	Name     string `json:"name"`
-	Address  string `json:"address"`
-	Port     int    `json:"port"`
-	User     string `json:"user"`
-	KeyPath  string `json:"key_path"`
-	KeyPass  string `json:"key_pass"`
-	UseAgent bool   `json:"use_agent"`
-	Password string `json:"password"`
+	Name     string        `json:"name"`
+	Address  string        `json:"address"`
+	Port     int           `json:"port"`
+	User     string        `json:"user"`
+	KeyPath  string        `json:"key_path"`
+	KeyPass  string        `json:"key_pass"`
+	UseAgent bool          `json:"use_agent"`
+	Password string        `json:"password"`
+	Notify   config.Notify `json:"notify"`
 }
 
 func (s *Server) handleRouter(w http.ResponseWriter, r *http.Request) {
@@ -204,6 +205,7 @@ func (s *Server) handleRouter(w http.ResponseWriter, r *http.Request) {
 			Port: req.Port, User: req.User, KeyPath: req.KeyPath,
 			KeyPass: req.KeyPass, UseAgent: req.UseAgent, Password: req.Password,
 		}
+		notify := req.Notify
 		// Secrets are never sent to the browser, so a blank secret on edit means
 		// "keep the stored one" rather than "clear it".
 		if existing, ok := cfg.Routers[req.Name]; ok {
@@ -213,8 +215,14 @@ func (s *Server) handleRouter(w http.ResponseWriter, r *http.Request) {
 			if dep.KeyPass == "" {
 				dep.KeyPass = existing.Deploy.KeyPass
 			}
+			if notify.Telegram.BotToken == "" {
+				notify.Telegram.BotToken = existing.Notify.Telegram.BotToken
+			}
+			if notify.Email.Password == "" {
+				notify.Email.Password = existing.Notify.Email.Password
+			}
 		}
-		cfg, err = admin.SetRouter(cfg, admin.RouterOptions{Name: req.Name, Address: req.Address, Deploy: dep})
+		cfg, err = admin.SetRouter(cfg, admin.RouterOptions{Name: req.Name, Address: req.Address, Deploy: dep, Notify: notify})
 	case http.MethodDelete:
 		cfg, err = admin.RemoveRouter(cfg, r.URL.Query().Get("name"))
 	default:
@@ -291,7 +299,6 @@ type serviceReq struct {
 	TokenPort   int           `json:"token_port"`
 	AllowedList string        `json:"allowed_list"`
 	Target      config.Target `json:"target"`
-	Notify      config.Notify `json:"notify"`
 	Force       bool          `json:"force"`
 }
 
@@ -311,7 +318,7 @@ func (s *Server) handleService(w http.ResponseWriter, r *http.Request) {
 		cfg, err = admin.AddService(cfg, req.Router, admin.ServiceOptions{
 			Name: req.Name, ServiceName: req.ServiceName, Disabled: req.Disabled,
 			Stage1Port: req.Stage1Port, Stage2Port: req.Stage2Port, TokenPort: req.TokenPort,
-			AllowedList: req.AllowedList, Target: req.Target, Notify: req.Notify, Force: true,
+			AllowedList: req.AllowedList, Target: req.Target, Force: true,
 		})
 	case http.MethodDelete:
 		q := r.URL.Query()

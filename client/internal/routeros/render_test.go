@@ -167,31 +167,22 @@ func TestRenderNotifyUsesJSONPayload(t *testing.T) {
 }
 
 func TestRenderNotifyTelegramChannel(t *testing.T) {
-	r := config.Router{
-		Defaults: config.Defaults{BucketSeconds: 30, StageTimeout: "5s", TokenHitTimeout: "2s", AllowedTimeout: "3m", UsedTimeout: "65s"},
-		Services: map[string]config.Service{
-			"tg": {
-				ServiceName: "tg", Stage1Port: 41001, Stage2Port: 41002, TokenPort: 41003,
-				AllowedList: "mkpk-tt-allowed-tg",
-				Target:      config.Target{Type: config.TargetForward, Protocol: "tcp", Comment: "mkpk-tt target tg", Port: 2222, ToAddress: "192.0.2.10", ToPort: 22},
-				Notify: config.Notify{
-					Enabled: true, Channel: "telegram",
-					Telegram: config.NotifyTelegram{BotToken: "123456:AA-bb_CC", ChatID: "-100200300"},
-				},
-			},
-		},
+	r := multiRouter()
+	r.Notify = config.Notify{
+		Enabled: true, Channel: "telegram",
+		Telegram: config.NotifyTelegram{BotToken: "123456:AA-bb_CC", ChatID: "-100200300"},
 	}
-	clients := []config.RenderClient{{Name: "phone", ClientID: "phone", PSK: "phone-psk", Services: []string{"tg"}}}
-	rendered, err := RenderConfig(r, clients)
+	rendered, err := RenderConfig(r, multiClients())
 	if err != nil {
 		t.Fatalf("RenderConfig() error = %v", err)
 	}
 	for _, want := range []string{
-		`:if ($mkpkTtNotifyChannel = "telegram")`,
-		`("https://api.telegram.org/bot" . $mkpkTtNotifyBotToken . "/sendMessage")`,
-		`"notifyChannel"="telegram"`,
-		`"notifyBotToken"="123456:AA-bb_CC"`,
-		`"notifyChatId"="-100200300"`,
+		`:if ($nChannel = "telegram")`,
+		`("https://api.telegram.org/bot" . $nBotToken . "/sendMessage")`,
+		`:local nChannel "telegram"`,
+		`:local nBotToken "123456:AA-bb_CC"`,
+		`:local nChatId "-100200300"`,
+		`/system script run mkpk-tt-notify`, // wired in processHits when enabled
 	} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("rendered script missing %q:\n%s", want, rendered)
@@ -200,35 +191,39 @@ func TestRenderNotifyTelegramChannel(t *testing.T) {
 }
 
 func TestRenderNotifyEmailChannel(t *testing.T) {
-	r := config.Router{
-		Defaults: config.Defaults{BucketSeconds: 30, StageTimeout: "5s", TokenHitTimeout: "2s", AllowedTimeout: "3m", UsedTimeout: "65s"},
-		Services: map[string]config.Service{
-			"mail": {
-				ServiceName: "mail", Stage1Port: 41001, Stage2Port: 41002, TokenPort: 41003,
-				AllowedList: "mkpk-tt-allowed-mail",
-				Target:      config.Target{Type: config.TargetForward, Protocol: "tcp", Comment: "mkpk-tt target mail", Port: 2222, ToAddress: "192.0.2.10", ToPort: 22},
-				Notify: config.Notify{
-					Enabled: true, Channel: "email",
-					Email: config.NotifyEmail{To: "alerts@example.com", From: "mkpk@example.com", Server: "smtp.example.com", Port: 587, TLS: "starttls", User: "u", Password: "p"},
-				},
-			},
-		},
+	r := multiRouter()
+	r.Notify = config.Notify{
+		Enabled: true, Channel: "email",
+		Email: config.NotifyEmail{To: "alerts@example.com", From: "mkpk@example.com", Server: "smtp.example.com", Port: 587, TLS: "starttls", User: "u", Password: "p"},
 	}
-	clients := []config.RenderClient{{Name: "phone", ClientID: "phone", PSK: "phone-psk", Services: []string{"mail"}}}
-	rendered, err := RenderConfig(r, clients)
+	rendered, err := RenderConfig(r, multiClients())
 	if err != nil {
 		t.Fatalf("RenderConfig() error = %v", err)
 	}
 	for _, want := range []string{
-		`:if ($mkpkTtNotifyChannel = "email")`,
-		`/tool e-mail send to=$mkpkTtNotifyEmailTo from=$mkpkTtNotifyEmailFrom server=$mkpkTtNotifyEmailServer`,
-		`"emailServer"="smtp.example.com"`,
-		`"emailPort"=587`,
-		`"emailTls"="starttls"`,
+		`:if ($nChannel = "email")`,
+		`/tool e-mail send to=$nEmailTo from=$nEmailFrom server=$nEmailServer`,
+		`:local nEmailServer "smtp.example.com"`,
+		`:local nEmailPort 587`,
+		`:local nEmailTls "starttls"`,
 	} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("rendered script missing %q:\n%s", want, rendered)
 		}
+	}
+}
+
+func TestRenderDisabledNotifySkipsRun(t *testing.T) {
+	// multiRouter has no notify; the poller must not wire the notify run.
+	rendered, err := RenderConfig(multiRouter(), multiClients())
+	if err != nil {
+		t.Fatalf("RenderConfig() error = %v", err)
+	}
+	if strings.Contains(rendered, `/system script run mkpk-tt-notify`) {
+		t.Fatalf("notify run should be omitted when notify is disabled:\n%s", rendered)
+	}
+	if !strings.Contains(rendered, `:local nEnabled false`) {
+		t.Fatalf("notify script should bake nEnabled false:\n%s", rendered)
 	}
 }
 

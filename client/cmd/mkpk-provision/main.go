@@ -165,6 +165,18 @@ func routerCmd(args []string) error {
 	sshAgent := fs.Bool("ssh-agent", false, "use ssh-agent for deploy")
 	sshPassword := fs.String("ssh-password", "", "SSH password for deploy (fallback)")
 	sshPort := fs.Int("ssh-port", 0, "SSH port for deploy (default 22)")
+	notifyEnabled := fs.Bool("notify-enabled", false, "enable per-router notifications")
+	notifyChannel := fs.String("notify-channel", "webhook", "notification channel: webhook, telegram or email")
+	notifyURL := fs.String("notify-url", "", "webhook notification URL")
+	notifyTgToken := fs.String("notify-telegram-bot-token", "", "telegram bot token")
+	notifyTgChat := fs.String("notify-telegram-chat-id", "", "telegram chat id")
+	notifyEmailTo := fs.String("notify-email-to", "", "email recipient")
+	notifyEmailFrom := fs.String("notify-email-from", "", "email sender")
+	notifyEmailServer := fs.String("notify-email-server", "", "SMTP server host")
+	notifyEmailPort := fs.Int("notify-email-port", 0, "SMTP port (default 587)")
+	notifyEmailTLS := fs.String("notify-email-tls", "", "SMTP tls: no, yes or starttls (default starttls)")
+	notifyEmailUser := fs.String("notify-email-user", "", "SMTP username")
+	notifyEmailPassword := fs.String("notify-email-password", "", "SMTP password")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -191,6 +203,16 @@ func routerCmd(args []string) error {
 		Port: *sshPort, User: *sshUser, KeyPath: *sshKey,
 		KeyPass: *sshKeyPass, UseAgent: *sshAgent, Password: *sshPassword,
 	}
+	notify := config.Notify{
+		Enabled:  *notifyEnabled,
+		Channel:  *notifyChannel,
+		URL:      *notifyURL,
+		Telegram: config.NotifyTelegram{BotToken: *notifyTgToken, ChatID: *notifyTgChat},
+		Email: config.NotifyEmail{
+			To: *notifyEmailTo, From: *notifyEmailFrom, Server: *notifyEmailServer,
+			Port: *notifyEmailPort, TLS: *notifyEmailTLS, User: *notifyEmailUser, Password: *notifyEmailPassword,
+		},
+	}
 	if existing, ok := cfg.Routers[*name]; ok {
 		if *address == "" {
 			*address = existing.Address
@@ -201,17 +223,23 @@ func routerCmd(args []string) error {
 		if dep.Password == "" {
 			dep.Password = existing.Deploy.Password
 		}
+		if notify.Telegram.BotToken == "" {
+			notify.Telegram.BotToken = existing.Notify.Telegram.BotToken
+		}
+		if notify.Email.Password == "" {
+			notify.Email.Password = existing.Notify.Email.Password
+		}
 	}
-	cfg, err = admin.SetRouter(cfg, admin.RouterOptions{Name: *name, Address: *address, Deploy: dep})
+	cfg, err = admin.SetRouter(cfg, admin.RouterOptions{Name: *name, Address: *address, Deploy: dep, Notify: notify})
 	if err != nil {
 		return err
 	}
 	if err := admin.SaveConfig(*configPath, cfg); err != nil {
 		return err
 	}
-	d := cfg.Routers[*name].Deploy
-	fmt.Printf("router set config=%s name=%s address=%s ssh_user=%s ssh_key=%s ssh_agent=%t ssh_port=%d\n",
-		*configPath, *name, *address, d.User, d.KeyPath, d.UseAgent, d.Port)
+	r := cfg.Routers[*name]
+	fmt.Printf("router set config=%s name=%s address=%s ssh_user=%s ssh_agent=%t notify=%t/%s\n",
+		*configPath, *name, *address, r.Deploy.User, r.Deploy.UseAgent, r.Notify.Enabled, r.Notify.Channel)
 	return nil
 }
 
@@ -235,18 +263,6 @@ func serviceCmd(args []string) error {
 	targetComment := fs.String("target-comment", "", "stable RouterOS rule comment")
 	targetToAddress := fs.String("target-to-address", "", "internal service address (forward only)")
 	targetToPort := fs.Int("target-to-port", 0, "internal service port (forward only)")
-	notifyEnabled := fs.Bool("notify-enabled", false, "enable notification")
-	notifyChannel := fs.String("notify-channel", "webhook", "notification channel: webhook, telegram or email")
-	notifyURL := fs.String("notify-url", "", "webhook notification URL")
-	notifyTgToken := fs.String("notify-telegram-bot-token", "", "telegram bot token")
-	notifyTgChat := fs.String("notify-telegram-chat-id", "", "telegram chat id")
-	notifyEmailTo := fs.String("notify-email-to", "", "email recipient")
-	notifyEmailFrom := fs.String("notify-email-from", "", "email sender")
-	notifyEmailServer := fs.String("notify-email-server", "", "SMTP server host")
-	notifyEmailPort := fs.Int("notify-email-port", 0, "SMTP port (default 587)")
-	notifyEmailTLS := fs.String("notify-email-tls", "", "SMTP tls: no, yes or starttls (default starttls)")
-	notifyEmailUser := fs.String("notify-email-user", "", "SMTP username")
-	notifyEmailPassword := fs.String("notify-email-password", "", "SMTP password")
 	force := fs.Bool("force", false, "replace existing service")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
@@ -288,21 +304,6 @@ func serviceCmd(args []string) error {
 			Comment:   *targetComment,
 			ToAddress: *targetToAddress,
 			ToPort:    *targetToPort,
-		},
-		Notify: config.Notify{
-			Enabled:  *notifyEnabled,
-			Channel:  *notifyChannel,
-			URL:      *notifyURL,
-			Telegram: config.NotifyTelegram{BotToken: *notifyTgToken, ChatID: *notifyTgChat},
-			Email: config.NotifyEmail{
-				To:       *notifyEmailTo,
-				From:     *notifyEmailFrom,
-				Server:   *notifyEmailServer,
-				Port:     *notifyEmailPort,
-				TLS:      *notifyEmailTLS,
-				User:     *notifyEmailUser,
-				Password: *notifyEmailPassword,
-			},
 		},
 		Force: *force,
 	})
@@ -627,6 +628,7 @@ func printSummary(path string, s admin.Summary) {
 		fmt.Printf("router name=%s address=%s hash=%s\n", r.Name, r.Address, r.Hash[:min(16, len(r.Hash))])
 		fmt.Printf("  deploy configured=%t ssh_user=%s ssh_key=%s ssh_agent=%t ssh_port=%d password_set=%t\n",
 			r.Deploy.Configured, r.Deploy.User, r.Deploy.KeyPath, r.Deploy.UseAgent, r.Deploy.Port, r.Deploy.PasswordSet)
+		fmt.Printf("  notify enabled=%t channel=%s url=%s\n", r.Notify.Enabled, r.Notify.Channel, r.Notify.URL)
 		fmt.Printf("  defaults bucket_seconds=%d stage_timeout=%s token_hit_timeout=%s allowed_timeout=%s used_timeout=%s\n",
 			r.Defaults.BucketSeconds, r.Defaults.StageTimeout, r.Defaults.TokenHitTimeout, r.Defaults.AllowedTimeout, r.Defaults.UsedTimeout)
 		for _, svc := range r.Services {
@@ -634,9 +636,9 @@ func printSummary(path string, s admin.Summary) {
 			if !svc.Enabled {
 				state = "disabled"
 			}
-			fmt.Printf("  service name=%s [%s] service_name=%s stage1=%d stage2=%d token=%d allowed_list=%s target=%s/%s port=%d to=%s:%d notify_enabled=%t notify_channel=%s\n",
+			fmt.Printf("  service name=%s [%s] service_name=%s stage1=%d stage2=%d token=%d allowed_list=%s target=%s/%s port=%d to=%s:%d\n",
 				svc.Name, state, svc.ServiceName, svc.Stage1Port, svc.Stage2Port, svc.TokenPort, svc.AllowedList,
-				svc.TargetType, svc.TargetProtocol, svc.TargetPort, svc.TargetToAddress, svc.TargetToPort, svc.NotifyEnabled, svc.NotifyChannel)
+				svc.TargetType, svc.TargetProtocol, svc.TargetPort, svc.TargetToAddress, svc.TargetToPort)
 		}
 		for _, cl := range r.Clients {
 			fmt.Printf("  access user=%s client_id=%s services=%s psk=set\n", cl.Name, cl.ClientID, strings.Join(cl.Services, ","))

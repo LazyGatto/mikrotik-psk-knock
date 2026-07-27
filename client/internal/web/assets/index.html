@@ -43,6 +43,26 @@
       </div>
       <p class="muted small">Key or ssh-agent is preferred; password is a fallback. On edit, leave secrets blank to keep them.</p>
     </fieldset>
+    <fieldset><legend>Notify (per router — fires on every successful knock)</legend>
+      <label class="inline"><input name="notify_enabled" type="checkbox"> enabled</label>
+      <label>channel
+        <select name="notify_channel" id="notify-channel">
+          <option value="webhook">webhook</option>
+          <option value="telegram">telegram</option>
+          <option value="email">email</option>
+        </select>
+      </label>
+      <div class="notify-fields" data-channel="webhook"><label>url <input name="notify_url"></label></div>
+      <div class="notify-fields hidden" data-channel="telegram">
+        <label>bot_token <input name="tg_bot_token" type="password" placeholder="unchanged"></label>
+        <label>chat_id <input name="tg_chat_id"></label>
+      </div>
+      <div class="notify-fields hidden" data-channel="email">
+        <div class="row"><label>to <input name="email_to"></label><label>from <input name="email_from"></label></div>
+        <div class="row"><label>server <input name="email_server"></label><label>port <input name="email_port" type="number" placeholder="587"></label><label>tls <input name="email_tls" placeholder="starttls"></label></div>
+        <div class="row"><label>user <input name="email_user"></label><label>password <input name="email_password" type="password" placeholder="unchanged"></label></div>
+      </div>
+    </fieldset>
     <div class="row nowrap">
       <button type="submit">save</button>
       <button type="button" id="add-router-cancel" class="ghost">cancel</button>
@@ -54,7 +74,7 @@
   <section class="card">
     <h2>Services</h2>
     <table id="services"><thead><tr>
-      <th>on</th><th>name</th><th>ports (s1/s2/token)</th><th>allowed-list</th><th>target</th><th>notify</th><th></th>
+      <th>on</th><th>name</th><th>ports (s1/s2/token)</th><th>allowed-list</th><th>target</th><th></th>
     </tr></thead><tbody></tbody></table>
     <details class="addbox"><summary>Add service</summary>
       <form id="svc-form" class="form">
@@ -84,26 +104,6 @@
           <div class="row target-forward">
             <label>to_address <input name="target_to_address"></label>
             <label>to_port <input name="target_to_port" type="number"></label>
-          </div>
-        </fieldset>
-        <fieldset><legend>Notify</legend>
-          <label class="inline"><input name="notify_enabled" type="checkbox"> enabled</label>
-          <label>channel
-            <select name="notify_channel" id="notify-channel">
-              <option value="webhook">webhook</option>
-              <option value="telegram">telegram</option>
-              <option value="email">email</option>
-            </select>
-          </label>
-          <div class="notify-fields" data-channel="webhook"><label>url <input name="notify_url"></label></div>
-          <div class="notify-fields hidden" data-channel="telegram">
-            <label>bot_token <input name="tg_bot_token"></label>
-            <label>chat_id <input name="tg_chat_id"></label>
-          </div>
-          <div class="notify-fields hidden" data-channel="email">
-            <div class="row"><label>to <input name="email_to"></label><label>from <input name="email_from"></label></div>
-            <div class="row"><label>server <input name="email_server"></label><label>port <input name="email_port" type="number" placeholder="587"></label><label>tls <input name="email_tls" placeholder="starttls"></label></div>
-            <div class="row"><label>user <input name="email_user"></label><label>password <input name="email_password" type="password"></label></div>
           </div>
         </fieldset>
         <button type="submit">Add service</button>

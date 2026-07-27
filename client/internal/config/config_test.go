@@ -102,12 +102,13 @@ func TestApplyDefaultsUserClientID(t *testing.T) {
 
 func TestApplyDefaultsEmailPortAndTLS(t *testing.T) {
 	cfg := Config{Routers: map[string]Router{
-		"r1": {Services: map[string]Service{
-			"s": {Stage1Port: 1, Stage2Port: 2, TokenPort: 3, Notify: Notify{Enabled: true, Channel: "email"}},
-		}},
+		"r1": {
+			Notify:   Notify{Enabled: true, Channel: "email"},
+			Services: map[string]Service{"s": {Stage1Port: 1, Stage2Port: 2, TokenPort: 3}},
+		},
 	}}
 	cfg.applyDefaults()
-	got := cfg.Routers["r1"].Services["s"].Notify.Email
+	got := cfg.Routers["r1"].Notify.Email
 	if got.Port != 587 || got.TLS != "starttls" {
 		t.Fatalf("email defaults = port %d tls %q, want 587/starttls", got.Port, got.TLS)
 	}
@@ -124,9 +125,7 @@ func TestServiceEnabled(t *testing.T) {
 
 func TestValidateAcceptsTelegramNotify(t *testing.T) {
 	r := validRouter()
-	svc := r.Services["demo-service"]
-	svc.Notify = Notify{Enabled: true, Channel: "telegram", Telegram: NotifyTelegram{BotToken: "123456:AA-bb_CC", ChatID: "-100200300"}}
-	r.Services["demo-service"] = svc
+	r.Notify = Notify{Enabled: true, Channel: "telegram", Telegram: NotifyTelegram{BotToken: "123456:AA-bb_CC", ChatID: "-100200300"}}
 	if err := r.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)
 	}
@@ -134,9 +133,7 @@ func TestValidateAcceptsTelegramNotify(t *testing.T) {
 
 func TestValidateRejectsBadTelegramToken(t *testing.T) {
 	r := validRouter()
-	svc := r.Services["demo-service"]
-	svc.Notify = Notify{Enabled: true, Channel: "telegram", Telegram: NotifyTelegram{BotToken: "not-a-token", ChatID: "123"}}
-	r.Services["demo-service"] = svc
+	r.Notify = Notify{Enabled: true, Channel: "telegram", Telegram: NotifyTelegram{BotToken: "not-a-token", ChatID: "123"}}
 	if err := r.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want bad telegram token error")
 	}
@@ -144,9 +141,7 @@ func TestValidateRejectsBadTelegramToken(t *testing.T) {
 
 func TestValidateRejectsWebhookWithoutURL(t *testing.T) {
 	r := validRouter()
-	svc := r.Services["demo-service"]
-	svc.Notify = Notify{Enabled: true, Channel: "webhook", URL: ""}
-	r.Services["demo-service"] = svc
+	r.Notify = Notify{Enabled: true, Channel: "webhook", URL: ""}
 	if err := r.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want missing webhook url error")
 	}
@@ -154,9 +149,7 @@ func TestValidateRejectsWebhookWithoutURL(t *testing.T) {
 
 func TestValidateRejectsUnknownNotifyChannel(t *testing.T) {
 	r := validRouter()
-	svc := r.Services["demo-service"]
-	svc.Notify = Notify{Enabled: true, Channel: "carrier-pigeon", URL: "https://x"}
-	r.Services["demo-service"] = svc
+	r.Notify = Notify{Enabled: true, Channel: "carrier-pigeon", URL: "https://x"}
 	if err := r.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want unknown channel error")
 	}
@@ -164,9 +157,7 @@ func TestValidateRejectsUnknownNotifyChannel(t *testing.T) {
 
 func TestValidateAcceptsEmailNotify(t *testing.T) {
 	r := validRouter()
-	svc := r.Services["demo-service"]
-	svc.Notify = Notify{Enabled: true, Channel: "email", Email: NotifyEmail{To: "alerts@example.com", From: "mkpk@example.com", Server: "smtp.example.com", Port: 587, TLS: "starttls"}}
-	r.Services["demo-service"] = svc
+	r.Notify = Notify{Enabled: true, Channel: "email", Email: NotifyEmail{To: "alerts@example.com", From: "mkpk@example.com", Server: "smtp.example.com", Port: 587, TLS: "starttls"}}
 	if err := r.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)
 	}
@@ -174,9 +165,7 @@ func TestValidateAcceptsEmailNotify(t *testing.T) {
 
 func TestValidateRejectsEmailWithoutServer(t *testing.T) {
 	r := validRouter()
-	svc := r.Services["demo-service"]
-	svc.Notify = Notify{Enabled: true, Channel: "email", Email: NotifyEmail{To: "a@b.co", From: "m@b.co", Port: 587, TLS: "starttls"}}
-	r.Services["demo-service"] = svc
+	r.Notify = Notify{Enabled: true, Channel: "email", Email: NotifyEmail{To: "a@b.co", From: "m@b.co", Port: 587, TLS: "starttls"}}
 	if err := r.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want missing email server error")
 	}
@@ -184,9 +173,7 @@ func TestValidateRejectsEmailWithoutServer(t *testing.T) {
 
 func TestValidateRejectsEmailBadTLS(t *testing.T) {
 	r := validRouter()
-	svc := r.Services["demo-service"]
-	svc.Notify = Notify{Enabled: true, Channel: "email", Email: NotifyEmail{To: "a@b.co", From: "m@b.co", Server: "s", Port: 587, TLS: "ssl"}}
-	r.Services["demo-service"] = svc
+	r.Notify = Notify{Enabled: true, Channel: "email", Email: NotifyEmail{To: "a@b.co", From: "m@b.co", Server: "s", Port: 587, TLS: "ssl"}}
 	if err := r.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want bad email tls error")
 	}
@@ -273,6 +260,17 @@ func TestRouterHashSensitiveToUserPSK(t *testing.T) {
 	u.Access["r1"] = a
 	if cfg.RouterHash("r1") == base {
 		t.Fatal("RouterHash did not change after a user's PSK on the router changed")
+	}
+}
+
+func TestRouterHashSensitiveToNotify(t *testing.T) {
+	cfg := validConfig()
+	base := cfg.RouterHash("r1")
+	r := cfg.Routers["r1"]
+	r.Notify = Notify{Enabled: true, Channel: "webhook", URL: "https://hook.example"}
+	cfg.Routers["r1"] = r
+	if cfg.RouterHash("r1") == base {
+		t.Fatal("RouterHash should change when the router's notify config changes")
 	}
 }
 

@@ -96,7 +96,6 @@ function renderServices(r) {
       td(`<span class="mono">${svc.stage1_port}/${svc.stage2_port}/${svc.token_port}</span>`),
       td(`<span class="mono">${svc.allowed_list}</span>`),
       td(targetDesc(svc)),
-      td(svc.notify_enabled ? svc.notify_channel : "off"),
     );
     const rm = document.createElement("button");
     rm.textContent = "✕";
@@ -174,8 +173,20 @@ function openRouterForm(edit) {
     g("port").value = d.port || "";
     g("key_path").value = d.key_path || "";
     g("use_agent").checked = !!d.use_agent;
-    // secrets are never sent back; blank means "keep"
+    const n = r.notify || {};
+    g("notify_enabled").checked = !!n.enabled;
+    g("notify_channel").value = n.channel || "webhook";
+    g("notify_url").value = n.url || "";
+    g("tg_chat_id").value = n.telegram_chat_id || "";
+    g("email_to").value = n.email_to || "";
+    g("email_from").value = n.email_from || "";
+    g("email_server").value = n.email_server || "";
+    g("email_port").value = n.email_port || "";
+    g("email_tls").value = n.email_tls || "";
+    g("email_user").value = n.email_user || "";
+    // secrets (ssh pass/keypass, bot_token, email password) are never sent back; blank means "keep"
   }
+  syncNotify();
   form.classList.remove("hidden");
 }
 el("add-router-btn").onclick = () => openRouterForm(false);
@@ -195,6 +206,7 @@ el("add-router-form").addEventListener("submit", async (e) => {
       use_agent: g("use_agent").checked,
       key_pass: g("key_pass").value,
       password: g("password").value,
+      notify: notifyBody(e.target),
     }));
     e.target.reset();
     e.target.classList.add("hidden");
@@ -267,23 +279,26 @@ el("svc-form").addEventListener("submit", async (e) => {
       to_address: g("target_type").value === "forward" ? g("target_to_address").value.trim() : "",
       to_port: g("target_type").value === "forward" ? +g("target_to_port").value : 0,
     },
-    notify: {
-      enabled: g("notify_enabled").checked,
-      channel: g("notify_channel").value,
-      url: g("notify_url").value.trim(),
-      telegram: { bot_token: g("tg_bot_token").value.trim(), chat_id: g("tg_chat_id").value.trim() },
-      email: { to: g("email_to").value.trim(), from: g("email_from").value.trim(), server: g("email_server").value.trim(), port: +g("email_port").value || 0, tls: g("email_tls").value.trim(), user: g("email_user").value.trim(), password: g("email_password").value },
-    },
   };
   try {
     applyConfig(await api("POST", "/api/service", body));
     e.target.reset();
-    syncNotify();
     toast("service added");
   } catch (err) {
     toast(err.message, true);
   }
 });
+
+function notifyBody(form) {
+  const g = (n) => form.elements[n];
+  return {
+    enabled: g("notify_enabled").checked,
+    channel: g("notify_channel").value,
+    url: g("notify_url").value.trim(),
+    telegram: { bot_token: g("tg_bot_token").value, chat_id: g("tg_chat_id").value.trim() },
+    email: { to: g("email_to").value.trim(), from: g("email_from").value.trim(), server: g("email_server").value.trim(), port: +g("email_port").value || 0, tls: g("email_tls").value.trim(), user: g("email_user").value.trim(), password: g("email_password").value },
+  };
+}
 
 // --- users ---
 el("gen-psk").onclick = async () => {

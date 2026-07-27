@@ -79,6 +79,25 @@ func TestSetRouterCreatesUpdatesAndKeepsChildren(t *testing.T) {
 	}
 }
 
+func TestSetRouterNotifyDefaultsAndSecretFreeSummary(t *testing.T) {
+	cfg := initCfg(t)
+	cfg, err := SetRouter(cfg, RouterOptions{
+		Name: rn, Address: "r.example",
+		Notify: config.Notify{Enabled: true, Channel: "telegram", Telegram: config.NotifyTelegram{BotToken: "123:secret-token", ChatID: "-100"}},
+	})
+	if err != nil {
+		t.Fatalf("SetRouter() error = %v", err)
+	}
+	n := Summarize(cfg).Routers[0].Notify
+	if !n.Enabled || n.Channel != "telegram" || n.TelegramChat != "-100" || !n.BotTokenSet {
+		t.Fatalf("notify summary wrong: %+v", n)
+	}
+	// The secret token must not appear anywhere in the summary struct fields.
+	if n.URL == "123:secret-token" || n.EmailUser == "123:secret-token" {
+		t.Fatal("notify summary leaked the bot token")
+	}
+}
+
 func TestSummarizeReportsDeployWithoutSecrets(t *testing.T) {
 	cfg := initCfg(t)
 	cfg, err := SetRouter(cfg, RouterOptions{
@@ -138,28 +157,27 @@ func TestAddServiceDefaultsAndValidation(t *testing.T) {
 	cfg := initCfg(t)
 
 	cfg, err := AddService(cfg, rn, ServiceOptions{
-		Name: "email-svc", Stage1Port: 43001, Stage2Port: 43002, TokenPort: 43003,
+		Name: "svc2", Stage1Port: 43001, Stage2Port: 43002, TokenPort: 43003,
 		Target: config.Target{Type: config.TargetForward, Protocol: "tcp", Port: 2022, ToAddress: "192.0.2.10", ToPort: 22},
-		Notify: config.Notify{Enabled: true, Channel: "email", Email: config.NotifyEmail{To: "a@b.co", From: "m@b.co", Server: "smtp.b.co"}},
 	})
 	if err != nil {
 		t.Fatalf("AddService() error = %v", err)
 	}
-	svc := cfg.Routers[rn].Services["email-svc"]
-	if svc.AllowedList != "mkpk-tt-allowed-email-svc" {
+	svc := cfg.Routers[rn].Services["svc2"]
+	if svc.AllowedList != "mkpk-tt-allowed-svc2" {
 		t.Fatalf("allowed_list default = %q", svc.AllowedList)
 	}
-	if svc.Target.Comment != "mkpk-tt target email-svc" {
+	if svc.Target.Comment != "mkpk-tt target svc2" {
 		t.Fatalf("target comment default = %q", svc.Target.Comment)
 	}
-	if svc.Notify.Email.Port != 587 || svc.Notify.Email.TLS != "starttls" {
-		t.Fatalf("email defaults = %d/%q", svc.Notify.Email.Port, svc.Notify.Email.TLS)
+	if svc.Target.Protocol != "tcp" {
+		t.Fatalf("target protocol default = %q", svc.Target.Protocol)
 	}
 
 	if _, err := AddService(cfg, rn, ServiceOptions{Name: "bad"}); err == nil {
 		t.Fatal("AddService without ports should error")
 	}
-	if _, err := AddService(cfg, rn, ServiceOptions{Name: "email-svc", Stage1Port: 1, Stage2Port: 2, TokenPort: 3, Target: config.Target{Type: config.TargetForward, Protocol: "tcp", Port: 1, ToPort: 1, ToAddress: "x"}}); err == nil {
+	if _, err := AddService(cfg, rn, ServiceOptions{Name: "svc2", Stage1Port: 1, Stage2Port: 2, TokenPort: 3, Target: config.Target{Type: config.TargetForward, Protocol: "tcp", Port: 1, ToPort: 1, ToAddress: "x"}}); err == nil {
 		t.Fatal("AddService on existing name without force should error")
 	}
 	if _, err := AddService(cfg, "nope", ServiceOptions{Name: "x", Stage1Port: 1, Stage2Port: 2, TokenPort: 3, Target: config.Target{Type: config.TargetForward, Protocol: "tcp", Port: 1, ToPort: 1, ToAddress: "x"}}); err == nil {

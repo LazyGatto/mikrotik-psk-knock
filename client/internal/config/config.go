@@ -23,9 +23,13 @@ type Config struct {
 
 // Router holds everything provisioned onto one MikroTik. It owns its services;
 // the users allowed to reach them live at the top level and reference it.
+// Notifications are per router: one channel that fires on every successful knock
+// (the message carries which service/user). The alert content already names the
+// service, so routing per service is unnecessary.
 type Router struct {
 	Address  string             `yaml:"address" json:"address"`
 	Deploy   Deploy             `yaml:"deploy,omitempty" json:"deploy"`
+	Notify   Notify             `yaml:"notify,omitempty" json:"notify"`
 	Defaults Defaults           `yaml:"defaults" json:"defaults"`
 	Services map[string]Service `yaml:"services" json:"services"`
 }
@@ -75,7 +79,6 @@ type Service struct {
 	TokenPort   int    `yaml:"token_port" json:"token_port"`
 	AllowedList string `yaml:"allowed_list" json:"allowed_list"`
 	Target      Target `yaml:"target" json:"target"`
-	Notify      Notify `yaml:"notify" json:"notify"`
 }
 
 // Target types.
@@ -183,6 +186,17 @@ func (r *Router) applyDefaults() {
 	if r.Defaults.UsedTimeout == "" {
 		r.Defaults.UsedTimeout = "65s"
 	}
+	if r.Notify.Channel == "" {
+		r.Notify.Channel = "webhook"
+	}
+	if r.Notify.Channel == "email" {
+		if r.Notify.Email.Port == 0 {
+			r.Notify.Email.Port = 587
+		}
+		if r.Notify.Email.TLS == "" {
+			r.Notify.Email.TLS = "starttls"
+		}
+	}
 	for name, svc := range r.Services {
 		if svc.ServiceName == "" {
 			svc.ServiceName = name
@@ -198,17 +212,6 @@ func (r *Router) applyDefaults() {
 		}
 		if svc.Target.Comment == "" {
 			svc.Target.Comment = "mkpk-tt target " + name
-		}
-		if svc.Notify.Channel == "" {
-			svc.Notify.Channel = "webhook"
-		}
-		if svc.Notify.Channel == "email" {
-			if svc.Notify.Email.Port == 0 {
-				svc.Notify.Email.Port = 587
-			}
-			if svc.Notify.Email.TLS == "" {
-				svc.Notify.Email.TLS = "starttls"
-			}
 		}
 		r.Services[name] = svc
 	}
@@ -264,6 +267,9 @@ func (r Router) Validate() error {
 			return err
 		}
 	}
+	if err := validateNotify(r.Notify); err != nil {
+		return err
+	}
 	for name, svc := range r.Services {
 		if !isSafeName(name) {
 			return fmt.Errorf("service key %q must match ^[A-Za-z0-9][A-Za-z0-9_-]*$", name)
@@ -284,9 +290,6 @@ func (r Router) Validate() error {
 			return fmt.Errorf("service %q stage1_port, stage2_port and token_port must be distinct", name)
 		}
 		if err := validateTarget(svc.Target); err != nil {
-			return fmt.Errorf("service %q %w", name, err)
-		}
-		if err := validateNotify(svc.Notify); err != nil {
 			return fmt.Errorf("service %q %w", name, err)
 		}
 	}
