@@ -1,6 +1,227 @@
 "use strict";
 const TOKEN = window.MKPK_TOKEN;
 
+// ---------- i18n ----------
+const I18N = {
+  ru: {
+    save: "Сохранить", cancel: "Отмена", close: "Закрыть", del: "Удалить", settings: "Настройки",
+    add: "Добавить", copy: "Скопировать", copied: "✓ Скопировано", loading: "загрузка…", error: "ошибка",
+    "nav.dashboard": "Обзор", "nav.routers": "Роутеры", "nav.users": "Юзеры",
+    "nav.add_router": "+ Добавить роутер", "nav.add_user": "+ Добавить юзера",
+    "nav.drift_title": "Есть роутеры с незадеплоенными изменениями", "nav.no_access": "нет доступов",
+    "nav.router_settings": "Настройки роутера", "nav.user_edit": "Переименовать/удалить",
+    "nav.needs_dot": "Нужен Deploy",
+    "theme.dark": "Тёмная тема", "theme.light": "Светлая тема", "lang.switch": "Сменить язык",
+    "onb.title": "Добавьте первый роутер",
+    "onb.body": "Роутер — это ваш MikroTik, который приложение провижинит по SSH. Сервисы живут внутри роутера; юзеры — рядом с роутерами и могут иметь доступ к нескольким сразу.",
+    "dash.title": "Обзор",
+    "dash.stat.routers": "Роутеры", "dash.stat.services": "Сервисы", "dash.stat.users": "Юзеры", "dash.stat.needs": "Нужен Deploy",
+    "dash.no_creds": "{n} без SSH-кредов", "dash.all_creds": "у всех заданы креды",
+    "dash.svc_on": "{n} включено в конфиге", "dash.multi": "{n} с мультидоступом",
+    "dash.has_diff": "есть расхождения", "dash.check_hint": "проверьте статусы",
+    "dash.drift_title": "Требуется Deploy", "dash.drift_body": "{names} — локальный конфиг отличается от того, что на роутере.",
+    "dash.check": "Проверить статусы", "dash.add_router": "+ Роутер", "dash.add_user": "+ Юзер",
+    "dash.subtitle": "{r} роутер(-ов) · {u} юзер(-ов) · ", "dash.no_users": "Юзеров пока нет.",
+    "rstate.clean": "локальный конфиг", "rstate.needs": "● нужен Deploy", "rstate.synced": "✓ синхронизирован",
+    "rstate.never": "● не установлен на роутере", "rstate.empty": "нечего деплоить", "rstate.error": "ошибка подключения",
+    "dash.row.no_creds": "SSH-креды не заданы · ", "dash.row.svc": "{on}/{total} сервисов", "dash.row.users": "{n} юзер(-ов)",
+    "toast.checking": "Проверяю статусы…", "toast.checked": "Статусы обновлены",
+    "pill.needs": "Не задеплоено — нужен Deploy", "pill.synced": "✓ Синхронизировано", "pill.empty": "Нечего деплоить", "pill.clean": "Локальный конфиг — Deploy",
+    "svc.add": "+ Сервис",
+    "svc.explain": "Гейтованные эндпоинты этого роутера: три «стучальных» порта + цель — проброс внутрь (forward) или порт самого роутера (local).",
+    "svc.empty": "Сервисов пока нет. Добавьте первый.",
+    "svc.target_local": "порт роутера {port}/{proto}",
+    "svc.on_title": "Включён в конфиге. Выключить — правила не будут рендериться; применится после Deploy.",
+    "svc.off_title": "Выключен в конфиге. Включить — правила появятся на роутере после Deploy.",
+    "svc.edit": "Редактировать", "svc.delete": "Удалить",
+    "svc.foot": "Тоггл меняет состояние сервиса в конфиге. Выключенный сервис остаётся в списке, но его правила и токены юзеров не рендерятся и не деплоятся. Изменения попадут на роутер после Deploy → Apply.",
+    "access.explain": "Кто имеет доступ к этому роутеру. Read-only проекция матрицы: редактирование доступа — на экране юзера.",
+    "access.empty": "Ни у кого нет доступа к этому роутеру. Откройте юзера в сайдбаре и включите нужные сервисы.",
+    "access.svc_off": "Сервис выключен в конфиге", "access.open_user": "Открыть юзера →",
+    "render.download": "Скачать .rsc",
+    "render.foot": "Рендер по срезу текущего роутера: включённые сервисы + токен-правила юзеров, у которых есть доступ. PSK юзеров попадают в конфиг роутера — поэтому у каждой пары (юзер × роутер) свой PSK.",
+    "deploy.nocreds.title": "SSH-креды не заданы",
+    "deploy.nocreds.body": "Реквизиты подключения задаются один раз в настройках роутера — экран деплоя их не спрашивает.",
+    "deploy.nocreds.btn": "Открыть настройки роутера",
+    "deploy.connection": "Подключение", "deploy.state": "Состояние",
+    "deploy.auth_key": "ключ: {path}", "deploy.auth_pw": "пароль", "deploy.pw_fallback": " · пароль-fallback",
+    "deploy.uninstall_title": "Uninstall с роутера?",
+    "deploy.uninstall_body": "Все правила mkpk-tt будут удалены с роутера. Локальный конфиг не тронут.",
+    "deploy.dry_title": "Показать, что будет сделано, без изменений на роутере",
+    "deploy.force_title": "Применить, даже если hash совпадает",
+    "deploy.result_ph": "Результат действия появится здесь. Начните со Status.",
+    "dstate.clean": "локальный конфиг (не проверялся по SSH)", "dstate.needs": "● есть локальные изменения — нужен Apply",
+    "dstate.synced": "✓ синхронизировано", "dstate.never": "● на роутере ничего не установлено",
+    "dstate.empty": "нечего деплоить", "dstate.error": "ошибка подключения",
+    "dres.synced.t": "Синхронизировано", "dres.synced.m": "На роутере hash {h} совпадает с локальным конфигом.",
+    "dres.never.t": "На роутере ничего не установлено", "dres.never.m": "mkpk-tt-meta не найдена. Локальный конфиг (hash {h}) ещё не деплоился.",
+    "dres.drift.t": "Drift: конфиг отличается", "dres.drift.m": "На роутере hash {h}, локально {l}. Нужен Apply.",
+    "dres.applied.t": "Задеплоено", "dres.applied.m": "Конфиг применён: hash {h}. Локальный конфиг и роутер синхронизированы.",
+    "dres.dry.t": "Dry-run завершён", "dres.dry.m": "Показано, что было бы сделано. На роутере ничего не изменено (dry-run).",
+    "dres.uninstalled.t": "Снято с роутера", "dres.uninstalled.m": "Все правила mkpk-tt удалены. Конфиг в приложении не тронут — Apply вернёт всё обратно.",
+    "dres.err.t": "Не удалось подключиться", "dres.ok": "Готово",
+    "dres.apply_btn": "Apply — задеплоить изменения", "dres.settings_link": "Настройки роутера →",
+    "dres.show_log": "▶ Показать raw-лог", "dres.hide_log": "▼ Скрыть raw-лог",
+    "user.matrix": "Матрица доступа",
+    "user.matrix.explain": "Юзер может иметь доступ к нескольким роутерам. PSK — свой на каждый роутер (создаётся при первом доступе); один инвайт может включать несколько роутеров.",
+    "user.needs_deploy": "нужен Deploy", "user.needs_deploy_title": "Локальные изменения не задеплоены",
+    "user.svc_count": "{n} из {total} сервисов", "user.no_access": "нет доступа",
+    "user.psk_own": "свой для этого роутера", "user.invite_single_title": "Инвайт только с этим роутером",
+    "user.rotate_title": "Сгенерировать новый PSK для этой пары юзер×роутер", "user.rotate": "⟳ Ротировать",
+    "user.svc_off": "· выключен в конфиге", "user.no_services": "у роутера нет сервисов",
+    "user.matrix.foot": "Изменения доступа и ротация PSK попадают на роутер после Deploy этого роутера, а юзеру — через пере-выданный инвайт.",
+    "user.grant": "Выдать доступ",
+    "user.grant.explain": "Invite-blob для клиентского приложения — передавать только по безопасному каналу.",
+    "user.grant.none": "Сначала включите юзеру хотя бы один сервис в матрице выше.",
+    "user.grant.all": "Общий инвайт — все роутеры ({n})", "user.grant.one": "Выдать инвайт",
+    "user.header_id": "client_id: {id} · единый во всех роутерах",
+    "svc.del.title": "Удалить сервис {name}?", "svc.del.body": "Правило будет удалено с роутера после следующего Deploy.",
+    "toast.svc_deleted": "Сервис удалён", "toast.psk_rotated": "PSK ротирован",
+    "psk.rotate.title": "Ротировать PSK?", "psk.rotate.body": "Будет сгенерирован новый PSK этой пары юзер×роутер. Старый инвайт перестанет работать после Deploy роутера — выдайте новый.",
+    "psk.rotate.btn": "Ротировать",
+    "router.new": "Новый роутер", "field.name": "Имя", "field.address": "Адрес", "field.port": "Порт", "field.user": "Пользователь",
+    "router.ssh_legend": "SSH для деплоя",
+    "router.ssh_note": "Используется кнопками Status / Apply / Uninstall. Хранится в локальном секретном конфиге (0600) и не покидает эту машину.",
+    "router.auth": "Аутентификация", "router.auth_note": "рекомендуется ssh-agent: секрет не попадает в конфиг", "router.auth_keyfile": "файл ключа",
+    "router.keypath": "Путь к приватному ключу", "router.keypath_note": "В конфиге хранится только путь, не сам ключ.",
+    "router.pw_collapse": "Пароль (fallback)", "router.pw_ssh": "Пароль SSH (fallback)",
+    "router.keypass": "Пассфраза ключа", "router.keypass_note": "Опционально. Лежит в секретном конфиге вместе с PSK.",
+    "router.notify_legend": "Уведомления (per router)",
+    "router.notify_note": "Срабатывают при успешном открытии любого сервиса этого роутера. Можно включить несколько каналов сразу; секреты на edit оставь пустыми, чтобы не менять.",
+    "ph.unchanged": "не менять", "toast.router_saved": "Роутер сохранён",
+    "router.del": "Удалить роутер…", "router.del.title": "Удалить роутер {name}?",
+    "router.del.body": "Вместе с ним удалятся {s} сервис(-ов) и доступ у {u} юзер(-ов). Сначала сделайте Uninstall, если mkpk стоит на роутере.",
+    "toast.router_deleted": "Роутер удалён",
+    "svc.new": "Новый сервис", "svc.title": "Сервис {name}",
+    "svc.field_name": "Имя сервиса", "svc.field_name_note": "Входит в формулу токена — переименование инвалидирует выданные инвайты.",
+    "svc.knock_ports": "Порты «стука» (stage1 / stage2 / token)", "svc.suggest": "Подобрать свободные",
+    "svc.type": "Тип цели", "svc.proto": "Протокол", "svc.port_ext": "Внешний порт", "svc.port_local": "Порт роутера",
+    "svc.port_local_note": "input accept на этот порт роутера, без NAT.",
+    "svc.conflict": "{label}: {port} занят — {svc} ({field})", "toast.svc_saved": "Сервис сохранён",
+    "user.new": "Новый юзер", "user.title": "Юзер {name}", "user.field_name": "Имя (client_id)",
+    "user.field_name_note": "Единая идентичность во всех роутерах; входит в формулу токена — переименование инвалидирует инвайты.",
+    "toast.user_saved": "Юзер сохранён", "user.del": "Удалить юзера…", "user.del.title": "Удалить юзера {name}?",
+    "user.del.body": "Юзер и весь его доступ на всех роутерах будут удалены. Изменения попадут на роутеры после Deploy.",
+    "toast.user_deleted": "Юзер удалён",
+    "invite.warn": "Блоб содержит PSK юзера для каждого включённого роутера. Передавайте только по безопасному каналу.",
+    "invite.mode": "Что войдёт в блоб", "invite.mode_all": "Все роутеры ({n})", "invite.mode_single": "Только один роутер",
+    "invite.included": "Роутеры в блобе", "invite.no_services": "— нет включённых сервисов",
+    "invite.download": "Скачать .mkpk", "invite.reveal": "Показать блоб", "invite.title": "Инвайт — {user}",
+  },
+  en: {
+    save: "Save", cancel: "Cancel", close: "Close", del: "Delete", settings: "Settings",
+    add: "Add", copy: "Copy", copied: "✓ Copied", loading: "loading…", error: "error",
+    "nav.dashboard": "Overview", "nav.routers": "Routers", "nav.users": "Users",
+    "nav.add_router": "+ Add router", "nav.add_user": "+ Add user",
+    "nav.drift_title": "Routers with undeployed changes", "nav.no_access": "no access",
+    "nav.router_settings": "Router settings", "nav.user_edit": "Rename/delete",
+    "nav.needs_dot": "Deploy needed",
+    "theme.dark": "Dark theme", "theme.light": "Light theme", "lang.switch": "Switch language",
+    "onb.title": "Add your first router",
+    "onb.body": "A router is your MikroTik, provisioned by this app over SSH. Services live inside a router; users sit alongside routers and can have access to several at once.",
+    "dash.title": "Overview",
+    "dash.stat.routers": "Routers", "dash.stat.services": "Services", "dash.stat.users": "Users", "dash.stat.needs": "Deploy needed",
+    "dash.no_creds": "{n} without SSH creds", "dash.all_creds": "all have creds",
+    "dash.svc_on": "{n} enabled in config", "dash.multi": "{n} with multi-router access",
+    "dash.has_diff": "has differences", "dash.check_hint": "check statuses",
+    "dash.drift_title": "Deploy required", "dash.drift_body": "{names} — local config differs from what's on the router.",
+    "dash.check": "Check statuses", "dash.add_router": "+ Router", "dash.add_user": "+ User",
+    "dash.subtitle": "{r} router(s) · {u} user(s) · ", "dash.no_users": "No users yet.",
+    "rstate.clean": "local config", "rstate.needs": "● deploy needed", "rstate.synced": "✓ synced",
+    "rstate.never": "● not installed on router", "rstate.empty": "nothing to deploy", "rstate.error": "connection error",
+    "dash.row.no_creds": "SSH creds not set · ", "dash.row.svc": "{on}/{total} services", "dash.row.users": "{n} user(s)",
+    "toast.checking": "Checking statuses…", "toast.checked": "Statuses updated",
+    "pill.needs": "Not deployed — deploy needed", "pill.synced": "✓ Synced", "pill.empty": "Nothing to deploy", "pill.clean": "Local config — Deploy",
+    "svc.add": "+ Service",
+    "svc.explain": "This router's gated endpoints: three knock ports + a target — forward into the LAN (dst-nat) or a port on the router itself (local).",
+    "svc.empty": "No services yet. Add the first one.",
+    "svc.target_local": "router port {port}/{proto}",
+    "svc.on_title": "Enabled in config. Disabling stops its rules from rendering; applies after Deploy.",
+    "svc.off_title": "Disabled in config. Enabling makes its rules appear on the router after Deploy.",
+    "svc.edit": "Edit", "svc.delete": "Delete",
+    "svc.foot": "The toggle changes the service state in the config. A disabled service stays listed, but its rules and users' tokens are not rendered or deployed. Changes reach the router after Deploy → Apply.",
+    "access.explain": "Who can reach this router. A read-only projection of the matrix — edit access on the user screen.",
+    "access.empty": "Nobody has access to this router. Open a user in the sidebar and enable the services.",
+    "access.svc_off": "Service disabled in config", "access.open_user": "Open user →",
+    "render.download": "Download .rsc",
+    "render.foot": "Render of the current router: enabled services + token rules of users who have access. Users' PSKs go into the router config — so each (user × router) pair has its own PSK.",
+    "deploy.nocreds.title": "SSH creds not set",
+    "deploy.nocreds.body": "Connection details are set once in the router settings — the deploy screen doesn't ask for them.",
+    "deploy.nocreds.btn": "Open router settings",
+    "deploy.connection": "Connection", "deploy.state": "State",
+    "deploy.auth_key": "key: {path}", "deploy.auth_pw": "password", "deploy.pw_fallback": " · password fallback",
+    "deploy.uninstall_title": "Uninstall from the router?",
+    "deploy.uninstall_body": "All mkpk-tt rules will be removed from the router. The local config is untouched.",
+    "deploy.dry_title": "Show what would be done, without changing the router",
+    "deploy.force_title": "Apply even if the hash matches",
+    "deploy.result_ph": "The result will appear here. Start with Status.",
+    "dstate.clean": "local config (not SSH-checked)", "dstate.needs": "● local changes — Apply needed",
+    "dstate.synced": "✓ synced", "dstate.never": "● nothing installed on the router",
+    "dstate.empty": "nothing to deploy", "dstate.error": "connection error",
+    "dres.synced.t": "Synced", "dres.synced.m": "Router hash {h} matches the local config.",
+    "dres.never.t": "Nothing installed on the router", "dres.never.m": "mkpk-tt-meta not found. The local config (hash {h}) hasn't been deployed yet.",
+    "dres.drift.t": "Drift: config differs", "dres.drift.m": "Router hash {h}, local {l}. Apply needed.",
+    "dres.applied.t": "Deployed", "dres.applied.m": "Config applied: hash {h}. Local config and router are in sync.",
+    "dres.dry.t": "Dry-run done", "dres.dry.m": "Shows what would be done. Nothing changed on the router (dry-run).",
+    "dres.uninstalled.t": "Removed from the router", "dres.uninstalled.m": "All mkpk-tt rules removed. The app config is untouched — Apply restores everything.",
+    "dres.err.t": "Connection failed", "dres.ok": "Done",
+    "dres.apply_btn": "Apply — deploy changes", "dres.settings_link": "Router settings →",
+    "dres.show_log": "▶ Show raw log", "dres.hide_log": "▼ Hide raw log",
+    "user.matrix": "Access matrix",
+    "user.matrix.explain": "A user can have access to several routers. The PSK is per router (created on first access); one invite can include several routers.",
+    "user.needs_deploy": "deploy needed", "user.needs_deploy_title": "Local changes not deployed",
+    "user.svc_count": "{n} of {total} services", "user.no_access": "no access",
+    "user.psk_own": "unique for this router", "user.invite_single_title": "Invite with this router only",
+    "user.rotate_title": "Generate a new PSK for this user×router pair", "user.rotate": "⟳ Rotate",
+    "user.svc_off": "· disabled in config", "user.no_services": "router has no services",
+    "user.matrix.foot": "Access changes and PSK rotation reach the router after its Deploy, and the user via a re-issued invite.",
+    "user.grant": "Grant access",
+    "user.grant.explain": "Invite blob for the client app — hand over only through a safe channel.",
+    "user.grant.none": "First enable at least one service for the user in the matrix above.",
+    "user.grant.all": "Combined invite — all routers ({n})", "user.grant.one": "Issue invite",
+    "user.header_id": "client_id: {id} · shared across routers",
+    "svc.del.title": "Delete service {name}?", "svc.del.body": "The rule will be removed from the router on the next Deploy.",
+    "toast.svc_deleted": "Service deleted", "toast.psk_rotated": "PSK rotated",
+    "psk.rotate.title": "Rotate PSK?", "psk.rotate.body": "A new PSK will be generated for this user×router pair. The old invite stops working after the router's Deploy — issue a new one.",
+    "psk.rotate.btn": "Rotate",
+    "router.new": "New router", "field.name": "Name", "field.address": "Address", "field.port": "Port", "field.user": "User",
+    "router.ssh_legend": "SSH for deploy",
+    "router.ssh_note": "Used by Status / Apply / Uninstall. Stored in the local secret config (0600) and never leaves this machine.",
+    "router.auth": "Authentication", "router.auth_note": "ssh-agent recommended: the secret stays out of the config", "router.auth_keyfile": "key file",
+    "router.keypath": "Private key path", "router.keypath_note": "Only the path is stored in the config, not the key itself.",
+    "router.pw_collapse": "Password (fallback)", "router.pw_ssh": "SSH password (fallback)",
+    "router.keypass": "Key passphrase", "router.keypass_note": "Optional. Stored in the secret config together with the PSKs.",
+    "router.notify_legend": "Notifications (per router)",
+    "router.notify_note": "Fire on a successful open of any service on this router. Several channels can be on at once; leave secrets blank on edit to keep them.",
+    "ph.unchanged": "unchanged", "toast.router_saved": "Router saved",
+    "router.del": "Delete router…", "router.del.title": "Delete router {name}?",
+    "router.del.body": "This also deletes {s} service(s) and access for {u} user(s). Uninstall first if mkpk is on the router.",
+    "toast.router_deleted": "Router deleted",
+    "svc.new": "New service", "svc.title": "Service {name}",
+    "svc.field_name": "Service name", "svc.field_name_note": "Part of the token formula — renaming invalidates issued invites.",
+    "svc.knock_ports": "Knock ports (stage1 / stage2 / token)", "svc.suggest": "Suggest free",
+    "svc.type": "Target type", "svc.proto": "Protocol", "svc.port_ext": "External port", "svc.port_local": "Router port",
+    "svc.port_local_note": "input accept to this router port, no NAT.",
+    "svc.conflict": "{label}: {port} taken — {svc} ({field})", "toast.svc_saved": "Service saved",
+    "user.new": "New user", "user.title": "User {name}", "user.field_name": "Name (client_id)",
+    "user.field_name_note": "A single identity across all routers; part of the token formula — renaming invalidates invites.",
+    "toast.user_saved": "User saved", "user.del": "Delete user…", "user.del.title": "Delete user {name}?",
+    "user.del.body": "The user and all its access on every router will be deleted. Changes reach the routers after Deploy.",
+    "toast.user_deleted": "User deleted",
+    "invite.warn": "The blob contains the user's PSK for each included router. Hand it over only through a safe channel.",
+    "invite.mode": "What goes into the blob", "invite.mode_all": "All routers ({n})", "invite.mode_single": "One router only",
+    "invite.included": "Routers in the blob", "invite.no_services": "— no enabled services",
+    "invite.download": "Download .mkpk", "invite.reveal": "Show blob", "invite.title": "Invite — {user}",
+  },
+};
+let LANG = localStorage.getItem("mkpk-lang") || ((navigator.language || "").toLowerCase().startsWith("ru") ? "ru" : "en");
+function t(key, p) {
+  let s = (I18N[LANG] && I18N[LANG][key]) ?? I18N.ru[key] ?? key;
+  if (p) for (const k in p) s = s.replaceAll("{" + k + "}", p[k]);
+  return s;
+}
+function toggleLang() { LANG = LANG === "ru" ? "en" : "ru"; localStorage.setItem("mkpk-lang", LANG); render(); }
+
 // ---------- tiny helpers ----------
 function h(tag, props, ...kids) {
   const e = document.createElement(tag);
@@ -36,19 +257,14 @@ const ICONS = {
 function icon(name, cls) {
   const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   s.setAttribute("viewBox", "0 0 24 24");
-  s.setAttribute("width", "16");
-  s.setAttribute("height", "16");
-  s.setAttribute("fill", "none");
-  s.setAttribute("stroke", "currentColor");
-  s.setAttribute("stroke-width", "1.7");
-  s.setAttribute("stroke-linecap", "round");
-  s.setAttribute("stroke-linejoin", "round");
+  s.setAttribute("width", "16"); s.setAttribute("height", "16");
+  s.setAttribute("fill", "none"); s.setAttribute("stroke", "currentColor");
+  s.setAttribute("stroke-width", "1.7"); s.setAttribute("stroke-linecap", "round"); s.setAttribute("stroke-linejoin", "round");
   if (cls) s.setAttribute("class", cls);
   s.innerHTML = ICONS[name] || "";
   return s;
 }
 // ---------- theme ----------
-// Default to light (the design is light); persist the operator's choice.
 let THEME = localStorage.getItem("mkpk-theme") || "light";
 function applyTheme() { document.documentElement.setAttribute("data-theme", THEME); }
 function toggleTheme() { THEME = THEME === "light" ? "dark" : "light"; localStorage.setItem("mkpk-theme", THEME); applyTheme(); renderSidebar(); }
@@ -59,11 +275,11 @@ const short = (hash) => (hash || "").slice(0, 12);
 
 let toastTimer;
 function toast(msg, isErr) {
-  const t = document.getElementById("toast");
-  t.textContent = msg;
-  t.className = isErr ? "err" : "ok";
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.className = isErr ? "err" : "ok";
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.add("hidden"), 3500);
+  toastTimer = setTimeout(() => el.classList.add("hidden"), 3500);
 }
 
 async function api(method, path, body) {
@@ -83,27 +299,15 @@ async function api(method, path, body) {
 
 // ---------- state ----------
 const S = {
-  path: "",
-  routers: [],
-  users: [],
+  path: "", routers: [], users: [],
   view: { kind: "dashboard", id: null, tab: "services" },
-  deploy: {},   // routerName -> {baseline, installed, checked, err, result}
-  deployOpts: { dry: true, force: false }, // persisted across re-renders
-  deployRunning: null,                     // "<router>:<action>" while an SSH op is in flight
+  deploy: {},
+  deployOpts: { dry: true, force: false },
+  deployRunning: null,
 };
 const routerOf = (n) => S.routers.find((r) => r.name === n);
 const userOf = (n) => S.users.find((u) => u.name === n);
 
-// Deploy state per router. `baseline` is the hash we believe is on the router:
-// seeded from the config at first sight (assume in sync until told otherwise),
-// then corrected by Status/Apply/Uninstall. A local edit changes r.hash, so it
-// stops matching the baseline → "needs" (deploy required) with no SSH needed.
-//   needs   — local config differs from what's on the router → нужен Deploy
-//   synced  — SSH-confirmed match
-//   clean   — assumed in sync (no local change since load, not SSH-checked)
-//   never   — SSH says nothing is installed (and there's something to deploy)
-//   empty   — nothing to deploy
-//   error   — last SSH attempt failed
 function routerState(r) {
   const d = S.deploy[r.name] || {};
   if (d.err) return "error";
@@ -119,13 +323,10 @@ async function applyConfig(data) {
   const sum = data.summary || { routers: [], users: [] };
   S.routers = (sum.routers || []).map((r) => ({ ...r, services: r.services || [], clients: r.clients || [] }));
   S.users = (sum.users || []).map((u) => ({ ...u, access: (u.access || []).map((a) => ({ ...a, services: a.services || [] })) }));
-  // Seed each router's deploy baseline at first sight (assume the loaded config
-  // is what's on the router until a Status/Apply corrects it).
   for (const r of S.routers) {
     const d = S.deploy[r.name] || (S.deploy[r.name] = {});
     if (d.baseline === undefined) d.baseline = r.hash;
   }
-  // keep selection valid
   if (S.view.kind === "router" && !routerOf(S.view.id)) S.view = { kind: "dashboard" };
   if (S.view.kind === "user" && !userOf(S.view.id)) S.view = { kind: "dashboard" };
   if (!S.routers.length) S.view = { kind: "onboarding" };
@@ -135,57 +336,50 @@ async function reload() { applyConfig(await api("GET", "/api/config")); }
 function go(view) { S.view = { tab: "services", ...view }; render(); }
 
 // ---------- render root ----------
-function render() {
-  renderSidebar();
-  renderMain();
-}
+function render() { renderSidebar(); renderMain(); }
 
 function renderSidebar() {
   const sb = document.getElementById("sidebar");
   sb.innerHTML = "";
-  sb.append(
-    h("div", { class: "brand" },
-      h("span", { class: "logo" }, icon("logo")),
-      h("div", null, h("h1", null, "mkpk-provision"), h("div", { class: "sub" }, "provisioning console"))),
-  );
+  sb.append(h("div", { class: "brand" },
+    h("span", { class: "logo" }, icon("logo")),
+    h("div", null, h("h1", null, "mkpk-provision"), h("div", { class: "sub" }, "provisioning console"))));
   const nav = h("div", { class: "nav" });
 
   const dashRow = h("button", { class: "nav-row" + (S.view.kind === "dashboard" ? " sel" : ""), onclick: () => go({ kind: "dashboard" }) },
-    icon("dash"), h("span", { class: "grow title" }, "Обзор"));
+    icon("dash"), h("span", { class: "grow title" }, t("nav.dashboard")));
   const driftCount = S.routers.filter(isDrift).length;
-  if (driftCount) dashRow.append(h("span", { class: "badge amber", title: "Есть роутеры с незадеплоенными изменениями" }, String(driftCount)));
+  if (driftCount) dashRow.append(h("span", { class: "badge amber", title: t("nav.drift_title") }, String(driftCount)));
   nav.append(dashRow);
 
-  // routers
-  nav.append(navHeader("Роутеры", () => openRouterModal(null)));
+  nav.append(navHeader(t("nav.routers"), () => openRouterModal(null)));
   for (const r of S.routers) {
-    const row = h("button", { class: "nav-row" + (S.view.kind === "router" && S.view.id === r.name ? " sel" : ""), onclick: () => go({ kind: "router", id: r.name }) },
+    nav.append(h("button", { class: "nav-row" + (S.view.kind === "router" && S.view.id === r.name ? " sel" : ""), onclick: () => go({ kind: "router", id: r.name }) },
       icon("router"),
       h("span", { class: "grow" }, h("div", { class: "title" }, r.name), h("div", { class: "meta" }, r.address)),
-      isDrift(r) && h("span", { class: "dot amber", title: "Нужен Deploy" }),
-      h("span", { class: "gear", onclick: (e) => { e.stopPropagation(); openRouterModal(r.name); }, title: "Настройки роутера" }, icon("gear")));
-    nav.append(row);
+      isDrift(r) && h("span", { class: "dot amber", title: t("nav.needs_dot") }),
+      h("span", { class: "gear", onclick: (e) => { e.stopPropagation(); openRouterModal(r.name); }, title: t("nav.router_settings") }, icon("gear"))));
   }
-  nav.append(h("button", { class: "dashed", onclick: () => openRouterModal(null) }, "+ Добавить роутер"));
+  nav.append(h("button", { class: "dashed", onclick: () => openRouterModal(null) }, t("nav.add_router")));
 
-  // users
-  nav.append(navHeader("Юзеры", () => openUserModal(null)));
+  nav.append(navHeader(t("nav.users"), () => openUserModal(null)));
   for (const u of S.users) {
-    const summary = u.access.length ? u.access.map((a) => a.router).join(", ") : "нет доступов";
+    const summary = u.access.length ? u.access.map((a) => a.router).join(", ") : t("nav.no_access");
     nav.append(h("button", { class: "nav-row" + (S.view.kind === "user" && S.view.id === u.name ? " sel" : ""), onclick: () => go({ kind: "user", id: u.name }) },
       h("span", { class: "avatar" }, initials(u.name)),
       h("span", { class: "grow" }, h("div", { class: "title" }, u.name), h("div", { class: "meta" }, summary)),
-      h("span", { class: "gear", onclick: (e) => { e.stopPropagation(); openUserModal(u.name); }, title: "Переименовать/удалить" }, icon("pencil"))));
+      h("span", { class: "gear", onclick: (e) => { e.stopPropagation(); openUserModal(u.name); }, title: t("nav.user_edit") }, icon("pencil"))));
   }
-  nav.append(h("button", { class: "dashed", onclick: () => openUserModal(null) }, "+ Добавить юзера"));
+  nav.append(h("button", { class: "dashed", onclick: () => openUserModal(null) }, t("nav.add_user")));
 
   const foot = h("div", { class: "sidebar-foot row" },
     h("span", { class: "grow" }, location.host + " · local"),
-    h("button", { class: "iconbtn", title: THEME === "light" ? "Тёмная тема" : "Светлая тема", onclick: toggleTheme }, icon(THEME === "light" ? "moon" : "sun")));
+    h("button", { class: "iconbtn", style: "width:auto;padding:0 6px;font-weight:650;font-size:11px", title: t("lang.switch"), onclick: toggleLang }, LANG.toUpperCase()),
+    h("button", { class: "iconbtn", title: THEME === "light" ? t("theme.dark") : t("theme.light"), onclick: toggleTheme }, icon(THEME === "light" ? "moon" : "sun")));
   sb.append(nav, foot);
 }
 function navHeader(label, onAdd) {
-  return h("div", { class: "nav-eyebrow" }, h("span", null, label), h("button", { onclick: onAdd, title: "Добавить" }, "+"));
+  return h("div", { class: "nav-eyebrow" }, h("span", null, label), h("button", { onclick: onAdd, title: t("add") }, "+"));
 }
 
 function renderMain() {
@@ -203,9 +397,9 @@ function onboarding() {
   return h("div", { class: "content" },
     h("div", { class: "empty" },
       icon("router", "glyph"),
-      h("h3", null, "Добавьте первый роутер"),
-      h("p", null, "Роутер — это ваш MikroTik, который приложение провижинит по SSH. Сервисы живут внутри роутера; юзеры — рядом с роутерами и могут иметь доступ к нескольким сразу."),
-      h("button", { class: "btn pri", onclick: () => openRouterModal(null) }, "+ Добавить роутер")));
+      h("h3", null, t("onb.title")),
+      h("p", null, t("onb.body")),
+      h("button", { class: "btn pri", onclick: () => openRouterModal(null) }, t("nav.add_router"))));
 }
 
 // ---------- dashboard ----------
@@ -218,48 +412,44 @@ function dashboard() {
 
   const wrap = h("div", { class: "wrap wide" });
   wrap.append(h("div", { class: "stat-grid" },
-    stat("Роутеры", S.routers.length, noCreds ? noCreds + " без SSH-кредов" : "у всех заданы креды"),
-    stat("Сервисы", svcTotal, svcOn + " включено в конфиге"),
-    stat("Юзеры", S.users.length, multi + " с мультидоступом"),
-    stat("Нужен Deploy", drifters.length, drifters.length ? "есть расхождения" : "проверьте статусы", drifters.length ? "warn" : "ok")));
+    stat(t("dash.stat.routers"), S.routers.length, noCreds ? t("dash.no_creds", { n: noCreds }) : t("dash.all_creds")),
+    stat(t("dash.stat.services"), svcTotal, t("dash.svc_on", { n: svcOn })),
+    stat(t("dash.stat.users"), S.users.length, t("dash.multi", { n: multi })),
+    stat(t("dash.stat.needs"), drifters.length, drifters.length ? t("dash.has_diff") : t("dash.check_hint"), drifters.length ? "warn" : "ok")));
 
   if (drifters.length) {
-    const c = h("div", { class: "callout amber" }, h("div", { class: "t" }, "Требуется Deploy"),
-      h("div", { class: "foot-note", style: "margin:4px 0 8px" }, drifters.map((r) => r.name).join(", ") + " — локальный конфиг отличается от того, что на роутере."),
-      h("div", { class: "row wrap-row" }, ...drifters.map((r) => h("button", { class: "btn sm", onclick: () => go({ kind: "router", id: r.name, tab: "deploy" }) }, r.name + " → Deploy"))));
-    wrap.append(c);
+    wrap.append(h("div", { class: "callout amber" }, h("div", { class: "t" }, t("dash.drift_title")),
+      h("div", { class: "foot-note", style: "margin:4px 0 8px" }, t("dash.drift_body", { names: drifters.map((r) => r.name).join(", ") })),
+      h("div", { class: "row wrap-row" }, ...drifters.map((r) => h("button", { class: "btn sm", onclick: () => go({ kind: "router", id: r.name, tab: "deploy" }) }, r.name + " → Deploy")))));
   }
 
   wrap.append(h("div", { class: "row", style: "justify-content:flex-end" },
-    h("button", { class: "btn sm", onclick: checkAllStatuses }, "Проверить статусы"),
-    h("button", { class: "btn sm", onclick: () => openRouterModal(null) }, "+ Роутер"),
-    h("button", { class: "btn sm", onclick: () => openUserModal(null) }, "+ Юзер")));
+    h("button", { class: "btn sm", onclick: checkAllStatuses }, t("dash.check")),
+    h("button", { class: "btn sm", onclick: () => openRouterModal(null) }, t("dash.add_router")),
+    h("button", { class: "btn sm", onclick: () => openUserModal(null) }, t("dash.add_user"))));
 
-  // routers list
   const rlist = h("div", { class: "card" });
-  rlist.append(h("div", { class: "pad", style: "border-bottom:1px solid var(--divider)" }, h("span", { class: "section-title" }, "Роутеры")));
+  rlist.append(h("div", { class: "pad", style: "border-bottom:1px solid var(--divider)" }, h("span", { class: "section-title" }, t("nav.routers"))));
   for (const r of S.routers) rlist.append(dashRouterRow(r));
   wrap.append(rlist);
 
-  // users list
   const ulist = h("div", { class: "card" });
-  ulist.append(h("div", { class: "pad", style: "border-bottom:1px solid var(--divider)" }, h("span", { class: "section-title" }, "Юзеры")));
+  ulist.append(h("div", { class: "pad", style: "border-bottom:1px solid var(--divider)" }, h("span", { class: "section-title" }, t("nav.users"))));
   for (const u of S.users) {
     const chips = u.access.length
       ? u.access.map((a) => h("span", { class: "chip" }, a.router + " · " + a.services.length))
-      : [h("span", { class: "chip", style: "color:var(--muted)" }, "нет доступов")];
+      : [h("span", { class: "chip", style: "color:var(--muted)" }, t("nav.no_access"))];
     ulist.append(h("div", { class: "list-row", onclick: () => go({ kind: "user", id: u.name }) },
       h("span", { class: "avatar" }, initials(u.name)),
       h("span", { class: "grow" }, h("div", { class: "name" }, u.name)),
       h("div", { class: "row wrap-row" }, ...chips)));
   }
-  if (!S.users.length) ulist.append(h("div", { class: "pad foot-note" }, "Юзеров пока нет."));
+  if (!S.users.length) ulist.append(h("div", { class: "pad foot-note" }, t("dash.no_users")));
   wrap.append(ulist);
 
   return h("div", null, h("div", { class: "topbar" }, h("div", { class: "grow" },
-    h("h2", null, "Обзор"),
-    h("div", { class: "sub" }, S.routers.length + " роутер(-ов) · " + S.users.length + " юзер(-ов) · ",
-      h("span", { class: "mono" }, S.path)))),
+    h("h2", null, t("dash.title")),
+    h("div", { class: "sub" }, t("dash.subtitle", { r: S.routers.length, u: S.users.length }), h("span", { class: "mono" }, S.path)))),
     h("div", { class: "content" }, wrap));
 }
 function stat(label, value, note, tone) {
@@ -268,36 +458,33 @@ function stat(label, value, note, tone) {
     h("div", { class: "note" }, note));
 }
 function dashRouterRow(r) {
-  const stateText = {
-    clean: ["grey", "локальный конфиг"], needs: ["amber", "● нужен Deploy"],
-    synced: ["green", "✓ синхронизирован"], never: ["amber", "● не установлен на роутере"],
-    empty: ["grey", "нечего деплоить"], error: ["grey", "ошибка подключения"],
-  }[routerState(r)];
+  const st = routerState(r);
+  const tone = { clean: "grey", needs: "amber", synced: "green", never: "amber", empty: "grey", error: "grey" }[st];
   const svcOn = r.services.filter((s) => s.enabled).length;
   const usersWith = S.users.filter((u) => u.access.some((a) => a.router === r.name)).length;
   return h("div", { class: "list-row", onclick: () => go({ kind: "router", id: r.name }) },
-    h("span", { class: "dot " + stateText[0] }),
+    h("span", { class: "dot " + tone }),
     h("span", { class: "grow" },
       h("div", { class: "name" }, r.name, " ", h("span", { class: "mono", style: "color:var(--muted);font-weight:400" }, r.address)),
-      h("div", { class: "sub" }, (r.deploy.configured ? "" : "SSH-креды не заданы · ") + stateText[1] + " · " + svcOn + "/" + r.services.length + " сервисов · " + usersWith + " юзер(-ов)")));
+      h("div", { class: "sub" }, (r.deploy.configured ? "" : t("dash.row.no_creds")) + t("rstate." + st) + " · " + t("dash.row.svc", { on: svcOn, total: r.services.length }) + " · " + t("dash.row.users", { n: usersWith }))));
 }
 async function checkAllStatuses() {
-  toast("Проверяю статусы…");
+  toast(t("toast.checking"));
   for (const r of S.routers.filter((x) => x.deploy.configured)) {
-    try { await deployAction(r.name, "status", { silent: true }); } catch (e) { /* recorded in S.deploy */ }
+    try { await deployAction(r.name, "status", {}); } catch (e) { /* recorded */ }
   }
   render();
-  toast("Статусы обновлены");
+  toast(t("toast.checked"));
 }
 
 // ---------- router view ----------
 function routerView(r) {
   const st = routerState(r);
   let pill;
-  if (st === "needs" || st === "never") pill = h("button", { class: "pill amber amber-btn", onclick: () => go({ kind: "router", id: r.name, tab: "deploy" }) }, h("span", { class: "dot amber" }), "Не задеплоено — нужен Deploy");
-  else if (st === "synced") pill = h("span", { class: "pill green" }, "✓ Синхронизировано");
-  else if (st === "empty") pill = h("span", { class: "pill grey" }, "Нечего деплоить");
-  else pill = h("button", { class: "pill grey", onclick: () => go({ kind: "router", id: r.name, tab: "deploy" }) }, "Локальный конфиг — Deploy");
+  if (st === "needs" || st === "never") pill = h("button", { class: "pill amber amber-btn", onclick: () => go({ kind: "router", id: r.name, tab: "deploy" }) }, h("span", { class: "dot amber" }), t("pill.needs"));
+  else if (st === "synced") pill = h("span", { class: "pill green" }, t("pill.synced"));
+  else if (st === "empty") pill = h("span", { class: "pill grey" }, t("pill.empty"));
+  else pill = h("button", { class: "pill grey", onclick: () => go({ kind: "router", id: r.name, tab: "deploy" }) }, t("pill.clean"));
 
   const tabs = [["services", "Services"], ["access", "Access"], ["render", "Render"], ["deploy", "Deploy"]];
   const tabbar = h("div", { class: "tabs" }, ...tabs.map(([id, label]) =>
@@ -314,7 +501,7 @@ function routerView(r) {
     h("div", { class: "topbar" },
       h("div", { class: "grow" }, h("h2", null, r.name), h("div", { class: "sub" }, h("span", { class: "mono" }, r.address))),
       pill,
-      h("button", { class: "btn sm", onclick: () => openRouterModal(r.name) }, "Настройки")),
+      h("button", { class: "btn sm", onclick: () => openRouterModal(r.name) }, t("settings"))),
     tabbar,
     h("div", { class: "content" }, body));
 }
@@ -325,63 +512,62 @@ function routerServices(r) {
     h("span", { class: "section-title" }, "Services"),
     h("span", { class: "badge grey" }, String(r.services.length)),
     h("span", { class: "spacer" }),
-    h("button", { class: "btn pri sm", onclick: () => openServiceModal(r.name, null) }, "+ Сервис")));
-  wrap.append(h("div", { class: "explain" }, "Гейтованные эндпоинты этого роутера: три «стучальных» порта + цель — проброс внутрь (forward) или порт самого роутера (local)."));
-  if (!r.services.length) wrap.append(h("div", { class: "card pad foot-note" }, "Сервисов пока нет. Добавьте первый."));
+    h("button", { class: "btn pri sm", onclick: () => openServiceModal(r.name, null) }, t("svc.add"))));
+  wrap.append(h("div", { class: "explain" }, t("svc.explain")));
+  if (!r.services.length) wrap.append(h("div", { class: "card pad foot-note" }, t("svc.empty")));
   for (const s of r.services) {
     const target = s.target_type === "local"
-      ? "порт роутера " + s.target_port + "/" + s.target_protocol
+      ? t("svc.target_local", { port: s.target_port, proto: s.target_protocol })
       : ":" + s.target_port + "/" + s.target_protocol + " → " + s.target_to_address + ":" + s.target_to_port;
-    const card = h("div", { class: "card pad row", style: s.enabled ? "" : "opacity:.62" },
-      h("button", { class: "switch" + (s.enabled ? " on" : ""), title: s.enabled ? "Включён в конфиге. Выключить — правила не будут рендериться; применится после Deploy." : "Выключен в конфиге. Включить — правила появятся на роутере после Deploy.", onclick: () => toggleService(r.name, s.name, !s.enabled) }),
+    wrap.append(h("div", { class: "card pad row", style: s.enabled ? "" : "opacity:.62" },
+      h("button", { class: "switch" + (s.enabled ? " on" : ""), title: s.enabled ? t("svc.on_title") : t("svc.off_title"), onclick: () => toggleService(r.name, s.name, !s.enabled) }),
       h("span", { class: "grow" },
         h("div", { class: "row" }, h("span", { class: "mono", style: "font-weight:600" }, s.name),
           h("span", { class: "badge " + (s.target_type === "local" ? "green" : "indigo") }, s.target_type)),
         h("div", { class: "row wrap-row", style: "margin-top:5px;gap:6px" },
           h("span", { class: "chip" }, s.stage1_port + " / " + s.stage2_port + " / " + s.token_port),
           h("span", { class: "foot-note" }, target))),
-      h("button", { class: "iconbtn", title: "Редактировать", onclick: () => openServiceModal(r.name, s.name) }, icon("pencil")),
-      h("button", { class: "iconbtn", title: "Удалить", onclick: () => delService(r.name, s.name) }, icon("trash")));
-    wrap.append(card);
+      h("button", { class: "iconbtn", title: t("svc.edit"), onclick: () => openServiceModal(r.name, s.name) }, icon("pencil")),
+      h("button", { class: "iconbtn", title: t("svc.delete"), onclick: () => delService(r.name, s.name) }, icon("trash"))));
   }
-  wrap.append(h("div", { class: "foot-note" }, "Тоггл меняет состояние сервиса в конфиге. Выключенный сервис остаётся в списке, но его правила и токены юзеров не рендерятся и не деплоятся. Изменения попадут на роутер после Deploy → Apply."));
+  wrap.append(h("div", { class: "foot-note" }, t("svc.foot")));
   return wrap;
 }
 
 function routerAccess(r) {
   const wrap = h("div", { class: "wrap" });
   wrap.append(h("span", { class: "section-title" }, "Access"));
-  wrap.append(h("div", { class: "explain" }, "Кто имеет доступ к этому роутеру. Read-only проекция матрицы: редактирование доступа — на экране юзера."));
+  wrap.append(h("div", { class: "explain" }, t("access.explain")));
   const withAccess = S.users.filter((u) => u.access.some((a) => a.router === r.name));
-  if (!withAccess.length) return wrap.append(h("div", { class: "card pad foot-note" }, "Ни у кого нет доступа к этому роутеру. Откройте юзера в сайдбаре и включите нужные сервисы.")), wrap;
+  if (!withAccess.length) return wrap.append(h("div", { class: "card pad foot-note" }, t("access.empty"))), wrap;
   for (const u of withAccess) {
     const a = u.access.find((x) => x.router === r.name);
     const chips = a.services.map((sn) => {
       const svc = r.services.find((s) => s.name === sn);
       const off = svc && !svc.enabled;
-      return h("span", { class: "chip" + (off ? " strike" : ""), title: off ? "Сервис выключен в конфиге" : "" }, sn);
+      return h("span", { class: "chip" + (off ? " strike" : ""), title: off ? t("access.svc_off") : "" }, sn);
     });
     wrap.append(h("div", { class: "card pad row" },
       h("span", { class: "avatar" }, initials(u.name)),
       h("span", { class: "grow" }, h("div", { style: "font-weight:550" }, u.name),
         h("div", { class: "row wrap-row", style: "margin-top:4px;gap:6px" }, h("span", { class: "foot-note mono" }, "psk ••••••••"), ...chips)),
-      h("button", { class: "btn sm", onclick: () => go({ kind: "user", id: u.name }) }, "Открыть юзера →")));
+      h("button", { class: "btn sm", onclick: () => go({ kind: "user", id: u.name }) }, t("access.open_user"))));
   }
   return wrap;
 }
 
 function routerRender(r) {
   const wrap = h("div", { class: "wrap wide" });
-  const pre = h("pre", { class: "code" }, "загрузка…");
-  api("GET", "/api/render?router=" + encodeURIComponent(r.name)).then((txt) => { pre.textContent = txt; }).catch((e) => { pre.textContent = "ошибка: " + e.message; });
+  const pre = h("pre", { class: "code" }, t("loading"));
+  api("GET", "/api/render?router=" + encodeURIComponent(r.name)).then((txt) => { pre.textContent = txt; }).catch((e) => { pre.textContent = t("error") + ": " + e.message; });
   wrap.append(h("div", { class: "head" },
     h("span", { class: "section-title" }, "Render"),
     h("span", { class: "chip" }, "hash " + short(r.hash)),
     h("span", { class: "spacer" }),
-    h("button", { class: "btn sm", onclick: (e) => { navigator.clipboard.writeText(pre.textContent).then(() => { e.target.textContent = "✓ Скопировано"; setTimeout(() => e.target.textContent = "Скопировать", 1600); }); } }, "Скопировать"),
-    h("button", { class: "btn pri sm", onclick: () => downloadText(pre.textContent, "mkpk-" + r.name + ".rsc") }, "Скачать .rsc")));
+    h("button", { class: "btn sm", onclick: (e) => { navigator.clipboard.writeText(pre.textContent).then(() => { e.target.textContent = t("copied"); setTimeout(() => e.target.textContent = t("copy"), 1600); }); } }, t("copy")),
+    h("button", { class: "btn pri sm", onclick: () => downloadText(pre.textContent, "mkpk-" + r.name + ".rsc") }, t("render.download"))));
   wrap.append(h("div", { class: "card", style: "padding:2px" }, pre));
-  wrap.append(h("div", { class: "foot-note" }, "Рендер по срезу текущего роутера: включённые сервисы + токен-правила юзеров, у которых есть доступ. PSK юзеров попадают в конфиг роутера — поэтому у каждой пары (юзер × роутер) свой PSK."));
+  wrap.append(h("div", { class: "foot-note" }, t("render.foot")));
   return wrap;
 }
 
@@ -390,18 +576,18 @@ function routerDeploy(r) {
   wrap.append(h("span", { class: "section-title" }, "Deploy (SSH)"));
   if (!r.deploy.configured) {
     wrap.append(h("div", { class: "empty" }, icon("lock", "glyph"),
-      h("h3", null, "SSH-креды не заданы"),
-      h("p", null, "Реквизиты подключения задаются один раз в настройках роутера — экран деплоя их не спрашивает."),
-      h("button", { class: "btn pri", onclick: () => openRouterModal(r.name) }, "Открыть настройки роутера")));
+      h("h3", null, t("deploy.nocreds.title")),
+      h("p", null, t("deploy.nocreds.body")),
+      h("button", { class: "btn pri", onclick: () => openRouterModal(r.name) }, t("deploy.nocreds.btn"))));
     return wrap;
   }
   const d = r.deploy;
-  const auth = d.use_agent ? "ssh-agent" : d.key_path ? "ключ: " + d.key_path : d.password_set ? "пароль" : "—";
+  const auth = d.use_agent ? "ssh-agent" : d.key_path ? t("deploy.auth_key", { path: d.key_path }) : d.password_set ? t("deploy.auth_pw") : "—";
   wrap.append(h("div", { class: "grid2" },
-    h("div", { class: "card pad" }, h("div", { class: "lbl" }, "Подключение"),
+    h("div", { class: "card pad" }, h("div", { class: "lbl" }, t("deploy.connection")),
       h("div", { class: "mono", style: "margin-top:4px" }, (d.user || "?") + " @ " + r.address + " : " + (d.port || 22)),
-      h("div", { class: "foot-note", style: "margin-top:3px" }, auth + (d.password_set && !d.use_agent && d.key_path ? " · пароль-fallback" : ""))),
-    h("div", { class: "card pad" }, h("div", { class: "lbl" }, "Состояние"),
+      h("div", { class: "foot-note", style: "margin-top:3px" }, auth + (d.password_set && !d.use_agent && d.key_path ? t("deploy.pw_fallback") : ""))),
+    h("div", { class: "card pad" }, h("div", { class: "lbl" }, t("deploy.state")),
       h("div", { class: "mono", style: "margin-top:4px;font-size:11px" }, "local " + short(r.hash)),
       deployStateLine(r))));
 
@@ -409,31 +595,23 @@ function routerDeploy(r) {
   const force = h("input", { type: "checkbox", checked: S.deployOpts.force, onchange: () => S.deployOpts.force = force.checked });
   const running = S.deployRunning && S.deployRunning.startsWith(r.name + ":");
   const busy = (b) => running ? true : b;
-  const bar = h("div", { class: "card pad row wrap-row" },
+  wrap.append(h("div", { class: "card pad row wrap-row" },
     h("button", { class: "btn sm", disabled: busy(false), onclick: () => runDeploy(r, "status") }, "Status"),
     h("button", { class: "btn pri sm", disabled: busy(false), onclick: () => runDeploy(r, "apply") }, "Apply"),
-    h("button", { class: "btn danger sm", disabled: busy(false), onclick: () => confirmDialog("Uninstall с роутера?", "Все правила mkpk-tt будут удалены с роутера. Локальный конфиг не тронут.", "Uninstall", () => runDeploy(r, "uninstall")) }, "Uninstall…"),
+    h("button", { class: "btn danger sm", disabled: busy(false), onclick: () => confirmDialog(t("deploy.uninstall_title"), t("deploy.uninstall_body"), "Uninstall", () => runDeploy(r, "uninstall")) }, "Uninstall…"),
     h("span", { class: "spacer" }),
-    h("label", { class: "inline-check", title: "Показать, что будет сделано, без изменений на роутере" }, dry, "dry-run"),
-    h("label", { class: "inline-check", title: "Применить, даже если hash совпадает" }, force, "force"),
-    running && h("span", null, h("span", { class: "spin" }), " " + S.deployRunning.split(":")[1] + "…"));
-  wrap.append(bar);
+    h("label", { class: "inline-check", title: t("deploy.dry_title") }, dry, "dry-run"),
+    h("label", { class: "inline-check", title: t("deploy.force_title") }, force, "force"),
+    running && h("span", null, h("span", { class: "spin" }), " " + S.deployRunning.split(":")[1] + "…")));
   const prev = S.deploy[r.name];
   if (prev && prev.result) wrap.append(deployResult(r, prev.result));
-  else wrap.append(h("div", { class: "card pad foot-note" }, "Результат действия появится здесь. Начните со Status."));
+  else wrap.append(h("div", { class: "card pad foot-note" }, t("deploy.result_ph")));
   return wrap;
 }
 function deployStateLine(r) {
-  const map = {
-    clean: ["muted", "локальный конфиг (не проверялся по SSH)"],
-    needs: ["warn", "● есть локальные изменения — нужен Apply"],
-    synced: ["ok", "✓ синхронизировано"],
-    never: ["warn", "● на роутере ничего не установлено"],
-    empty: ["muted", "нечего деплоить"],
-    error: ["muted", "ошибка подключения"],
-  };
-  const [tone, text] = map[routerState(r)];
-  return h("div", { class: "foot-note", style: "margin-top:3px;color:var(--" + tone + ")" }, text);
+  const st = routerState(r);
+  const tone = { clean: "muted", needs: "warn", synced: "ok", never: "warn", empty: "muted", error: "muted" }[st];
+  return h("div", { class: "foot-note", style: "margin-top:3px;color:var(--" + tone + ")" }, t("dstate." + st));
 }
 async function runDeploy(r, action) {
   S.deployRunning = r.name + ":" + action;
@@ -442,9 +620,8 @@ async function runDeploy(r, action) {
     await deployAction(r.name, action, { force: S.deployOpts.force, dry_run: S.deployOpts.dry });
   } catch (e) { /* recorded in S.deploy[r.name].result */ }
   S.deployRunning = null;
-  render(); // full re-render: header pill, sidebar dot and result all reflect new state
+  render();
 }
-// deployAction records installed state and returns the raw result
 async function deployAction(routerName, action, opts) {
   const body = { router: routerName, force: !!opts.force, dry_run: opts.dry_run !== undefined ? opts.dry_run : action !== "apply" };
   const rec = S.deploy[routerName] || (S.deploy[routerName] = {});
@@ -458,12 +635,12 @@ async function deployAction(routerName, action, opts) {
   rec.checked = true; rec.err = null;
   if (action === "status") {
     rec.installed = res.installed;
-    rec.baseline = res.installed ? res.installed_hash : "";   // "" = nothing on router
+    rec.baseline = res.installed ? res.installed_hash : "";
     res._kind = res.installed ? (res.up_to_date ? "synced" : "drift") : "never";
   } else if (action === "apply") {
     if (res.applied) { rec.installed = true; rec.baseline = res.hash; res._kind = "applied"; }
     else if (res.action === "skip") { rec.installed = true; rec.baseline = res.hash; res._kind = "synced"; }
-    else { res._kind = "dry"; }   // dry-run: nothing changed on the router
+    else { res._kind = "dry"; }
   } else if (action === "uninstall") {
     if (res.applied) { rec.installed = false; rec.baseline = ""; res._kind = "uninstalled"; }
     else res._kind = "dry";
@@ -473,28 +650,28 @@ async function deployAction(routerName, action, opts) {
 }
 function deployResult(r, res) {
   const kinds = {
-    synced: ["ok", "Синхронизировано", "На роутере hash " + short(res.installed_hash) + " совпадает с локальным конфигом."],
-    never: ["warn", "На роутере ничего не установлено", "mkpk-tt-meta не найдена. Локальный конфиг (hash " + short(res.desired_hash) + ") ещё не деплоился."],
-    drift: ["warn", "Drift: конфиг отличается", "На роутере hash " + short(res.installed_hash) + ", локально " + short(res.desired_hash) + ". Нужен Apply."],
-    applied: ["ok", "Задеплоено", "Конфиг применён: hash " + short(res.hash) + ". Локальный конфиг и роутер синхронизированы."],
-    dry: ["ok", "Dry-run завершён", "Показано, что было бы сделано. На роутере ничего не изменено (dry-run)."],
-    uninstalled: ["ok", "Снято с роутера", "Все правила mkpk-tt удалены. Конфиг в приложении не тронут — Apply вернёт всё обратно."],
-    err: ["err", "Не удалось подключиться", res.msg],
+    synced: ["ok", t("dres.synced.t"), t("dres.synced.m", { h: short(res.installed_hash) })],
+    never: ["warn", t("dres.never.t"), t("dres.never.m", { h: short(res.desired_hash) })],
+    drift: ["warn", t("dres.drift.t"), t("dres.drift.m", { h: short(res.installed_hash), l: short(res.desired_hash) })],
+    applied: ["ok", t("dres.applied.t"), t("dres.applied.m", { h: short(res.hash) })],
+    dry: ["ok", t("dres.dry.t"), t("dres.dry.m")],
+    uninstalled: ["ok", t("dres.uninstalled.t"), t("dres.uninstalled.m")],
+    err: ["err", t("dres.err.t"), res.msg],
   };
-  const [tone, title, msg] = kinds[res._kind] || ["ok", "Готово", JSON.stringify(res)];
+  const [tone, title, msg] = kinds[res._kind] || ["ok", t("dres.ok"), JSON.stringify(res)];
   const toneClass = { ok: "green", warn: "amber", err: "danger" }[tone] || "green";
   const card = h("div", { class: "card pad" },
     h("div", { class: "row" }, h("span", { class: "badge " + (toneClass === "danger" ? "amber" : toneClass), style: toneClass === "danger" ? "color:var(--danger);background:var(--danger-bg);border-color:var(--danger-border)" : "" }, tone === "ok" ? "✓" : tone === "warn" ? "●" : "✕"),
       h("span", { style: "font-weight:600" }, title)),
     h("div", { class: "foot-note", style: "margin-top:5px" }, msg));
-  if (res._kind === "drift") card.append(h("button", { class: "btn pri sm", style: "margin-top:8px", onclick: () => runDeploy(r, "apply") }, "Apply — задеплоить изменения"));
-  if (res._kind === "err") card.append(h("button", { class: "btn link", style: "margin-top:8px", onclick: () => openRouterModal(r.name) }, "Настройки роутера →"));
+  if (res._kind === "drift") card.append(h("button", { class: "btn pri sm", style: "margin-top:8px", onclick: () => runDeploy(r, "apply") }, t("dres.apply_btn")));
+  if (res._kind === "err") card.append(h("button", { class: "btn link", style: "margin-top:8px", onclick: () => openRouterModal(r.name) }, t("dres.settings_link")));
   if (res.log) {
     const term = h("pre", { class: "term hidden" }, res.log);
     const toggle = h("button", { class: "btn link", style: "margin-top:8px", onclick: () => {
       term.classList.toggle("hidden");
-      toggle.textContent = term.classList.contains("hidden") ? "▶ Показать raw-лог" : "▼ Скрыть raw-лог";
-    } }, "▶ Показать raw-лог");
+      toggle.textContent = term.classList.contains("hidden") ? t("dres.show_log") : t("dres.hide_log");
+    } }, t("dres.show_log"));
     card.append(h("div", null, toggle), term);
   }
   return card;
@@ -503,50 +680,48 @@ function deployResult(r, res) {
 // ---------- user view ----------
 function userView(u) {
   const wrap = h("div", { class: "wrap narrow" });
-  wrap.append(h("span", { class: "section-title" }, "Матрица доступа"));
-  wrap.append(h("div", { class: "explain" }, "Юзер может иметь доступ к нескольким роутерам. PSK — свой на каждый роутер (создаётся при первом доступе); один инвайт может включать несколько роутеров."));
+  wrap.append(h("span", { class: "section-title" }, t("user.matrix")));
+  wrap.append(h("div", { class: "explain" }, t("user.matrix.explain")));
   for (const r of S.routers) {
     const a = u.access.find((x) => x.router === r.name);
     const has = !!a;
     const card = h("div", { class: "card pad stack" });
-    const needs = isDrift(r);
     card.append(h("div", { class: "row" }, icon("router"), h("span", { style: "font-weight:600" }, r.name),
       h("span", { class: "mono foot-note" }, r.address),
-      needs && h("button", { class: "badge amber", title: "Локальные изменения не задеплоены", onclick: () => go({ kind: "router", id: r.name, tab: "deploy" }) }, "нужен Deploy"),
+      isDrift(r) && h("button", { class: "badge amber", title: t("user.needs_deploy_title"), onclick: () => go({ kind: "router", id: r.name, tab: "deploy" }) }, t("user.needs_deploy")),
       h("span", { class: "spacer" }),
-      h("span", { class: "foot-note" }, has ? a.services.length + " из " + r.services.length + " сервисов" : "нет доступа")));
+      h("span", { class: "foot-note" }, has ? t("user.svc_count", { n: a.services.length, total: r.services.length }) : t("user.no_access"))));
     if (has) card.append(h("div", { class: "row", style: "background:var(--surface-2);border-radius:6px;padding:6px 9px" },
       h("span", { class: "lbl" }, "PSK"), h("span", { class: "mono", style: "letter-spacing:1px" }, "••••••••••••"),
-      h("span", { class: "foot-note" }, "свой для этого роутера"), h("span", { class: "spacer" }),
-      h("button", { class: "btn sm", title: "Инвайт только с этим роутером", onclick: () => openInvite(u.name, "single", r.name) }, "Invite"),
-      h("button", { class: "btn ghost sm", title: "Сгенерировать новый PSK для этой пары юзер×роутер", onclick: () => rotatePSK(u.name, r.name) }, "⟳ Ротировать")));
+      h("span", { class: "foot-note" }, t("user.psk_own")), h("span", { class: "spacer" }),
+      h("button", { class: "btn sm", title: t("user.invite_single_title"), onclick: () => openInvite(u.name, "single", r.name) }, "Invite"),
+      h("button", { class: "btn ghost sm", title: t("user.rotate_title"), onclick: () => rotatePSK(u.name, r.name) }, t("user.rotate"))));
     const checks = h("div", { class: "stack", style: "gap:5px" });
     for (const s of r.services) {
       const on = has && a.services.includes(s.name);
       const cb = h("input", { type: "checkbox", checked: on, onchange: () => setAccess(u.name, r.name, s.name, cb.checked) });
-      checks.append(h("label", { class: "inline-check" }, cb, h("span", { class: "mono" }, s.name), !s.enabled && h("span", { class: "foot-note" }, "· выключен в конфиге")));
+      checks.append(h("label", { class: "inline-check" }, cb, h("span", { class: "mono" }, s.name), !s.enabled && h("span", { class: "foot-note" }, t("user.svc_off"))));
     }
-    if (!r.services.length) checks.append(h("span", { class: "foot-note" }, "у роутера нет сервисов"));
+    if (!r.services.length) checks.append(h("span", { class: "foot-note" }, t("user.no_services")));
     card.append(checks);
     wrap.append(card);
   }
-  wrap.append(h("div", { class: "foot-note" }, "Изменения доступа и ротация PSK попадают на роутер после Deploy этого роутера, а юзеру — через пере-выданный инвайт."));
+  wrap.append(h("div", { class: "foot-note" }, t("user.matrix.foot")));
 
-  // invite section
   const nAccess = u.access.length;
   const inv = h("div", { class: "card pad stack" });
-  inv.append(h("span", { class: "section-title" }, "Выдать доступ"));
-  inv.append(h("div", { class: "explain" }, "Invite-blob для клиентского приложения — передавать только по безопасному каналу."));
-  if (nAccess === 0) inv.append(h("div", { class: "foot-note" }, "Сначала включите юзеру хотя бы один сервис в матрице выше."));
+  inv.append(h("span", { class: "section-title" }, t("user.grant")));
+  inv.append(h("div", { class: "explain" }, t("user.grant.explain")));
+  if (nAccess === 0) inv.append(h("div", { class: "foot-note" }, t("user.grant.none")));
   else inv.append(h("div", null, h("button", { class: "btn pri", onclick: () => openInvite(u.name, nAccess > 1 ? "all" : "single", nAccess === 1 ? u.access[0].router : null) },
-    nAccess > 1 ? "Общий инвайт — все роутеры (" + nAccess + ")" : "Выдать инвайт")));
+    nAccess > 1 ? t("user.grant.all", { n: nAccess }) : t("user.grant.one"))));
   wrap.append(inv);
 
   return h("div", null,
     h("div", { class: "topbar" }, h("span", { class: "avatar lg" }, initials(u.name)),
       h("div", { class: "grow" }, h("h2", null, u.name),
-        h("div", { class: "sub mono" }, "client_id: " + u.client_id + " · единый во всех роутерах")),
-      h("button", { class: "btn sm", onclick: () => openUserModal(u.name) }, "Настройки")),
+        h("div", { class: "sub mono" }, t("user.header_id", { id: u.client_id }))),
+      h("button", { class: "btn sm", onclick: () => openUserModal(u.name) }, t("settings"))),
     h("div", { class: "content" }, wrap));
 }
 
@@ -555,8 +730,8 @@ async function toggleService(router, name, enabled) {
   try { applyConfig(await api("POST", "/api/service/enable", { router, name, enabled })); } catch (e) { toast(e.message, true); }
 }
 async function delService(router, name) {
-  confirmDialog("Удалить сервис " + name + "?", "Правило будет удалено с роутера после следующего Deploy.", "Удалить", async () => {
-    try { applyConfig(await api("DELETE", "/api/service?router=" + encodeURIComponent(router) + "&name=" + encodeURIComponent(name))); toast("Сервис удалён"); } catch (e) { toast(e.message, true); }
+  confirmDialog(t("svc.del.title", { name }), t("svc.del.body"), t("del"), async () => {
+    try { applyConfig(await api("DELETE", "/api/service?router=" + encodeURIComponent(router) + "&name=" + encodeURIComponent(name))); toast(t("toast.svc_deleted")); } catch (e) { toast(e.message, true); }
   });
 }
 async function setAccess(user, router, service, on) {
@@ -570,8 +745,8 @@ async function setAccess(user, router, service, on) {
   } catch (e) { toast(e.message, true); render(); }
 }
 async function rotatePSK(user, router) {
-  confirmDialog("Ротировать PSK?", "Будет сгенерирован новый PSK этой пары юзер×роутер. Старый инвайт перестанет работать после Deploy роутера — выдайте новый.", "Ротировать", async () => {
-    try { applyConfig(await api("POST", "/api/user/psk", { user, router })); toast("PSK ротирован"); } catch (e) { toast(e.message, true); }
+  confirmDialog(t("psk.rotate.title"), t("psk.rotate.body"), t("psk.rotate.btn"), async () => {
+    try { applyConfig(await api("POST", "/api/user/psk", { user, router })); toast(t("toast.psk_rotated")); } catch (e) { toast(e.message, true); }
   });
 }
 
@@ -590,7 +765,7 @@ function field(label, input, note) {
 function openRouterModal(name) {
   const r = name ? routerOf(name) : null;
   const g = {};
-  const inp = (val, attrs) => { const e = h("input", { type: "text", value: val || "", ...attrs }); return e; };
+  const inp = (val, attrs) => h("input", { type: "text", value: val || "", ...attrs });
   g.name = inp(r && r.name, { placeholder: "router-a" });
   if (r) g.name.setAttribute("readonly", "");
   g.address = inp(r && r.address, { placeholder: "router.example.com" });
@@ -599,30 +774,29 @@ function openRouterModal(name) {
   g.user = inp(d.user, { placeholder: "admin" });
   g.key_path = inp(d.key_path, { placeholder: "~/.ssh/id_ed25519" });
   let authMode = d.use_agent === false && d.key_path ? "key" : "agent";
-  const keyWrap = h("div", { class: "field" + (authMode === "key" ? "" : " hidden") }, h("label", null, "Путь к приватному ключу"), g.key_path, h("div", { class: "note" }, "В конфиге хранится только путь, не сам ключ."));
+  const keyWrap = h("div", { class: "field" + (authMode === "key" ? "" : " hidden") }, h("label", null, t("router.keypath")), g.key_path, h("div", { class: "note" }, t("router.keypath_note")));
   const seg = h("div", { class: "seg" },
     h("button", { type: "button", class: authMode === "agent" ? "on" : "", onclick: () => setAuth("agent") }, "ssh-agent"),
-    h("button", { type: "button", class: authMode === "key" ? "on" : "", onclick: () => setAuth("key") }, "файл ключа"));
+    h("button", { type: "button", class: authMode === "key" ? "on" : "", onclick: () => setAuth("key") }, t("router.auth_keyfile")));
   function setAuth(m) { authMode = m; seg.children[0].className = m === "agent" ? "on" : ""; seg.children[1].className = m === "key" ? "on" : ""; keyWrap.classList.toggle("hidden", m !== "key"); }
-  g.password = h("input", { type: "password", placeholder: r ? "не менять" : "" });
-  g.key_pass = h("input", { type: "password", placeholder: r ? "не менять" : "" });
-  const fbBody = h("div", { class: "stack hidden" }, field("Пароль SSH (fallback)", g.password), field("Пассфраза ключа", g.key_pass, "Опционально. Лежит в секретном конфиге вместе с PSK."));
-  const fbToggle = h("button", { type: "button", class: "collapse-head", onclick: () => { fbBody.classList.toggle("hidden"); fbToggle.firstChild.textContent = fbBody.classList.contains("hidden") ? "▶ " : "▼ "; } }, "▶ ", "Пароль (fallback)");
+  g.password = h("input", { type: "password", placeholder: r ? t("ph.unchanged") : "" });
+  g.key_pass = h("input", { type: "password", placeholder: r ? t("ph.unchanged") : "" });
+  const fbBody = h("div", { class: "stack hidden" }, field(t("router.pw_ssh"), g.password), field(t("router.keypass"), g.key_pass, t("router.keypass_note")));
+  const fbToggle = h("button", { type: "button", class: "collapse-head", onclick: () => { fbBody.classList.toggle("hidden"); fbToggle.firstChild.textContent = fbBody.classList.contains("hidden") ? "▶ " : "▼ "; } }, "▶ ", t("router.pw_collapse"));
 
   const n = (r && r.notify) || {};
   g.nw = h("input", { type: "checkbox", checked: !!n.webhook_enabled });
   g.url = inp(n.url, { placeholder: "https://…" });
   g.nt = h("input", { type: "checkbox", checked: !!n.telegram_enabled });
-  g.tg_chat = inp(n.telegram_chat_id, { placeholder: "@chat или id" });
-  g.tg_token = h("input", { type: "password", placeholder: n.bot_token_set ? "не менять" : "bot token" });
+  g.tg_chat = inp(n.telegram_chat_id, { placeholder: "@chat / id" });
+  g.tg_token = h("input", { type: "password", placeholder: n.bot_token_set ? t("ph.unchanged") : "bot token" });
   g.ne = h("input", { type: "checkbox", checked: !!n.email_enabled });
   g.email_to = inp(n.email_to); g.email_from = inp(n.email_from);
   g.email_server = inp(n.email_server, { placeholder: "smtp.example.com" });
   g.email_port = h("input", { type: "number", value: n.email_port || "", placeholder: "587" });
   g.email_tls = inp(n.email_tls, { placeholder: "starttls" });
   g.email_user = inp(n.email_user);
-  g.email_pass = h("input", { type: "password", placeholder: n.email_password_set ? "не менять" : "" });
-  // one channel block: its inputs are disabled (not hidden) while its checkbox is off
+  g.email_pass = h("input", { type: "password", placeholder: n.email_password_set ? t("ph.unchanged") : "" });
   function chan(cb, label, ...rows) {
     const box = h("div", { class: "chan" }, h("label", { class: "inline-check" }, cb, label), ...rows);
     const inputs = [...box.querySelectorAll("input,select")].filter((i) => i !== cb);
@@ -632,14 +806,14 @@ function openRouterModal(name) {
   }
 
   const body = h("div", { class: "modal-body" },
-    h("div", { class: "grid2" }, field("Имя", g.name), field("Адрес", g.address)),
-    h("fieldset", { class: "fieldset" }, h("legend", null, "SSH для деплоя"),
-      h("div", { class: "note" }, "Используется кнопками Status / Apply / Uninstall. Хранится в локальном секретном конфиге (0600) и не покидает эту машину."),
-      h("div", { class: "grid2" }, field("Порт", g.port), field("Пользователь", g.user)),
-      field("Аутентификация", seg, "рекомендуется ssh-agent: секрет не попадает в конфиг"),
+    h("div", { class: "grid2" }, field(t("field.name"), g.name), field(t("field.address"), g.address)),
+    h("fieldset", { class: "fieldset" }, h("legend", null, t("router.ssh_legend")),
+      h("div", { class: "note" }, t("router.ssh_note")),
+      h("div", { class: "grid2" }, field(t("field.port"), g.port), field(t("field.user"), g.user)),
+      field(t("router.auth"), seg, t("router.auth_note")),
       keyWrap, fbToggle, fbBody),
-    h("fieldset", { class: "fieldset" }, h("legend", null, "Уведомления (per router)"),
-      h("div", { class: "note" }, "Срабатывают при успешном открытии любого сервиса этого роутера. Можно включить несколько каналов сразу; секреты на edit оставь пустыми, чтобы не менять."),
+    h("fieldset", { class: "fieldset" }, h("legend", null, t("router.notify_legend")),
+      h("div", { class: "note" }, t("router.notify_note")),
       chan(g.nw, "Webhook", field("URL", g.url)),
       chan(g.nt, "Telegram", h("div", { class: "grid2" }, field("chat id", g.tg_chat), field("bot token", g.tg_token))),
       chan(g.ne, "Email",
@@ -661,20 +835,20 @@ function openRouterModal(name) {
         },
       };
       const res = await api("POST", "/api/router", val);
-      closeModal(); S.view = { kind: "router", id: val.name, tab: S.view.tab || "services" }; applyConfig(res); toast("Роутер сохранён");
+      closeModal(); S.view = { kind: "router", id: val.name, tab: S.view.tab || "services" }; applyConfig(res); toast(t("toast.router_saved"));
     } catch (e) { toast(e.message, true); }
-  } }, "Сохранить");
+  } }, t("save"));
   const foot = h("div", { class: "modal-foot" });
-  if (r) foot.append(h("button", { class: "btn danger sm", onclick: () => delRouter(r.name) }, "Удалить роутер…"));
-  foot.append(h("span", { class: "spacer" }), h("button", { class: "btn", onclick: closeModal }, "Отмена"), save);
+  if (r) foot.append(h("button", { class: "btn danger sm", onclick: () => delRouter(r.name) }, t("router.del")));
+  foot.append(h("span", { class: "spacer" }), h("button", { class: "btn", onclick: closeModal }, t("cancel")), save);
 
-  modal(h("div", null, h("div", { class: "modal-head" }, h("h3", null, r ? "Настройки роутера" : "Новый роутер")), body, foot), "md");
+  modal(h("div", null, h("div", { class: "modal-head" }, h("h3", null, r ? t("nav.router_settings") : t("router.new"))), body, foot), "md");
 }
 async function delRouter(name) {
   const r = routerOf(name);
   const users = S.users.filter((u) => u.access.some((a) => a.router === name)).length;
-  confirmDialog("Удалить роутер " + name + "?", "Вместе с ним удалятся " + r.services.length + " сервис(-ов) и доступ у " + users + " юзер(-ов). Сначала сделайте Uninstall, если mkpk стоит на роутере.", "Удалить роутер", async () => {
-    try { closeModal(); applyConfig(await api("DELETE", "/api/router?name=" + encodeURIComponent(name))); toast("Роутер удалён"); } catch (e) { toast(e.message, true); }
+  confirmDialog(t("router.del.title", { name }), t("router.del.body", { s: r.services.length, u: users }), t("router.del"), async () => {
+    try { closeModal(); applyConfig(await api("DELETE", "/api/router?name=" + encodeURIComponent(name))); toast(t("toast.router_deleted")); } catch (e) { toast(e.message, true); }
   });
 }
 
@@ -693,16 +867,15 @@ function openServiceModal(router, name) {
   g.to_addr = h("input", { type: "text", value: s ? s.target_to_address : "", placeholder: "192.0.2.10" });
   g.to_port = h("input", { type: "number", value: s ? s.target_to_port : "", placeholder: "22" });
   const fwdRow = h("div", { class: "grid2" }, field("to_address", g.to_addr), field("to_port", g.to_port));
-  // one port input, shared between both target types (a DOM node has one parent)
-  const portLabel = h("label", null, "Внешний порт");
-  const portNote = h("div", { class: "note hidden" }, "input accept на этот порт роутера, без NAT.");
+  const portLabel = h("label", null, t("svc.port_ext"));
+  const portNote = h("div", { class: "note hidden" }, t("svc.port_local_note"));
   const portField = h("div", { class: "field" }, portLabel, g.port, portNote);
   const typeSeg = seg2(["forward", "local"], ["forward (dst-nat)", "local (input)"], ttype, (v) => { ttype = v; syncType(); });
   const protoSeg = seg2(["tcp", "udp"], ["tcp", "udp"], proto, (v) => { proto = v; });
   function syncType() {
     const local = ttype === "local";
     fwdRow.classList.toggle("hidden", local);
-    portLabel.textContent = local ? "Порт роутера" : "Внешний порт";
+    portLabel.textContent = local ? t("svc.port_local") : t("svc.port_ext");
     portNote.classList.toggle("hidden", !local);
   }
 
@@ -715,7 +888,7 @@ function openServiceModal(router, name) {
       for (const [l, p] of mine) {
         if (!p) continue;
         for (const [pl, pv] of [["stage1", svc.stage1_port], ["stage2", svc.stage2_port], ["token", svc.token_port], ["target", svc.target_port]])
-          if (p === pv) errs.push(l + ": " + p + " занят — " + svc.name + " (" + pl + ")");
+          if (p === pv) errs.push(t("svc.conflict", { label: l, port: p, svc: svc.name, field: pl }));
       }
     }
     conflict.textContent = errs.join("; ");
@@ -726,24 +899,24 @@ function openServiceModal(router, name) {
 
   const suggest = h("button", { type: "button", class: "btn link row", style: "gap:5px", onclick: async () => {
     try { const d = await api("GET", "/api/ports/suggest?count=3&router=" + encodeURIComponent(router)); [g.s1.value, g.s2.value, g.tk.value] = d.ports; checkPorts(); } catch (e) { toast(e.message, true); }
-  } }, icon("refresh", "ic-sm"), "Подобрать свободные");
+  } }, icon("refresh", "ic-sm"), t("svc.suggest"));
 
   const save = h("button", { class: "btn pri", onclick: async () => {
     try {
       const val = { router, name: g.name.value.trim(), stage1_port: +g.s1.value, stage2_port: +g.s2.value, token_port: +g.tk.value,
         target: { type: ttype, protocol: proto, port: +g.port.value, to_address: ttype === "forward" ? g.to_addr.value.trim() : "", to_port: ttype === "forward" ? +g.to_port.value : 0 } };
-      closeModal(); applyConfig(await api("POST", "/api/service", val)); toast("Сервис сохранён");
+      closeModal(); applyConfig(await api("POST", "/api/service", val)); toast(t("toast.svc_saved"));
     } catch (e) { toast(e.message, true); }
-  } }, "Сохранить");
+  } }, t("save"));
 
   const body = h("div", { class: "modal-body" },
-    field("Имя сервиса", g.name, "Входит в формулу токена — переименование инвалидирует выданные инвайты."),
-    h("div", { class: "field" }, h("label", null, "Порты «стука» (stage1 / stage2 / token)"),
+    field(t("svc.field_name"), g.name, t("svc.field_name_note")),
+    h("div", { class: "field" }, h("label", null, t("svc.knock_ports")),
       h("div", { class: "grid3" }, g.s1, g.s2, g.tk), h("div", { class: "row" }, suggest), conflict),
-    field("Тип цели", typeSeg), portField, fwdRow, field("Протокол", protoSeg));
+    field(t("svc.type"), typeSeg), portField, fwdRow, field(t("svc.proto"), protoSeg));
   syncType(); checkPorts();
-  modal(h("div", null, h("div", { class: "modal-head" }, h("h3", null, s ? "Сервис " + s.name : "Новый сервис")), body,
-    h("div", { class: "modal-foot" }, h("span", { class: "spacer" }), h("button", { class: "btn", onclick: closeModal }, "Отмена"), save)));
+  modal(h("div", null, h("div", { class: "modal-head" }, h("h3", null, s ? t("svc.title", { name: s.name }) : t("svc.new"))), body,
+    h("div", { class: "modal-foot" }, h("span", { class: "spacer" }), h("button", { class: "btn", onclick: closeModal }, t("cancel")), save)));
 }
 function seg2(vals, labels, cur, on) {
   const s = h("div", { class: "seg" });
@@ -758,21 +931,19 @@ function openUserModal(name) {
     const val = nameInp.value.trim();
     if (!val) return;
     try {
-      let res;
-      if (u) res = await api("POST", "/api/user", { name: u.name, rename: val });
-      else res = await api("POST", "/api/user", { name: val });
-      closeModal(); S.view = { kind: "user", id: val }; applyConfig(res); toast("Юзер сохранён");
+      const res = u ? await api("POST", "/api/user", { name: u.name, rename: val }) : await api("POST", "/api/user", { name: val });
+      closeModal(); S.view = { kind: "user", id: val }; applyConfig(res); toast(t("toast.user_saved"));
     } catch (e) { toast(e.message, true); }
-  } }, "Сохранить");
+  } }, t("save"));
   const foot = h("div", { class: "modal-foot" });
   if (u) foot.append(h("button", { class: "btn danger sm", onclick: () => {
-    confirmDialog("Удалить юзера " + u.name + "?", "Юзер и весь его доступ на всех роутерах будут удалены. Изменения попадут на роутеры после Deploy.", "Удалить юзера", async () => {
-      try { closeModal(); S.view = { kind: "dashboard" }; applyConfig(await api("DELETE", "/api/user?name=" + encodeURIComponent(u.name))); toast("Юзер удалён"); } catch (e) { toast(e.message, true); }
+    confirmDialog(t("user.del.title", { name: u.name }), t("user.del.body"), t("user.del"), async () => {
+      try { closeModal(); S.view = { kind: "dashboard" }; applyConfig(await api("DELETE", "/api/user?name=" + encodeURIComponent(u.name))); toast(t("toast.user_deleted")); } catch (e) { toast(e.message, true); }
     });
-  } }, "Удалить юзера…"));
-  foot.append(h("span", { class: "spacer" }), h("button", { class: "btn", onclick: closeModal }, "Отмена"), save);
-  modal(h("div", null, h("div", { class: "modal-head" }, h("h3", null, u ? "Юзер " + u.name : "Новый юзер")),
-    h("div", { class: "modal-body" }, field("Имя (client_id)", nameInp, "Единая идентичность во всех роутерах; входит в формулу токена — переименование инвалидирует инвайты.")),
+  } }, t("user.del")));
+  foot.append(h("span", { class: "spacer" }), h("button", { class: "btn", onclick: closeModal }, t("cancel")), save);
+  modal(h("div", null, h("div", { class: "modal-head" }, h("h3", null, u ? t("user.title", { name: u.name }) : t("user.new"))),
+    h("div", { class: "modal-body" }, field(t("user.field_name"), nameInp, t("user.field_name_note"))),
     foot), "sm");
 }
 
@@ -782,7 +953,7 @@ async function openInvite(user, mode, router) {
   const routerPick = h("div", { class: "row wrap-row" });
   const included = h("div", { class: "stack", style: "gap:4px" });
   const blobBox = h("div", { class: "blobbox" });
-  const modeSeg = seg2(["all", "single"], ["Все роутеры (" + u.access.length + ")", "Только один роутер"], curMode, (v) => { curMode = v; refresh(); });
+  const modeSeg = seg2(["all", "single"], [t("invite.mode_all", { n: u.access.length }), t("invite.mode_single")], curMode, (v) => { curMode = v; refresh(); });
 
   function refresh() {
     routerPick.innerHTML = "";
@@ -795,32 +966,32 @@ async function openInvite(user, mode, router) {
       const r = routerOf(rn); const a = u.access.find((x) => x.router === rn);
       const on = a.services.filter((sn) => { const s = r.services.find((x) => x.name === sn); return s && s.enabled; });
       included.append(h("div", { class: "row" }, h("span", { style: "font-weight:550" }, rn), h("span", { class: "mono foot-note" }, r.address),
-        h("span", { class: "spacer" }), h("span", { class: "foot-note" }, on.length ? on.join(", ") : "— нет включённых сервисов")));
+        h("span", { class: "spacer" }), h("span", { class: "foot-note" }, on.length ? on.join(", ") : t("invite.no_services"))));
     }
     loadBlob();
   }
   async function loadBlob() {
     blobBox.innerHTML = "";
     const pre = h("pre", { class: "code", style: "max-height:120px" }, "…");
-    const veil = h("div", { class: "veil" }, h("button", { class: "btn sm", onclick: () => veil.remove() }, "Показать блоб"));
+    const veil = h("div", { class: "veil" }, h("button", { class: "btn sm", onclick: () => veil.remove() }, t("invite.reveal")));
     blobBox.append(pre, veil);
     try {
       const q = "user=" + encodeURIComponent(user) + (curMode === "single" ? "&router=" + encodeURIComponent(curRouter) : "");
       const d = await api("GET", "/api/export?" + q);
       pre.textContent = d.blob; blobBox._blob = d.blob;
-    } catch (e) { pre.textContent = "ошибка: " + e.message; blobBox._blob = ""; }
+    } catch (e) { pre.textContent = t("error") + ": " + e.message; blobBox._blob = ""; }
   }
 
   const body = h("div", { class: "modal-body" },
-    h("div", { class: "callout amber" }, h("div", { class: "foot-note", style: "color:var(--warn)" }, "Блоб содержит PSK юзера для каждого включённого роутера. Передавайте только по безопасному каналу.")),
-    field("Что войдёт в блоб", modeSeg), routerPick,
-    h("div", { class: "card pad" }, h("div", { class: "lbl", style: "margin-bottom:6px" }, "Роутеры в блобе"), included),
+    h("div", { class: "callout amber" }, h("div", { class: "foot-note", style: "color:var(--warn)" }, t("invite.warn"))),
+    field(t("invite.mode"), modeSeg), routerPick,
+    h("div", { class: "card pad" }, h("div", { class: "lbl", style: "margin-bottom:6px" }, t("invite.included")), included),
     blobBox);
   const foot = h("div", { class: "modal-foot" }, h("span", { class: "spacer" }),
-    h("button", { class: "btn", onclick: () => { if (blobBox._blob) downloadText(blobBox._blob + "\n", user + (curMode === "single" ? "-" + curRouter : "") + ".mkpk"); } }, "Скачать .mkpk"),
-    h("button", { class: "btn pri", onclick: (e) => { navigator.clipboard.writeText(blobBox._blob || "").then(() => { e.target.textContent = "✓ Скопировано"; setTimeout(() => e.target.textContent = "Скопировать", 1600); }); } }, "Скопировать"),
-    h("button", { class: "btn ghost", onclick: closeModal }, "Закрыть"));
-  modal(h("div", null, h("div", { class: "modal-head" }, h("h3", null, "Инвайт — " + user)), body, foot));
+    h("button", { class: "btn", onclick: () => { if (blobBox._blob) downloadText(blobBox._blob + "\n", user + (curMode === "single" ? "-" + curRouter : "") + ".mkpk"); } }, t("invite.download")),
+    h("button", { class: "btn pri", onclick: (e) => { navigator.clipboard.writeText(blobBox._blob || "").then(() => { e.target.textContent = t("copied"); setTimeout(() => e.target.textContent = t("copy"), 1600); }); } }, t("copy")),
+    h("button", { class: "btn ghost", onclick: closeModal }, t("close")));
+  modal(h("div", null, h("div", { class: "modal-head" }, h("h3", null, t("invite.title", { user }))), body, foot));
   refresh();
 }
 
@@ -829,7 +1000,7 @@ function confirmDialog(title, msg, actionLabel, onOk) {
     h("div", { class: "modal-head" }, h("div", { class: "row" }, icon("warn"), h("h3", null, title))),
     h("div", { class: "modal-body" }, h("div", { class: "foot-note" }, msg)),
     h("div", { class: "modal-foot" }, h("span", { class: "spacer" }),
-      h("button", { class: "btn", onclick: closeModal }, "Отмена"),
+      h("button", { class: "btn", onclick: closeModal }, t("cancel")),
       h("button", { class: "btn danger-solid", onclick: () => { closeModal(); onOk(); } }, actionLabel))), "sm");
 }
 
