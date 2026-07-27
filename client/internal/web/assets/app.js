@@ -378,7 +378,7 @@ function routerDeploy(r) {
       h("div", { class: "mono", style: "margin-top:4px" }, (d.user || "?") + " @ " + r.address + " : " + (d.port || 22)),
       h("div", { class: "foot-note", style: "margin-top:3px" }, auth + (d.password_set && !d.use_agent && d.key_path ? " · пароль-fallback" : ""))),
     h("div", { class: "card pad" }, h("div", { class: "lbl" }, "Состояние"),
-      h("div", { class: "mono", style: "margin-top:4px;font-size:13px" }, "local " + short(r.hash)),
+      h("div", { class: "mono", style: "margin-top:4px;font-size:11px" }, "local " + short(r.hash)),
       deployStateLine(r))));
 
   const dry = h("input", { type: "checkbox", checked: true });
