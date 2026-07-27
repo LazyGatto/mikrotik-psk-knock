@@ -97,7 +97,6 @@ func InitConfig(o InitOptions) (config.Config, error) {
 	}
 	router := config.Router{
 		Address:  o.RouterAddress,
-		Notify:   config.Notify{Channel: "webhook"},
 		Defaults: defaultDefaults(),
 		Services: map[string]config.Service{
 			o.ServiceName: {
@@ -143,10 +142,7 @@ func SetRouter(cfg config.Config, o RouterOptions) (config.Config, error) {
 		}
 	}
 	notify := o.Notify
-	if notify.Channel == "" {
-		notify.Channel = "webhook"
-	}
-	if notify.Channel == "email" {
+	if notify.Email.Enabled {
 		if notify.Email.Port == 0 {
 			notify.Email.Port = 587
 		}
@@ -598,21 +594,24 @@ type RouterSummary struct {
 	Clients  []ClientSummary  `json:"clients"`
 }
 
-// NotifySummary is a secret-free view of a router's notification config:
-// non-secret fields plus booleans for whether secrets are set.
+// NotifySummary is a secret-free view of a router's notification config: each
+// channel's non-secret fields plus booleans for whether its secrets are set.
+// Channels are independent — any combination may be enabled.
 type NotifySummary struct {
-	Enabled      bool   `json:"enabled"`
-	Channel      string `json:"channel"`
-	URL          string `json:"url"`
-	TelegramChat string `json:"telegram_chat_id"`
-	BotTokenSet  bool   `json:"bot_token_set"`
-	EmailTo      string `json:"email_to"`
-	EmailFrom    string `json:"email_from"`
-	EmailServer  string `json:"email_server"`
-	EmailPort    int    `json:"email_port"`
-	EmailTLS     string `json:"email_tls"`
-	EmailUser    string `json:"email_user"`
-	EmailPassSet bool   `json:"email_password_set"`
+	Active          bool   `json:"active"`
+	WebhookEnabled  bool   `json:"webhook_enabled"`
+	URL             string `json:"url"`
+	TelegramEnabled bool   `json:"telegram_enabled"`
+	TelegramChat    string `json:"telegram_chat_id"`
+	BotTokenSet     bool   `json:"bot_token_set"`
+	EmailEnabled    bool   `json:"email_enabled"`
+	EmailTo         string `json:"email_to"`
+	EmailFrom       string `json:"email_from"`
+	EmailServer     string `json:"email_server"`
+	EmailPort       int    `json:"email_port"`
+	EmailTLS        string `json:"email_tls"`
+	EmailUser       string `json:"email_user"`
+	EmailPassSet    bool   `json:"email_password_set"`
 }
 
 // DeploySummary is a secret-free view of a router's SSH deploy credentials:
@@ -699,18 +698,20 @@ func Summarize(cfg config.Config) Summary {
 
 func notifySummary(n config.Notify) NotifySummary {
 	return NotifySummary{
-		Enabled:      n.Enabled,
-		Channel:      n.Channel,
-		URL:          n.URL,
-		TelegramChat: n.Telegram.ChatID,
-		BotTokenSet:  n.Telegram.BotToken != "",
-		EmailTo:      n.Email.To,
-		EmailFrom:    n.Email.From,
-		EmailServer:  n.Email.Server,
-		EmailPort:    n.Email.Port,
-		EmailTLS:     n.Email.TLS,
-		EmailUser:    n.Email.User,
-		EmailPassSet: n.Email.Password != "",
+		Active:          n.Active(),
+		WebhookEnabled:  n.Webhook.Enabled,
+		URL:             n.Webhook.URL,
+		TelegramEnabled: n.Telegram.Enabled,
+		TelegramChat:    n.Telegram.ChatID,
+		BotTokenSet:     n.Telegram.BotToken != "",
+		EmailEnabled:    n.Email.Enabled,
+		EmailTo:         n.Email.To,
+		EmailFrom:       n.Email.From,
+		EmailServer:     n.Email.Server,
+		EmailPort:       n.Email.Port,
+		EmailTLS:        n.Email.TLS,
+		EmailUser:       n.Email.User,
+		EmailPassSet:    n.Email.Password != "",
 	}
 }
 

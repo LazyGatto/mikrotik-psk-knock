@@ -47,11 +47,14 @@ type renderConfigData struct {
 	MetaHash        string // config fingerprint stamped into the persistent mkpk-tt-meta marker
 
 	// Router-level notification config, baked into the mkpk-tt-notify script.
-	NotifyEnabled       string // "true" / "false"
-	NotifyChannel       string // ros-quoted
+	// Channels are independent: any combination may be enabled.
+	NotifyActive        bool   // any channel enabled → the poller wires the run
+	NotifyWebhook       string // "true" / "false"
 	NotifyURL           string // ros-quoted
+	NotifyTelegram      string // "true" / "false"
 	NotifyBotToken      string // ros-quoted
 	NotifyChatID        string // ros-quoted
+	NotifyEmail         string // "true" / "false"
 	NotifyEmailTo       string // ros-quoted
 	NotifyEmailFrom     string // ros-quoted
 	NotifyEmailServer   string // ros-quoted
@@ -73,11 +76,13 @@ func RenderConfig(r config.Router, clients []config.RenderClient) (string, error
 		BucketSeconds:       r.Defaults.BucketSeconds,
 		StageTimeout:        r.Defaults.StageTimeout,
 		TokenHitTimeout:     r.Defaults.TokenHitTimeout,
-		NotifyEnabled:       rosBool(r.Notify.Enabled),
-		NotifyChannel:       rosString(r.Notify.Channel),
-		NotifyURL:           rosString(r.Notify.URL),
+		NotifyActive:        r.Notify.Active(),
+		NotifyWebhook:       rosBool(r.Notify.Webhook.Enabled),
+		NotifyURL:           rosString(r.Notify.Webhook.URL),
+		NotifyTelegram:      rosBool(r.Notify.Telegram.Enabled),
 		NotifyBotToken:      rosString(r.Notify.Telegram.BotToken),
 		NotifyChatID:        rosString(r.Notify.Telegram.ChatID),
+		NotifyEmail:         rosBool(r.Notify.Email.Enabled),
 		NotifyEmailTo:       rosString(r.Notify.Email.To),
 		NotifyEmailFrom:     rosString(r.Notify.Email.From),
 		NotifyEmailServer:   rosString(r.Notify.Email.Server),
@@ -277,11 +282,12 @@ add name="mkpk-tt-apply-service" policy=read,write,test source={
 add name="mkpk-tt-notify" policy=read,write,test source={
     # Router-level notification config, baked in at render time so it survives
     # reboot without relying on globals. The poller sets only the event context.
-    :local nEnabled {{.NotifyEnabled}}
-    :local nChannel {{.NotifyChannel}}
+    :local nWebhook {{.NotifyWebhook}}
     :local nUrl {{.NotifyURL}}
+    :local nTelegram {{.NotifyTelegram}}
     :local nBotToken {{.NotifyBotToken}}
     :local nChatId {{.NotifyChatID}}
+    :local nEmail {{.NotifyEmail}}
     :local nEmailTo {{.NotifyEmailTo}}
     :local nEmailFrom {{.NotifyEmailFrom}}
     :local nEmailServer {{.NotifyEmailServer}}
@@ -299,15 +305,8 @@ add name="mkpk-tt-notify" policy=read,write,test source={
     :global mkpkTtNotifyBucket
     :global mkpkTtNotifyTime
 
-    :if ($nEnabled != true) do={
-        :return 0
-    }
-
-    :if ($nChannel = "telegram") do={
-        :if (([:len $nBotToken] = 0) || ([:len $nChatId] = 0)) do={
-            :log warning "mkpk-tt notify telegram missing bot_token/chat_id"
-            :return 0
-        }
+    # Channels are independent — every enabled one fires.
+    :if (($nTelegram = true) && ([:len $nBotToken] > 0) && ([:len $nChatId] > 0)) do={
         :local text ("mkpk allowed src=" . $mkpkTtNotifySrc . " service=" . $mkpkTtNotifyService . " client_id=" . $mkpkTtNotifyClientId . " ttl=" . $mkpkTtNotifyTtl . " router=" . $mkpkTtNotifyRouter)
         :local tgBody ("{\"chat_id\":\"" . $nChatId . "\",\"text\":" . [:serialize $text to=json] . "}")
         :do {
@@ -315,14 +314,9 @@ add name="mkpk-tt-notify" policy=read,write,test source={
         } on-error={
             :log warning ("mkpk-tt notify telegram failed src=" . $mkpkTtNotifySrc . " service=" . $mkpkTtNotifyService)
         }
-        :return 0
     }
 
-    :if ($nChannel = "email") do={
-        :if (([:len $nEmailServer] = 0) || ([:len $nEmailTo] = 0)) do={
-            :log warning "mkpk-tt notify email missing server/to"
-            :return 0
-        }
+    :if (($nEmail = true) && ([:len $nEmailServer] > 0) && ([:len $nEmailTo] > 0)) do={
         :local subject ("mkpk allowed " . $mkpkTtNotifyService . " " . $mkpkTtNotifySrc)
         :local body ("router=" . $mkpkTtNotifyRouter . "\nservice=" . $mkpkTtNotifyService . "\nclient_id=" . $mkpkTtNotifyClientId . "\nsrc=" . $mkpkTtNotifySrc . "\nlist=" . $mkpkTtNotifyList . "\nttl=" . $mkpkTtNotifyTtl . "\nbucket=" . $mkpkTtNotifyBucket . "\ntime=" . $mkpkTtNotifyTime)
         :do {
@@ -330,18 +324,15 @@ add name="mkpk-tt-notify" policy=read,write,test source={
         } on-error={
             :log warning ("mkpk-tt notify email failed src=" . $mkpkTtNotifySrc . " service=" . $mkpkTtNotifyService)
         }
-        :return 0
     }
 
-    :if ([:len $nUrl] = 0) do={
-        :log warning "mkpk-tt notify enabled but url is empty"
-        :return 0
-    }
-    :local payload [:serialize {"router"=$mkpkTtNotifyRouter; "service"=$mkpkTtNotifyService; "client_id"=$mkpkTtNotifyClientId; "src"=$mkpkTtNotifySrc; "list"=$mkpkTtNotifyList; "ttl"=$mkpkTtNotifyTtl; "mode"="udp-token"; "bucket"=$mkpkTtNotifyBucket; "time"=$mkpkTtNotifyTime} to=json]
-    :do {
-        /tool fetch url=$nUrl http-method=post http-header-field="Content-Type: application/json" http-data=$payload keep-result=no
-    } on-error={
-        :log warning ("mkpk-tt notify failed src=" . $mkpkTtNotifySrc . " service=" . $mkpkTtNotifyService)
+    :if (($nWebhook = true) && ([:len $nUrl] > 0)) do={
+        :local payload [:serialize {"router"=$mkpkTtNotifyRouter; "service"=$mkpkTtNotifyService; "client_id"=$mkpkTtNotifyClientId; "src"=$mkpkTtNotifySrc; "list"=$mkpkTtNotifyList; "ttl"=$mkpkTtNotifyTtl; "mode"="udp-token"; "bucket"=$mkpkTtNotifyBucket; "time"=$mkpkTtNotifyTime} to=json]
+        :do {
+            /tool fetch url=$nUrl http-method=post http-header-field="Content-Type: application/json" http-data=$payload keep-result=no
+        } on-error={
+            :log warning ("mkpk-tt notify webhook failed src=" . $mkpkTtNotifySrc . " service=" . $mkpkTtNotifyService)
+        }
     }
     :return 0
 }
@@ -427,7 +418,7 @@ add name="mkpk-tt-poller" policy=read,write,test source={
         /ip firewall address-list remove $nowHits
         /ip firewall address-list remove $prevHits
 
-{{if eq .NotifyEnabled "true"}}        # Notification config is baked into mkpk-tt-notify; set only the event context.
+{{if .NotifyActive}}        # Notification config is baked into mkpk-tt-notify; set only the event context.
         :global mkpkTtNotifyRouter [/system identity get name]
         :global mkpkTtNotifyService $service
         :global mkpkTtNotifyClientId $clientId

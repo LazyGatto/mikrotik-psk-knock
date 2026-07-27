@@ -103,7 +103,7 @@ func TestApplyDefaultsUserClientID(t *testing.T) {
 func TestApplyDefaultsEmailPortAndTLS(t *testing.T) {
 	cfg := Config{Routers: map[string]Router{
 		"r1": {
-			Notify:   Notify{Enabled: true, Channel: "email"},
+			Notify:   Notify{Email: NotifyEmail{Enabled: true}},
 			Services: map[string]Service{"s": {Stage1Port: 1, Stage2Port: 2, TokenPort: 3}},
 		},
 	}}
@@ -125,7 +125,7 @@ func TestServiceEnabled(t *testing.T) {
 
 func TestValidateAcceptsTelegramNotify(t *testing.T) {
 	r := validRouter()
-	r.Notify = Notify{Enabled: true, Channel: "telegram", Telegram: NotifyTelegram{BotToken: "123456:AA-bb_CC", ChatID: "-100200300"}}
+	r.Notify = Notify{Telegram: NotifyTelegram{Enabled: true, BotToken: "123456:AA-bb_CC", ChatID: "-100200300"}}
 	if err := r.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)
 	}
@@ -133,7 +133,7 @@ func TestValidateAcceptsTelegramNotify(t *testing.T) {
 
 func TestValidateRejectsBadTelegramToken(t *testing.T) {
 	r := validRouter()
-	r.Notify = Notify{Enabled: true, Channel: "telegram", Telegram: NotifyTelegram{BotToken: "not-a-token", ChatID: "123"}}
+	r.Notify = Notify{Telegram: NotifyTelegram{Enabled: true, BotToken: "not-a-token", ChatID: "123"}}
 	if err := r.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want bad telegram token error")
 	}
@@ -141,23 +141,30 @@ func TestValidateRejectsBadTelegramToken(t *testing.T) {
 
 func TestValidateRejectsWebhookWithoutURL(t *testing.T) {
 	r := validRouter()
-	r.Notify = Notify{Enabled: true, Channel: "webhook", URL: ""}
+	r.Notify = Notify{Webhook: NotifyWebhook{Enabled: true}}
 	if err := r.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want missing webhook url error")
 	}
 }
 
-func TestValidateRejectsUnknownNotifyChannel(t *testing.T) {
+func TestValidateAcceptsMultipleChannels(t *testing.T) {
 	r := validRouter()
-	r.Notify = Notify{Enabled: true, Channel: "carrier-pigeon", URL: "https://x"}
-	if err := r.Validate(); err == nil {
-		t.Fatal("Validate() error = nil, want unknown channel error")
+	r.Notify = Notify{
+		Webhook:  NotifyWebhook{Enabled: true, URL: "https://hook.example"},
+		Telegram: NotifyTelegram{Enabled: true, BotToken: "123456:AA-bb_CC", ChatID: "-100200300"},
+		Email:    NotifyEmail{Enabled: true, To: "a@b.co", From: "m@b.co", Server: "smtp.b.co", Port: 587, TLS: "starttls"},
+	}
+	if err := r.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v, want all-channels-on to validate", err)
+	}
+	if !r.Notify.Active() {
+		t.Fatal("Active() should be true when channels are enabled")
 	}
 }
 
 func TestValidateAcceptsEmailNotify(t *testing.T) {
 	r := validRouter()
-	r.Notify = Notify{Enabled: true, Channel: "email", Email: NotifyEmail{To: "alerts@example.com", From: "mkpk@example.com", Server: "smtp.example.com", Port: 587, TLS: "starttls"}}
+	r.Notify = Notify{Email: NotifyEmail{Enabled: true, To: "alerts@example.com", From: "mkpk@example.com", Server: "smtp.example.com", Port: 587, TLS: "starttls"}}
 	if err := r.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)
 	}
@@ -165,7 +172,7 @@ func TestValidateAcceptsEmailNotify(t *testing.T) {
 
 func TestValidateRejectsEmailWithoutServer(t *testing.T) {
 	r := validRouter()
-	r.Notify = Notify{Enabled: true, Channel: "email", Email: NotifyEmail{To: "a@b.co", From: "m@b.co", Port: 587, TLS: "starttls"}}
+	r.Notify = Notify{Email: NotifyEmail{Enabled: true, To: "a@b.co", From: "m@b.co", Port: 587, TLS: "starttls"}}
 	if err := r.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want missing email server error")
 	}
@@ -173,7 +180,7 @@ func TestValidateRejectsEmailWithoutServer(t *testing.T) {
 
 func TestValidateRejectsEmailBadTLS(t *testing.T) {
 	r := validRouter()
-	r.Notify = Notify{Enabled: true, Channel: "email", Email: NotifyEmail{To: "a@b.co", From: "m@b.co", Server: "s", Port: 587, TLS: "ssl"}}
+	r.Notify = Notify{Email: NotifyEmail{Enabled: true, To: "a@b.co", From: "m@b.co", Server: "s", Port: 587, TLS: "ssl"}}
 	if err := r.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want bad email tls error")
 	}
@@ -267,7 +274,7 @@ func TestRouterHashSensitiveToNotify(t *testing.T) {
 	cfg := validConfig()
 	base := cfg.RouterHash("r1")
 	r := cfg.Routers["r1"]
-	r.Notify = Notify{Enabled: true, Channel: "webhook", URL: "https://hook.example"}
+	r.Notify = Notify{Webhook: NotifyWebhook{Enabled: true, URL: "https://hook.example"}}
 	cfg.Routers["r1"] = r
 	if cfg.RouterHash("r1") == base {
 		t.Fatal("RouterHash should change when the router's notify config changes")

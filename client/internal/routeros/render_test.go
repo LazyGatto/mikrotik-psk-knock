@@ -169,20 +169,19 @@ func TestRenderNotifyUsesJSONPayload(t *testing.T) {
 func TestRenderNotifyTelegramChannel(t *testing.T) {
 	r := multiRouter()
 	r.Notify = config.Notify{
-		Enabled: true, Channel: "telegram",
-		Telegram: config.NotifyTelegram{BotToken: "123456:AA-bb_CC", ChatID: "-100200300"},
+		Telegram: config.NotifyTelegram{Enabled: true, BotToken: "123456:AA-bb_CC", ChatID: "-100200300"},
 	}
 	rendered, err := RenderConfig(r, multiClients())
 	if err != nil {
 		t.Fatalf("RenderConfig() error = %v", err)
 	}
 	for _, want := range []string{
-		`:if ($nChannel = "telegram")`,
+		`:if (($nTelegram = true)`,
 		`("https://api.telegram.org/bot" . $nBotToken . "/sendMessage")`,
-		`:local nChannel "telegram"`,
+		`:local nTelegram true`,
 		`:local nBotToken "123456:AA-bb_CC"`,
 		`:local nChatId "-100200300"`,
-		`/system script run mkpk-tt-notify`, // wired in processHits when enabled
+		`/system script run mkpk-tt-notify`, // wired in processHits when active
 	} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("rendered script missing %q:\n%s", want, rendered)
@@ -193,15 +192,14 @@ func TestRenderNotifyTelegramChannel(t *testing.T) {
 func TestRenderNotifyEmailChannel(t *testing.T) {
 	r := multiRouter()
 	r.Notify = config.Notify{
-		Enabled: true, Channel: "email",
-		Email: config.NotifyEmail{To: "alerts@example.com", From: "mkpk@example.com", Server: "smtp.example.com", Port: 587, TLS: "starttls", User: "u", Password: "p"},
+		Email: config.NotifyEmail{Enabled: true, To: "alerts@example.com", From: "mkpk@example.com", Server: "smtp.example.com", Port: 587, TLS: "starttls", User: "u", Password: "p"},
 	}
 	rendered, err := RenderConfig(r, multiClients())
 	if err != nil {
 		t.Fatalf("RenderConfig() error = %v", err)
 	}
 	for _, want := range []string{
-		`:if ($nChannel = "email")`,
+		`:if (($nEmail = true)`,
 		`/tool e-mail send to=$nEmailTo from=$nEmailFrom server=$nEmailServer`,
 		`:local nEmailServer "smtp.example.com"`,
 		`:local nEmailPort 587`,
@@ -222,8 +220,8 @@ func TestRenderDisabledNotifySkipsRun(t *testing.T) {
 	if strings.Contains(rendered, `/system script run mkpk-tt-notify`) {
 		t.Fatalf("notify run should be omitted when notify is disabled:\n%s", rendered)
 	}
-	if !strings.Contains(rendered, `:local nEnabled false`) {
-		t.Fatalf("notify script should bake nEnabled false:\n%s", rendered)
+	if !strings.Contains(rendered, `:local nWebhook false`) {
+		t.Fatalf("notify script should bake nWebhook false:\n%s", rendered)
 	}
 }
 

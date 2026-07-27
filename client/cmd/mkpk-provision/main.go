@@ -165,11 +165,12 @@ func routerCmd(args []string) error {
 	sshAgent := fs.Bool("ssh-agent", false, "use ssh-agent for deploy")
 	sshPassword := fs.String("ssh-password", "", "SSH password for deploy (fallback)")
 	sshPort := fs.Int("ssh-port", 0, "SSH port for deploy (default 22)")
-	notifyEnabled := fs.Bool("notify-enabled", false, "enable per-router notifications")
-	notifyChannel := fs.String("notify-channel", "webhook", "notification channel: webhook, telegram or email")
+	notifyWebhook := fs.Bool("notify-webhook", false, "enable webhook channel")
 	notifyURL := fs.String("notify-url", "", "webhook notification URL")
+	notifyTelegram := fs.Bool("notify-telegram", false, "enable telegram channel")
 	notifyTgToken := fs.String("notify-telegram-bot-token", "", "telegram bot token")
 	notifyTgChat := fs.String("notify-telegram-chat-id", "", "telegram chat id")
+	notifyEmail := fs.Bool("notify-email", false, "enable email channel")
 	notifyEmailTo := fs.String("notify-email-to", "", "email recipient")
 	notifyEmailFrom := fs.String("notify-email-from", "", "email sender")
 	notifyEmailServer := fs.String("notify-email-server", "", "SMTP server host")
@@ -204,12 +205,10 @@ func routerCmd(args []string) error {
 		KeyPass: *sshKeyPass, UseAgent: *sshAgent, Password: *sshPassword,
 	}
 	notify := config.Notify{
-		Enabled:  *notifyEnabled,
-		Channel:  *notifyChannel,
-		URL:      *notifyURL,
-		Telegram: config.NotifyTelegram{BotToken: *notifyTgToken, ChatID: *notifyTgChat},
+		Webhook:  config.NotifyWebhook{Enabled: *notifyWebhook, URL: *notifyURL},
+		Telegram: config.NotifyTelegram{Enabled: *notifyTelegram, BotToken: *notifyTgToken, ChatID: *notifyTgChat},
 		Email: config.NotifyEmail{
-			To: *notifyEmailTo, From: *notifyEmailFrom, Server: *notifyEmailServer,
+			Enabled: *notifyEmail, To: *notifyEmailTo, From: *notifyEmailFrom, Server: *notifyEmailServer,
 			Port: *notifyEmailPort, TLS: *notifyEmailTLS, User: *notifyEmailUser, Password: *notifyEmailPassword,
 		},
 	}
@@ -238,8 +237,8 @@ func routerCmd(args []string) error {
 		return err
 	}
 	r := cfg.Routers[*name]
-	fmt.Printf("router set config=%s name=%s address=%s ssh_user=%s ssh_agent=%t notify=%t/%s\n",
-		*configPath, *name, *address, r.Deploy.User, r.Deploy.UseAgent, r.Notify.Enabled, r.Notify.Channel)
+	fmt.Printf("router set config=%s name=%s address=%s ssh_user=%s ssh_agent=%t notify(webhook=%t telegram=%t email=%t)\n",
+		*configPath, *name, *address, r.Deploy.User, r.Deploy.UseAgent, r.Notify.Webhook.Enabled, r.Notify.Telegram.Enabled, r.Notify.Email.Enabled)
 	return nil
 }
 
@@ -628,7 +627,7 @@ func printSummary(path string, s admin.Summary) {
 		fmt.Printf("router name=%s address=%s hash=%s\n", r.Name, r.Address, r.Hash[:min(16, len(r.Hash))])
 		fmt.Printf("  deploy configured=%t ssh_user=%s ssh_key=%s ssh_agent=%t ssh_port=%d password_set=%t\n",
 			r.Deploy.Configured, r.Deploy.User, r.Deploy.KeyPath, r.Deploy.UseAgent, r.Deploy.Port, r.Deploy.PasswordSet)
-		fmt.Printf("  notify enabled=%t channel=%s url=%s\n", r.Notify.Enabled, r.Notify.Channel, r.Notify.URL)
+		fmt.Printf("  notify active=%t webhook=%t telegram=%t email=%t\n", r.Notify.Active, r.Notify.WebhookEnabled, r.Notify.TelegramEnabled, r.Notify.EmailEnabled)
 		fmt.Printf("  defaults bucket_seconds=%d stage_timeout=%s token_hit_timeout=%s allowed_timeout=%s used_timeout=%s\n",
 			r.Defaults.BucketSeconds, r.Defaults.StageTimeout, r.Defaults.TokenHitTimeout, r.Defaults.AllowedTimeout, r.Defaults.UsedTimeout)
 		for _, svc := range r.Services {

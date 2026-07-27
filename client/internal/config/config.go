@@ -99,20 +99,31 @@ type Target struct {
 	Comment   string `yaml:"comment,omitempty" json:"comment"`       // stable RouterOS rule comment
 }
 
+// Notify is a router's notification config. The channels are independent — any
+// combination can be enabled at once, and a successful knock fires every enabled
+// one.
 type Notify struct {
-	Enabled  bool           `yaml:"enabled" json:"enabled"`
-	Channel  string         `yaml:"channel" json:"channel"` // "webhook" | "telegram" | "email"
-	URL      string         `yaml:"url" json:"url"`         // webhook
-	Telegram NotifyTelegram `yaml:"telegram" json:"telegram"`
-	Email    NotifyEmail    `yaml:"email" json:"email"`
+	Webhook  NotifyWebhook  `yaml:"webhook,omitempty" json:"webhook"`
+	Telegram NotifyTelegram `yaml:"telegram,omitempty" json:"telegram"`
+	Email    NotifyEmail    `yaml:"email,omitempty" json:"email"`
+}
+
+// Active reports whether any channel is enabled.
+func (n Notify) Active() bool { return n.Webhook.Enabled || n.Telegram.Enabled || n.Email.Enabled }
+
+type NotifyWebhook struct {
+	Enabled bool   `yaml:"enabled" json:"enabled"`
+	URL     string `yaml:"url" json:"url"`
 }
 
 type NotifyTelegram struct {
+	Enabled  bool   `yaml:"enabled" json:"enabled"`
 	BotToken string `yaml:"bot_token" json:"bot_token"`
 	ChatID   string `yaml:"chat_id" json:"chat_id"`
 }
 
 type NotifyEmail struct {
+	Enabled  bool   `yaml:"enabled" json:"enabled"`
 	To       string `yaml:"to" json:"to"`
 	From     string `yaml:"from" json:"from"`
 	Server   string `yaml:"server" json:"server"`
@@ -186,10 +197,7 @@ func (r *Router) applyDefaults() {
 	if r.Defaults.UsedTimeout == "" {
 		r.Defaults.UsedTimeout = "65s"
 	}
-	if r.Notify.Channel == "" {
-		r.Notify.Channel = "webhook"
-	}
-	if r.Notify.Channel == "email" {
+	if r.Notify.Email.Enabled {
 		if r.Notify.Email.Port == 0 {
 			r.Notify.Email.Port = 587
 		}
@@ -509,23 +517,21 @@ func validateTarget(t Target) error {
 	return nil
 }
 
+// validateNotify checks each enabled channel independently — several may be on
+// at once.
 func validateNotify(n Notify) error {
-	if !n.Enabled {
-		return nil
+	if n.Webhook.Enabled && n.Webhook.URL == "" {
+		return fmt.Errorf("notify.webhook.url is required when the webhook channel is enabled")
 	}
-	switch n.Channel {
-	case "", "webhook":
-		if n.URL == "" {
-			return fmt.Errorf("notify.url is required for webhook channel")
-		}
-	case "telegram":
+	if n.Telegram.Enabled {
 		if !isTelegramToken(n.Telegram.BotToken) {
 			return fmt.Errorf("notify.telegram.bot_token must match ^[0-9]+:[A-Za-z0-9_-]+$")
 		}
 		if !isChatID(n.Telegram.ChatID) {
 			return fmt.Errorf("notify.telegram.chat_id must be an integer id")
 		}
-	case "email":
+	}
+	if n.Email.Enabled {
 		if !isEmailAddr(n.Email.To) {
 			return fmt.Errorf("notify.email.to must be an email address")
 		}
@@ -543,8 +549,6 @@ func validateNotify(n Notify) error {
 		default:
 			return fmt.Errorf("notify.email.tls must be no, yes or starttls")
 		}
-	default:
-		return fmt.Errorf("notify.channel %q must be webhook, telegram or email", n.Channel)
 	}
 	return nil
 }

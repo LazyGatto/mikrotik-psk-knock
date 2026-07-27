@@ -83,13 +83,16 @@ func TestSetRouterNotifyDefaultsAndSecretFreeSummary(t *testing.T) {
 	cfg := initCfg(t)
 	cfg, err := SetRouter(cfg, RouterOptions{
 		Name: rn, Address: "r.example",
-		Notify: config.Notify{Enabled: true, Channel: "telegram", Telegram: config.NotifyTelegram{BotToken: "123:secret-token", ChatID: "-100"}},
+		Notify: config.Notify{
+			Webhook:  config.NotifyWebhook{Enabled: true, URL: "https://hook.example"},
+			Telegram: config.NotifyTelegram{Enabled: true, BotToken: "123:secret-token", ChatID: "-100"},
+		},
 	})
 	if err != nil {
 		t.Fatalf("SetRouter() error = %v", err)
 	}
 	n := Summarize(cfg).Routers[0].Notify
-	if !n.Enabled || n.Channel != "telegram" || n.TelegramChat != "-100" || !n.BotTokenSet {
+	if !n.Active || !n.WebhookEnabled || !n.TelegramEnabled || n.TelegramChat != "-100" || !n.BotTokenSet {
 		t.Fatalf("notify summary wrong: %+v", n)
 	}
 	// The secret token must not appear anywhere in the summary struct fields.

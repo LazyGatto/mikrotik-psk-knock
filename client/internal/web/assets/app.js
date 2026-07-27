@@ -576,12 +576,26 @@ function openRouterModal(name) {
   const fbToggle = h("button", { type: "button", class: "collapse-head", onclick: () => { fbBody.classList.toggle("hidden"); fbToggle.firstChild.textContent = fbBody.classList.contains("hidden") ? "▶ " : "▼ "; } }, "▶ ", "Пароль (fallback)");
 
   const n = (r && r.notify) || {};
-  g.notify_enabled = h("input", { type: "checkbox", checked: !!n.enabled });
-  g.notify_channel = h("select", null, ...["webhook", "telegram", "email"].map((c) => h("option", { value: c, selected: (n.channel || "webhook") === c }, c)));
-  g.notify_url = inp(n.url, { placeholder: "https://…" });
+  g.nw = h("input", { type: "checkbox", checked: !!n.webhook_enabled });
+  g.url = inp(n.url, { placeholder: "https://…" });
+  g.nt = h("input", { type: "checkbox", checked: !!n.telegram_enabled });
   g.tg_chat = inp(n.telegram_chat_id, { placeholder: "@chat или id" });
   g.tg_token = h("input", { type: "password", placeholder: n.bot_token_set ? "не менять" : "bot token" });
-  g.email_to = inp(n.email_to); g.email_server = inp(n.email_server, { placeholder: "smtp.example.com" });
+  g.ne = h("input", { type: "checkbox", checked: !!n.email_enabled });
+  g.email_to = inp(n.email_to); g.email_from = inp(n.email_from);
+  g.email_server = inp(n.email_server, { placeholder: "smtp.example.com" });
+  g.email_port = h("input", { type: "number", value: n.email_port || "", placeholder: "587" });
+  g.email_tls = inp(n.email_tls, { placeholder: "starttls" });
+  g.email_user = inp(n.email_user);
+  g.email_pass = h("input", { type: "password", placeholder: n.email_password_set ? "не менять" : "" });
+  // one channel block: its inputs are disabled (not hidden) while its checkbox is off
+  function chan(cb, label, ...rows) {
+    const box = h("div", { class: "chan" }, h("label", { class: "inline-check" }, cb, label), ...rows);
+    const inputs = [...box.querySelectorAll("input,select")].filter((i) => i !== cb);
+    const sync = () => inputs.forEach((i) => { i.disabled = !cb.checked; });
+    cb.addEventListener("change", sync); sync();
+    return box;
+  }
 
   const body = h("div", { class: "modal-body" },
     h("div", { class: "grid2" }, field("Имя", g.name), field("Адрес", g.address)),
@@ -591,11 +605,13 @@ function openRouterModal(name) {
       field("Аутентификация", seg, "рекомендуется ssh-agent: секрет не попадает в конфиг"),
       keyWrap, fbToggle, fbBody),
     h("fieldset", { class: "fieldset" }, h("legend", null, "Уведомления (per router)"),
-      h("div", { class: "note" }, "Отправляются при успешном открытии любого сервиса этого роутера. Пустое поле = канал выключен."),
-      h("label", { class: "inline-check" }, g.notify_enabled, "включены"),
-      field("Канал", g.notify_channel),
-      field("Webhook URL", g.notify_url), field("Telegram chat", g.tg_chat), field("Telegram bot token", g.tg_token),
-      field("Email — to", g.email_to), field("Email — server", g.email_server)));
+      h("div", { class: "note" }, "Срабатывают при успешном открытии любого сервиса этого роутера. Можно включить несколько каналов сразу; секреты на edit оставь пустыми, чтобы не менять."),
+      chan(g.nw, "Webhook", field("URL", g.url)),
+      chan(g.nt, "Telegram", h("div", { class: "grid2" }, field("chat id", g.tg_chat), field("bot token", g.tg_token))),
+      chan(g.ne, "Email",
+        h("div", { class: "grid2" }, field("to", g.email_to), field("from", g.email_from)),
+        h("div", { class: "grid3" }, field("server", g.email_server), field("port", g.email_port), field("tls", g.email_tls)),
+        h("div", { class: "grid2" }, field("user", g.email_user), field("password", g.email_pass)))));
 
   const save = h("button", { class: "btn pri", onclick: async () => {
     try {
@@ -604,9 +620,11 @@ function openRouterModal(name) {
         port: +g.port.value || 0, user: g.user.value.trim(),
         use_agent: authMode === "agent", key_path: authMode === "key" ? g.key_path.value.trim() : "",
         password: g.password.value, key_pass: g.key_pass.value,
-        notify: { enabled: g.notify_enabled.checked, channel: g.notify_channel.value, url: g.notify_url.value.trim(),
-          telegram: { chat_id: g.tg_chat.value.trim(), bot_token: g.tg_token.value },
-          email: { to: g.email_to.value.trim(), server: g.email_server.value.trim() } },
+        notify: {
+          webhook: { enabled: g.nw.checked, url: g.url.value.trim() },
+          telegram: { enabled: g.nt.checked, chat_id: g.tg_chat.value.trim(), bot_token: g.tg_token.value },
+          email: { enabled: g.ne.checked, to: g.email_to.value.trim(), from: g.email_from.value.trim(), server: g.email_server.value.trim(), port: +g.email_port.value || 0, tls: g.email_tls.value.trim(), user: g.email_user.value.trim(), password: g.email_pass.value },
+        },
       };
       const res = await api("POST", "/api/router", val);
       closeModal(); S.view = { kind: "router", id: val.name, tab: S.view.tab || "services" }; applyConfig(res); toast("Роутер сохранён");
