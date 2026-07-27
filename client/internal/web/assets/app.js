@@ -23,7 +23,9 @@ const ICONS = {
   logo: '<circle cx="7" cy="7" r="2.3"/><circle cx="17" cy="7" r="2.3"/><circle cx="12" cy="16" r="2.3"/>',
   dash: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
   router: '<rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 17h.01M11 17h.01"/><path d="M12 13V8m0 0 3 2m-3-2-3 2"/>',
-  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2M19 5l-2 2M7 17l-2 2"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .32 1.77l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.6 1.6 0 0 0-1.77-.32 1.6 1.6 0 0 0-.97 1.47V21a2 2 0 0 1-4 0v-.08a1.6 1.6 0 0 0-1.05-1.47 1.6 1.6 0 0 0-1.77.32l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.6 1.6 0 0 0 .32-1.77 1.6 1.6 0 0 0-1.47-.97H3a2 2 0 0 1 0-4h.08a1.6 1.6 0 0 0 1.47-1.05 1.6 1.6 0 0 0-.32-1.77l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.6 1.6 0 0 0 1.77.32H9a1.6 1.6 0 0 0 .97-1.47V3a2 2 0 0 1 4 0v.08a1.6 1.6 0 0 0 .97 1.47 1.6 1.6 0 0 0 1.77-.32l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.6 1.6 0 0 0-.32 1.77V9a1.6 1.6 0 0 0 1.47.97H21a2 2 0 0 1 0 4h-.08a1.6 1.6 0 0 0-1.47.97z"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4 12H2m20 0h-2M5 5l1.5 1.5m11 11L19 19M19 5l-1.5 1.5M6.5 17.5 5 19"/>',
+  moon: '<path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8z"/>',
   pencil: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
   trash: '<path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/>',
   lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
@@ -42,6 +44,13 @@ function icon(name, cls) {
   s.innerHTML = ICONS[name] || "";
   return s;
 }
+// ---------- theme ----------
+// Default to light (the design is light); persist the operator's choice.
+let THEME = localStorage.getItem("mkpk-theme") || "light";
+function applyTheme() { document.documentElement.setAttribute("data-theme", THEME); }
+function toggleTheme() { THEME = THEME === "light" ? "dark" : "light"; localStorage.setItem("mkpk-theme", THEME); applyTheme(); renderSidebar(); }
+applyTheme();
+
 const initials = (s) => (s || "?").slice(0, 2).toUpperCase();
 const short = (hash) => (hash || "").slice(0, 12);
 
@@ -149,7 +158,10 @@ function renderSidebar() {
   }
   nav.append(h("button", { class: "dashed", onclick: () => openUserModal(null) }, "+ Добавить юзера"));
 
-  sb.append(nav, h("div", { class: "sidebar-foot" }, location.host + " · local session"));
+  const foot = h("div", { class: "sidebar-foot row" },
+    h("span", { class: "grow" }, location.host + " · local"),
+    h("button", { class: "iconbtn", title: THEME === "light" ? "Тёмная тема" : "Светлая тема", onclick: toggleTheme }, icon(THEME === "light" ? "moon" : "sun")));
+  sb.append(nav, foot);
 }
 function navHeader(label, onAdd) {
   return h("div", { class: "nav-eyebrow" }, h("span", null, label), h("button", { onclick: onAdd, title: "Добавить" }, "+"));
@@ -366,7 +378,7 @@ function routerDeploy(r) {
       h("div", { class: "mono", style: "margin-top:4px" }, (d.user || "?") + " @ " + r.address + " : " + (d.port || 22)),
       h("div", { class: "foot-note", style: "margin-top:3px" }, auth + (d.password_set && !d.use_agent && d.key_path ? " · пароль-fallback" : ""))),
     h("div", { class: "card pad" }, h("div", { class: "lbl" }, "Состояние"),
-      h("div", { class: "mono", style: "margin-top:4px;font-size:11px" }, "local " + short(r.hash)),
+      h("div", { class: "mono", style: "margin-top:4px;font-size:13px" }, "local " + short(r.hash)),
       deployStateLine(r))));
 
   const dry = h("input", { type: "checkbox", checked: true });
