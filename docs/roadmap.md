@@ -194,9 +194,36 @@ port-knocking остаётся исключительно client-side (UDP-token
   встроены через `embed`. Проверено: API (config/service/client/render/secret), auth-gate, host-guard,
   и deploy status/apply(dry-run) до живого CHR.
 
-Дальше:
+## Этап 6: Multi-router, юзер×сервис и раздача клиентам
 
+Согласованная продуктовая модель — в [admin-app.md](admin-app.md). Кратко: один конфиг / много роутеров
+(сервисы и юзеры принадлежат роутеру), юзер имеет набор сервисов (матрица доступа, один PSK на юзера,
+knock per-service), раздача клиенту через per-user invite-blob (пуш, пере-выдача при изменениях, только
+safe-env). Терминология: роутер / сервис / юзер; токен — производное.
+
+Фазы (бэкенд-first, как с admin-ядром; каждый ROS-затрагивающий шаг — ре-верификация на CHR):
+
+**Фаза A — модель данных и ядро:**
+- `config`: `Config` → `routers` map (per-router `address`/`defaults`/`services`/`clients`); router-scoped
+  `Load`/`Validate`/`Resolve`; **config-hash per-router**.
+- `client.service` → `client.services[]`; рендер разворачивает пары (юзер×сервис), имена
+  `mkpk-tt-*-<user>-<service>`; `service.enabled` (рендер пропускает выключенные).
+- `admin`-ядро: операции router-scoped; тоггл сервиса; remove с проверкой ссылок.
+- Ре-верификация multi-service рендера на CHR (несколько сервисов у одного юзера, изоляция, hit/used).
+
+**Фаза B — раздача и клиент:**
+- `admin.ExportUser` → invite-blob (base64 мини-JSON) + CLI-команда экспорта.
+- Клиент: декод блоба → минимальный in-memory конфиг → переиспользование `mkpk knock` / `mkpk check`;
+  `mkpk knock --service`.
+
+**Фаза C — веб-UI по разделам:**
+- Разделы: Роутеры (список, detect/status) → drill-in → Сервисы / Юзеры.
+- Тоггл сервиса вкл/выкл; чекбоксы юзер×сервис; кнопка экспорта invite-blob per-user.
+- Фикс горизонтального скролла в рендере (ограничить блок, перенос/`max-height`).
+
+**Фаза D — позже:**
+- Клиентский GUI (список портов, open/closed через `check`, стук), поверх `mkpk`.
 - Десктоп-обёртка (Wails) поверх ядра.
-- Стриминг прогресса деплоя (SSE/websocket) вместо одного ответа.
-- Редактирование `router`/`defaults` в UI; управление несколькими роутерами.
-- Статус последних knock attempts, локальный лог, история уведомлений.
+- Стриминг прогресса деплоя (SSE/websocket).
+- Опционально: минимальные права RouterOS для deploy-пользователя; провижн-сервис для авто-рефреша блоба
+  (осознанный отход от stealth-минимализма).

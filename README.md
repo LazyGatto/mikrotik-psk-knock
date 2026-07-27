@@ -64,6 +64,7 @@ CHR (RouterOS 7.23.2).
 - [docs/open-questions.md](docs/open-questions.md) - открытые вопросы и принятые концептуальные решения.
 - [docs/profile-format.md](docs/profile-format.md) - справочник полей конфига (service/client/notify/nat).
 - [docs/multi-profile-render.md](docs/multi-profile-render.md) - схема multi-profile render и data-driven poller.
+- [docs/admin-app.md](docs/admin-app.md) - модель админ-приложения, multi-router и раздача клиентам (invite-blob).
 - [docs/roadmap.md](docs/roadmap.md) - план дальнейшей работы.
 - [client/README.md](client/README.md) - CLI, provisioning и deploy по SSH.
 - [agent/instructions.md](agent/instructions.md) - инструкции для будущего агента/разработчика.
