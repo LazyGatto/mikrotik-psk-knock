@@ -179,15 +179,16 @@ func (s *Server) handlePortsSuggest(w http.ResponseWriter, r *http.Request) {
 }
 
 type routerReq struct {
-	Name     string        `json:"name"`
-	Address  string        `json:"address"`
-	Port     int           `json:"port"`
-	User     string        `json:"user"`
-	KeyPath  string        `json:"key_path"`
-	KeyPass  string        `json:"key_pass"`
-	UseAgent bool          `json:"use_agent"`
-	Password string        `json:"password"`
-	Notify   config.Notify `json:"notify"`
+	Name          string        `json:"name"`
+	Address       string        `json:"address"`
+	DeployAddress string        `json:"deploy_address"` // optional SSH override
+	Port          int           `json:"port"`
+	User          string        `json:"user"`
+	KeyPath       string        `json:"key_path"`
+	KeyPass       string        `json:"key_pass"`
+	UseAgent      bool          `json:"use_agent"`
+	Password      string        `json:"password"`
+	Notify        config.Notify `json:"notify"`
 }
 
 func (s *Server) handleRouter(w http.ResponseWriter, r *http.Request) {
@@ -204,7 +205,7 @@ func (s *Server) handleRouter(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		dep := config.Deploy{
-			Port: req.Port, User: req.User, KeyPath: req.KeyPath,
+			Address: req.DeployAddress, Port: req.Port, User: req.User, KeyPath: req.KeyPath,
 			KeyPass: req.KeyPass, UseAgent: req.UseAgent, Password: req.Password,
 		}
 		notify := req.Notify

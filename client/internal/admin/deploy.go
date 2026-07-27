@@ -142,7 +142,13 @@ func Uninstall(cfg config.Config, routerName string, o DeployOptions, dryRun boo
 }
 
 func connect(r config.Router, o DeployOptions) (*deploy.Client, string, error) {
+	// SSH target: CLI override, then the router's optional deploy address, then
+	// its public address. The public Router.Address is the default; Deploy.Address
+	// only overrides it (e.g. deploy over a management/LAN address).
 	addr := o.Address
+	if addr == "" {
+		addr = r.Deploy.Address
+	}
 	if addr == "" {
 		addr = r.Address
 	}

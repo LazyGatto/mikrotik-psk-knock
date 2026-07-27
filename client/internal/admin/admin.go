@@ -124,8 +124,8 @@ func InitConfig(o InitOptions) (config.Config, error) {
 // deploy credentials, and the per-router notification config.
 type RouterOptions struct {
 	Name    string
-	Address string
-	Deploy  config.Deploy
+	Address string        // public knock address (also default SSH target)
+	Deploy  config.Deploy // Deploy.Address optionally overrides the SSH target
 	Notify  config.Notify
 }
 
@@ -526,7 +526,7 @@ func ExportUser(cfg config.Config, userName, routerName string) (string, error) 
 		}
 		access := u.Access[rn]
 		rb := invite.Router{
-			Router:        r.Address,
+			Router:        r.Address, // the public knock address — no fallback
 			BucketSeconds: r.Defaults.BucketSeconds,
 			PSK:           access.PSK,
 		}
@@ -618,6 +618,7 @@ type NotifySummary struct {
 // non-secret connection params plus booleans for whether secrets are set.
 // Configured reports whether there is enough to attempt a connection.
 type DeploySummary struct {
+	Address     string `json:"address"` // optional SSH override; "" → use the router address
 	Port        int    `json:"port"`
 	User        string `json:"user"`
 	KeyPath     string `json:"key_path"`
@@ -723,6 +724,7 @@ func notifySummary(n config.Notify) NotifySummary {
 func deploySummary(r config.Router) DeploySummary {
 	d := r.Deploy
 	return DeploySummary{
+		Address:     d.Address,
 		Port:        d.Port,
 		User:        d.User,
 		KeyPath:     d.KeyPath,

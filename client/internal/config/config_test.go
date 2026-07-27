@@ -247,6 +247,18 @@ func TestValidateRejectsBadDeployPort(t *testing.T) {
 	}
 }
 
+func TestRouterHashIgnoresAddresses(t *testing.T) {
+	cfg := validConfig()
+	base := cfg.RouterHash("r1")
+	r := cfg.Routers["r1"]
+	r.Address = "totally.different.example"
+	r.Deploy.Address = "10.9.9.9"
+	cfg.Routers["r1"] = r
+	if cfg.RouterHash("r1") != base {
+		t.Fatal("RouterHash changed after an address change; addresses don't affect the .rsc")
+	}
+}
+
 func TestRouterHashIgnoresDeployCredentials(t *testing.T) {
 	cfg := validConfig()
 	base := cfg.RouterHash("r1")

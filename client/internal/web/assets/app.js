@@ -79,7 +79,10 @@ const I18N = {
     "toast.svc_deleted": "Сервис удалён", "toast.psk_rotated": "PSK ротирован",
     "psk.rotate.title": "Ротировать PSK?", "psk.rotate.body": "Будет сгенерирован новый PSK этой пары юзер×роутер. Старый инвайт перестанет работать после Deploy роутера — выдайте новый.",
     "psk.rotate.btn": "Ротировать",
-    "router.new": "Новый роутер", "field.name": "Имя", "field.address": "Адрес", "field.port": "Порт", "field.user": "Пользователь",
+    "router.new": "Новый роутер", "field.name": "Имя", "field.address": "Публичный адрес (стук клиента)", "field.port": "Порт", "field.user": "Пользователь",
+    "router.address_note": "Домен/IP, по которому конечный юзер стучит из недоверенной сети. Именно он попадает в инвайт.",
+    "router.ssh_address": "SSH-адрес деплоя (если отличается)",
+    "router.ssh_address_note": "Пусто → деплой идёт по публичному адресу. Задайте, если провижн по локальному/management-адресу из safe-env.",
     "router.ssh_legend": "SSH для деплоя",
     "router.ssh_note": "Используется кнопками Status / Apply / Uninstall. Хранится в локальном секретном конфиге (0600) и не покидает эту машину.",
     "router.auth": "Аутентификация", "router.auth_note": "рекомендуется ssh-agent: секрет не попадает в конфиг", "router.auth_keyfile": "файл ключа",
@@ -184,7 +187,10 @@ const I18N = {
     "toast.svc_deleted": "Service deleted", "toast.psk_rotated": "PSK rotated",
     "psk.rotate.title": "Rotate PSK?", "psk.rotate.body": "A new PSK will be generated for this user×router pair. The old invite stops working after the router's Deploy — issue a new one.",
     "psk.rotate.btn": "Rotate",
-    "router.new": "New router", "field.name": "Name", "field.address": "Address", "field.port": "Port", "field.user": "User",
+    "router.new": "New router", "field.name": "Name", "field.address": "Public address (client knock)", "field.port": "Port", "field.user": "User",
+    "router.address_note": "The domain/IP end users knock from an untrusted network. This is what goes into the invite.",
+    "router.ssh_address": "SSH deploy address (if different)",
+    "router.ssh_address_note": "Empty → deploy uses the public address. Set it if you provision over a local/management address from safe-env.",
     "router.ssh_legend": "SSH for deploy",
     "router.ssh_note": "Used by Status / Apply / Uninstall. Stored in the local secret config (0600) and never leaves this machine.",
     "router.auth": "Authentication", "router.auth_note": "ssh-agent recommended: the secret stays out of the config", "router.auth_keyfile": "key file",
@@ -583,9 +589,10 @@ function routerDeploy(r) {
   }
   const d = r.deploy;
   const auth = d.use_agent ? "ssh-agent" : d.key_path ? t("deploy.auth_key", { path: d.key_path }) : d.password_set ? t("deploy.auth_pw") : "—";
+  const sshAddr = d.address || r.address;
   wrap.append(h("div", { class: "grid2" },
     h("div", { class: "card pad" }, h("div", { class: "lbl" }, t("deploy.connection")),
-      h("div", { class: "mono", style: "margin-top:4px" }, (d.user || "?") + " @ " + r.address + " : " + (d.port || 22)),
+      h("div", { class: "mono", style: "margin-top:4px" }, (d.user || "?") + " @ " + sshAddr + " : " + (d.port || 22)),
       h("div", { class: "foot-note", style: "margin-top:3px" }, auth + (d.password_set && !d.use_agent && d.key_path ? t("deploy.pw_fallback") : ""))),
     h("div", { class: "card pad" }, h("div", { class: "lbl" }, t("deploy.state")),
       h("div", { class: "mono", style: "margin-top:4px;font-size:11px" }, "local " + short(r.hash)),
@@ -770,6 +777,7 @@ function openRouterModal(name) {
   if (r) g.name.setAttribute("readonly", "");
   g.address = inp(r && r.address, { placeholder: "router.example.com" });
   const d = (r && r.deploy) || {};
+  g.ssh_address = inp(d.address, { placeholder: "напр. 10.0.0.1 / router.lan" });
   g.port = h("input", { type: "number", value: d.port || "", placeholder: "22" });
   g.user = inp(d.user, { placeholder: "admin" });
   g.key_path = inp(d.key_path, { placeholder: "~/.ssh/id_ed25519" });
@@ -806,9 +814,10 @@ function openRouterModal(name) {
   }
 
   const body = h("div", { class: "modal-body" },
-    h("div", { class: "grid2" }, field(t("field.name"), g.name), field(t("field.address"), g.address)),
+    h("div", { class: "grid2" }, field(t("field.name"), g.name), field(t("field.address"), g.address, t("router.address_note"))),
     h("fieldset", { class: "fieldset" }, h("legend", null, t("router.ssh_legend")),
       h("div", { class: "note" }, t("router.ssh_note")),
+      field(t("router.ssh_address"), g.ssh_address, t("router.ssh_address_note")),
       h("div", { class: "grid2" }, field(t("field.port"), g.port), field(t("field.user"), g.user)),
       field(t("router.auth"), seg, t("router.auth_note")),
       keyWrap, fbToggle, fbBody),
@@ -825,6 +834,7 @@ function openRouterModal(name) {
     try {
       const val = {
         name: g.name.value.trim(), address: g.address.value.trim(),
+        deploy_address: g.ssh_address.value.trim(),
         port: +g.port.value || 0, user: g.user.value.trim(),
         use_agent: authMode === "agent", key_path: authMode === "key" ? g.key_path.value.trim() : "",
         password: g.password.value, key_pass: g.key_pass.value,

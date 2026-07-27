@@ -158,7 +158,8 @@ func routerCmd(args []string) error {
 	fs := flag.NewFlagSet("router "+sub, flag.ContinueOnError)
 	configPath := fs.String("config", "mkpk.yaml", "config path")
 	name := fs.String("name", "", "router name")
-	address := fs.String("address", "", "router address")
+	address := fs.String("address", "", "public router address (what clients knock)")
+	sshAddress := fs.String("ssh-address", "", "SSH deploy address override; router address when empty")
 	sshUser := fs.String("ssh-user", "", "SSH username for deploy")
 	sshKey := fs.String("ssh-key", "", "SSH private key path for deploy")
 	sshKeyPass := fs.String("ssh-key-pass", "", "passphrase for the SSH key")
@@ -201,7 +202,7 @@ func routerCmd(args []string) error {
 	}
 	// set: keep secrets when the flag is left blank on an existing router.
 	dep := config.Deploy{
-		Port: *sshPort, User: *sshUser, KeyPath: *sshKey,
+		Address: *sshAddress, Port: *sshPort, User: *sshUser, KeyPath: *sshKey,
 		KeyPass: *sshKeyPass, UseAgent: *sshAgent, Password: *sshPassword,
 	}
 	notify := config.Notify{
@@ -625,8 +626,12 @@ func printSummary(path string, s admin.Summary) {
 	fmt.Printf("config=%s status=valid routers=%d\n", path, len(s.Routers))
 	for _, r := range s.Routers {
 		fmt.Printf("router name=%s address=%s hash=%s\n", r.Name, r.Address, r.Hash[:min(16, len(r.Hash))])
-		fmt.Printf("  deploy configured=%t ssh_user=%s ssh_key=%s ssh_agent=%t ssh_port=%d password_set=%t\n",
-			r.Deploy.Configured, r.Deploy.User, r.Deploy.KeyPath, r.Deploy.UseAgent, r.Deploy.Port, r.Deploy.PasswordSet)
+		sshAddr := r.Deploy.Address
+		if sshAddr == "" {
+			sshAddr = r.Address + " (=address)"
+		}
+		fmt.Printf("  deploy configured=%t ssh_address=%s ssh_user=%s ssh_key=%s ssh_agent=%t ssh_port=%d password_set=%t\n",
+			r.Deploy.Configured, sshAddr, r.Deploy.User, r.Deploy.KeyPath, r.Deploy.UseAgent, r.Deploy.Port, r.Deploy.PasswordSet)
 		fmt.Printf("  notify active=%t webhook=%t telegram=%t email=%t\n", r.Notify.Active, r.Notify.WebhookEnabled, r.Notify.TelegramEnabled, r.Notify.EmailEnabled)
 		fmt.Printf("  defaults bucket_seconds=%d stage_timeout=%s token_hit_timeout=%s allowed_timeout=%s used_timeout=%s\n",
 			r.Defaults.BucketSeconds, r.Defaults.StageTimeout, r.Defaults.TokenHitTimeout, r.Defaults.AllowedTimeout, r.Defaults.UsedTimeout)

@@ -350,6 +350,23 @@ func TestRotateUserPSKChangesOnlyThatPair(t *testing.T) {
 	}
 }
 
+func TestExportUsesPublicAddressNotDeployAddress(t *testing.T) {
+	cfg := initCfg(t) // router rn, address r.example, user cli on svc
+	// Deploy over a management address; clients must still get the public one.
+	cfg, err := SetRouter(cfg, RouterOptions{Name: rn, Address: "public.example", Deploy: config.Deploy{Address: "10.0.0.1", User: "admin", UseAgent: true}})
+	if err != nil {
+		t.Fatalf("SetRouter() error = %v", err)
+	}
+	blobStr, err := ExportUser(cfg, "cli", "")
+	if err != nil {
+		t.Fatalf("ExportUser() error = %v", err)
+	}
+	b, _ := invite.Decode(blobStr)
+	if b.Routers[0].Router != "public.example" {
+		t.Fatalf("blob must carry the public address, got %q", b.Routers[0].Router)
+	}
+}
+
 func TestExportUserBlobTokensMatchConfig(t *testing.T) {
 	cfg := initCfg(t)
 	cfg, _ = AddService(cfg, rn, ServiceOptions{Name: "web", Stage1Port: 42001, Stage2Port: 42002, TokenPort: 42003, Target: config.Target{Type: config.TargetForward, Protocol: "tcp", Port: 3443, ToAddress: "192.0.2.20", ToPort: 443}})

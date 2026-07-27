@@ -27,6 +27,9 @@ type Config struct {
 // (the message carries which service/user). The alert content already names the
 // service, so routing per service is unnecessary.
 type Router struct {
+	// Address is the public address end users knock (from untrusted networks). It
+	// is the only address that goes into a client invite — no fallback. It is also
+	// the default SSH deploy target unless Deploy.Address overrides it.
 	Address  string             `yaml:"address" json:"address"`
 	Deploy   Deploy             `yaml:"deploy,omitempty" json:"deploy"`
 	Notify   Notify             `yaml:"notify,omitempty" json:"notify"`
@@ -55,6 +58,10 @@ type UserAccess struct {
 // deploy action. Secrets (key_pass, password) live here alongside the config's
 // other secrets; key or ssh-agent auth is preferred and stores no secret.
 type Deploy struct {
+	// Address optionally overrides the SSH target — e.g. deploy over a
+	// management/LAN address while the public Router.Address is what clients
+	// knock. Empty → deploy uses Router.Address.
+	Address  string `yaml:"address,omitempty" json:"address"`
 	Port     int    `yaml:"port,omitempty" json:"port"`
 	User     string `yaml:"user,omitempty" json:"user"`
 	KeyPath  string `yaml:"key_path,omitempty" json:"key_path"`
@@ -364,7 +371,10 @@ func (c Config) RenderClients(routerName string) []RenderClient {
 // and drift detection use it, so a change to a user's access or PSK on this
 // router is detected as drift.
 func RenderHash(r Router, clients []RenderClient) string {
+	// Connection/identity metadata does not affect the rendered .rsc, so changing
+	// it must not read as drift: exclude SSH creds and the address.
 	r.Deploy = Deploy{}
+	r.Address = ""
 	payload := struct {
 		Router  Router
 		Clients []RenderClient
