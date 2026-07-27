@@ -574,15 +574,15 @@ func deployCmd(args []string) error {
 		return nil
 
 	case "uninstall":
-		addr, applied, err := admin.Uninstall(cfg, rn, opts, *dryRun)
+		res, err := admin.Uninstall(cfg, rn, opts, *dryRun)
 		if err != nil {
 			return err
 		}
-		if !applied {
-			fmt.Printf("router=%s would uninstall mkpk-tt-* layer\n", addr)
+		if !res.Applied {
+			fmt.Printf("router=%s would uninstall mkpk-tt-* layer\n", res.Router)
 			return nil
 		}
-		fmt.Printf("router=%s uninstalled\n", addr)
+		fmt.Printf("router=%s uninstalled\n", res.Router)
 		return nil
 
 	default:

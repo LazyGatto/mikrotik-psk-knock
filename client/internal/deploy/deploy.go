@@ -35,10 +35,30 @@ type Auth struct {
 	Password string // fallback
 }
 
-// Client is a connected SSH session to a router.
+// Client is a connected SSH session to a router. It records a transcript of the
+// commands it runs and their output, so callers can surface the raw exchange.
 type Client struct {
 	conn *ssh.Client
+	log  []string
 }
+
+// record appends one command/output exchange to the transcript.
+func (c *Client) record(cmd, out string, err error) {
+	entry := "$ " + cmd
+	if s := strings.TrimSpace(out); s != "" {
+		entry += "\n" + s
+	}
+	if err != nil {
+		entry += "\n! " + err.Error()
+	}
+	c.log = append(c.log, entry)
+}
+
+// note appends a synthetic transcript line (e.g. for the scp upload).
+func (c *Client) note(line string) { c.log = append(c.log, line) }
+
+// Transcript returns the recorded exchange as a single terminal-style string.
+func (c *Client) Transcript() string { return strings.Join(c.log, "\n\n") }
 
 // State is the detected mkpk install state on a router.
 type State struct {
@@ -81,6 +101,7 @@ func (c *Client) Run(cmd string) (string, error) {
 	}
 	defer session.Close()
 	out, err := session.CombinedOutput(cmd)
+	c.record(cmd, string(out), err)
 	return string(out), err
 }
 
@@ -99,6 +120,7 @@ func (c *Client) Detect() (State, error) {
 // Deploy uploads the rendered .rsc, imports it, removes the transient file and
 // verifies the result.
 func (c *Client) Deploy(rsc []byte) error {
+	c.note(fmt.Sprintf("$ scp %s (%d bytes)", remoteFileName, len(rsc)))
 	if err := c.upload(remoteFileName, rsc); err != nil {
 		return fmt.Errorf("upload: %w", err)
 	}

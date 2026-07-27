@@ -25,6 +25,7 @@ type StatusResult struct {
 	UpToDate      bool   `json:"up_to_date"`
 	InstalledHash string `json:"installed_hash"`
 	DesiredHash   string `json:"desired_hash"`
+	Log           string `json:"log"` // raw SSH command/output transcript
 }
 
 // ApplyResult reports what an install/update did or would do.
@@ -35,6 +36,14 @@ type ApplyResult struct {
 	Applied       bool   `json:"applied"`
 	Hash          string `json:"hash"`
 	InstalledHash string `json:"installed_hash"`
+	Log           string `json:"log"` // raw SSH command/output transcript
+}
+
+// UninstallResult reports an uninstall (or its dry-run).
+type UninstallResult struct {
+	Router  string `json:"router"`
+	Applied bool   `json:"applied"`
+	Log     string `json:"log"`
 }
 
 // Status connects to routerName and reports whether mkpk is installed and up to date.
@@ -60,6 +69,7 @@ func Status(cfg config.Config, routerName string, o DeployOptions) (StatusResult
 		UpToDate:      state.Installed && state.Hash == desired,
 		InstalledHash: state.Hash,
 		DesiredHash:   desired,
+		Log:           c.Transcript(),
 	}, nil
 }
 
@@ -87,6 +97,7 @@ func Apply(cfg config.Config, routerName string, o DeployOptions, force, dryRun 
 	res := ApplyResult{Router: routerName, Address: addr, Hash: desired, InstalledHash: state.Hash}
 	if state.Installed && state.Hash == desired && !force {
 		res.Action = "skip"
+		res.Log = c.Transcript()
 		return res, nil
 	}
 	res.Action = "install"
@@ -94,33 +105,40 @@ func Apply(cfg config.Config, routerName string, o DeployOptions, force, dryRun 
 		res.Action = "update"
 	}
 	if dryRun {
+		res.Log = c.Transcript()
 		return res, nil
 	}
 	if err := c.Deploy([]byte(rendered)); err != nil {
+		res.Log = c.Transcript()
 		return res, err
 	}
 	res.Applied = true
+	res.Log = c.Transcript()
 	return res, nil
 }
 
 // Uninstall removes the mkpk layer from routerName.
-func Uninstall(cfg config.Config, routerName string, o DeployOptions, dryRun bool) (string, bool, error) {
+func Uninstall(cfg config.Config, routerName string, o DeployOptions, dryRun bool) (UninstallResult, error) {
 	r, err := getRouter(cfg, routerName)
 	if err != nil {
-		return "", false, err
+		return UninstallResult{}, err
 	}
 	c, addr, err := connect(r, o)
 	if err != nil {
-		return "", false, err
+		return UninstallResult{}, err
 	}
 	defer c.Close()
+	res := UninstallResult{Router: addr}
 	if dryRun {
-		return addr, false, nil
+		return res, nil
 	}
 	if err := c.Uninstall(); err != nil {
-		return addr, false, err
+		res.Log = c.Transcript()
+		return res, err
 	}
-	return addr, true, nil
+	res.Applied = true
+	res.Log = c.Transcript()
+	return res, nil
 }
 
 func connect(r config.Router, o DeployOptions) (*deploy.Client, string, error) {

@@ -491,6 +491,14 @@ function deployResult(r, res, dry, force, out, runningLabel) {
     h("div", { class: "foot-note", style: "margin-top:5px" }, msg));
   if (res._kind === "drift") card.append(h("button", { class: "btn pri sm", style: "margin-top:8px", onclick: () => runDeploy(r, "apply", dry, force, out, runningLabel) }, "Apply — задеплоить изменения"));
   if (res._kind === "err") card.append(h("button", { class: "btn link", style: "margin-top:8px", onclick: () => openRouterModal(r.name) }, "Настройки роутера →"));
+  if (res.log) {
+    const term = h("pre", { class: "term hidden" }, res.log);
+    const toggle = h("button", { class: "btn link", style: "margin-top:8px", onclick: () => {
+      term.classList.toggle("hidden");
+      toggle.textContent = term.classList.contains("hidden") ? "▶ Показать raw-лог" : "▼ Скрыть raw-лог";
+    } }, "▶ Показать raw-лог");
+    card.append(h("div", null, toggle), term);
+  }
   return card;
 }
 

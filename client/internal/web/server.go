@@ -529,12 +529,12 @@ func (s *Server) handleDeployUninstall(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	addr, applied, err := admin.Uninstall(cfg, req.Router, admin.DeployOptions{}, req.DryRun)
+	res, err := admin.Uninstall(cfg, req.Router, admin.DeployOptions{}, req.DryRun)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"router": addr, "applied": applied})
+	writeJSON(w, http.StatusOK, res)
 }
 
 // --- helpers ---
