@@ -41,6 +41,8 @@ func Handler(configPath, token string) http.Handler {
 	mux.HandleFunc("/api/service", s.auth(s.handleService))
 	mux.HandleFunc("/api/service/enable", s.auth(s.handleServiceEnable))
 	mux.HandleFunc("/api/client", s.auth(s.handleClient))
+	mux.HandleFunc("/api/user", s.auth(s.handleUser))
+	mux.HandleFunc("/api/user/psk", s.auth(s.handleUserPSK))
 	mux.HandleFunc("/api/export", s.auth(s.handleExport))
 	mux.HandleFunc("/api/render", s.auth(s.handleRender))
 	mux.HandleFunc("/api/deploy/status", s.auth(s.handleDeployStatus))
@@ -371,6 +373,82 @@ func (s *Server) handleClient(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := admin.SaveConfig(s.configPath, cfg); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeConfig(w, s.configPath, cfg)
+}
+
+type userReq struct {
+	Name     string `json:"name"`
+	ClientID string `json:"client_id"`
+	Rename   string `json:"rename"` // POST: when set, rename Name → Rename
+}
+
+// handleUser manages the top-level user entity: create, rename, delete. Per-router
+// access grants live on /api/client.
+func (s *Server) handleUser(w http.ResponseWriter, r *http.Request) {
+	cfg, err := config.Load(s.configPath)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	switch r.Method {
+	case http.MethodPost:
+		var req userReq
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid json: "+err.Error())
+			return
+		}
+		if req.Rename != "" {
+			cfg, err = admin.RenameUser(cfg, req.Name, req.Rename)
+		} else {
+			cfg, err = admin.CreateUser(cfg, req.Name, req.ClientID)
+		}
+	case http.MethodDelete:
+		cfg, err = admin.RemoveUser(cfg, r.URL.Query().Get("name"))
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := admin.SaveConfig(s.configPath, cfg); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeConfig(w, s.configPath, cfg)
+}
+
+type pskReq struct {
+	User   string `json:"user"`
+	Router string `json:"router"`
+}
+
+// handleUserPSK rotates the PSK for one (user, router) pair.
+func (s *Server) handleUserPSK(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	cfg, err := config.Load(s.configPath)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var req pskReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json: "+err.Error())
+		return
+	}
+	cfg, err = admin.RotateUserPSK(cfg, req.User, req.Router)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return

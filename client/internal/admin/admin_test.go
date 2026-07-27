@@ -270,6 +270,83 @@ func TestAddUserSpansRoutersAndKeepsPSK(t *testing.T) {
 	}
 }
 
+func TestUserEntityLifecycle(t *testing.T) {
+	cfg := initCfg(t) // user "cli" with access on rn
+
+	// Create an empty user.
+	cfg, err := CreateUser(cfg, "phone", "")
+	if err != nil {
+		t.Fatalf("CreateUser() error = %v", err)
+	}
+	if u, ok := cfg.Users["phone"]; !ok || u.ClientID != "phone" || len(u.Access) != 0 {
+		t.Fatalf("empty user wrong: %+v", cfg.Users["phone"])
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("config with an access-less user should validate: %v", err)
+	}
+	if _, err := CreateUser(cfg, "phone", ""); err == nil {
+		t.Fatal("CreateUser on existing name should error")
+	}
+
+	// Rename: key and client_id both move.
+	cfg, err = RenameUser(cfg, "phone", "mobile")
+	if err != nil {
+		t.Fatalf("RenameUser() error = %v", err)
+	}
+	if _, ok := cfg.Users["phone"]; ok {
+		t.Fatal("old user key should be gone after rename")
+	}
+	if cfg.Users["mobile"].ClientID != "mobile" {
+		t.Fatalf("rename did not update client_id: %+v", cfg.Users["mobile"])
+	}
+
+	// Revoking last access keeps the user entity.
+	cfg, err = RemoveUserAccess(cfg, rn, "cli")
+	if err != nil {
+		t.Fatalf("RemoveUserAccess() error = %v", err)
+	}
+	if u, ok := cfg.Users["cli"]; !ok || len(u.Access) != 0 {
+		t.Fatalf("user should remain with empty access after last revoke: %+v", cfg.Users["cli"])
+	}
+
+	// Whole-user delete.
+	cfg, err = RemoveUser(cfg, "cli")
+	if err != nil {
+		t.Fatalf("RemoveUser() error = %v", err)
+	}
+	if _, ok := cfg.Users["cli"]; ok {
+		t.Fatal("user should be gone after RemoveUser")
+	}
+}
+
+func TestRotateUserPSKChangesOnlyThatPair(t *testing.T) {
+	cfg := initCfg(t)
+	cfg, err := SetRouter(cfg, RouterOptions{Name: "r2", Address: "10.0.0.2"})
+	if err != nil {
+		t.Fatalf("SetRouter() error = %v", err)
+	}
+	cfg, _ = AddService(cfg, "r2", ServiceOptions{Name: "s2", Stage1Port: 51001, Stage2Port: 51002, TokenPort: 51003, Target: config.Target{Type: config.TargetLocal, Protocol: "tcp", Port: 8291}})
+	res, _ := AddUser(cfg, "r2", UserOptions{Name: "cli", Services: []string{"s2"}, PSK: "r2-psk", Force: true})
+	cfg = res.Config
+
+	before := cfg.Users["cli"].Access[rn].PSK
+	other := cfg.Users["cli"].Access["r2"].PSK
+
+	cfg, err = RotateUserPSK(cfg, "cli", rn)
+	if err != nil {
+		t.Fatalf("RotateUserPSK() error = %v", err)
+	}
+	if cfg.Users["cli"].Access[rn].PSK == before {
+		t.Fatal("rotate did not change the PSK")
+	}
+	if cfg.Users["cli"].Access["r2"].PSK != other {
+		t.Fatal("rotate changed the other router's PSK")
+	}
+	if _, err := RotateUserPSK(cfg, "cli", "ghost"); err == nil {
+		t.Fatal("rotate on a router the user can't reach should error")
+	}
+}
+
 func TestExportUserBlobTokensMatchConfig(t *testing.T) {
 	cfg := initCfg(t)
 	cfg, _ = AddService(cfg, rn, ServiceOptions{Name: "web", Stage1Port: 42001, Stage2Port: 42002, TokenPort: 42003, Target: config.Target{Type: config.TargetForward, Protocol: "tcp", Port: 3443, ToAddress: "192.0.2.20", ToPort: 443}})

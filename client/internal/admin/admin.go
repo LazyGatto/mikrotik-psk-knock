@@ -417,8 +417,72 @@ func AddUser(cfg config.Config, routerName string, o UserOptions) (AddUserResult
 	return AddUserResult{Config: cfg, PSKSource: source}, nil
 }
 
-// RemoveUserAccess revokes a user's access on one router. If that leaves the
-// user with no access anywhere, the user is removed entirely.
+// CreateUser creates a top-level user with no access yet. clientID defaults to
+// the name. It is the "add user" entry point; access is granted later via
+// AddUser / the access matrix.
+func CreateUser(cfg config.Config, name, clientID string) (config.Config, error) {
+	if name == "" {
+		return cfg, fmt.Errorf("user name is required")
+	}
+	if cfg.Users == nil {
+		cfg.Users = map[string]config.User{}
+	}
+	if _, ok := cfg.Users[name]; ok {
+		return cfg, fmt.Errorf("user %q already exists", name)
+	}
+	if clientID == "" {
+		clientID = name
+	}
+	cfg.Users[name] = config.User{ClientID: clientID, Access: map[string]config.UserAccess{}}
+	return cfg, nil
+}
+
+// RenameUser renames a user, moving its access and updating its client_id to the
+// new name. Because the client_id is part of the token, this invalidates every
+// invite already handed out for the user.
+func RenameUser(cfg config.Config, oldName, newName string) (config.Config, error) {
+	if newName == "" {
+		return cfg, fmt.Errorf("new user name is required")
+	}
+	u, ok := cfg.Users[oldName]
+	if !ok {
+		return cfg, fmt.Errorf("user %q not found", oldName)
+	}
+	if oldName == newName {
+		return cfg, nil
+	}
+	if _, ok := cfg.Users[newName]; ok {
+		return cfg, fmt.Errorf("user %q already exists", newName)
+	}
+	u.ClientID = newName
+	delete(cfg.Users, oldName)
+	cfg.Users[newName] = u
+	return cfg, nil
+}
+
+// RotateUserPSK generates a fresh PSK for one (user, router) pair. Deploying the
+// router and re-issuing the user's invite are required for it to take effect.
+func RotateUserPSK(cfg config.Config, userName, routerName string) (config.Config, error) {
+	u, ok := cfg.Users[userName]
+	if !ok {
+		return cfg, fmt.Errorf("user %q not found", userName)
+	}
+	access, ok := u.Access[routerName]
+	if !ok {
+		return cfg, fmt.Errorf("user %q has no access to router %q", userName, routerName)
+	}
+	psk, err := GenerateSecret(32)
+	if err != nil {
+		return cfg, err
+	}
+	access.PSK = psk
+	u.Access[routerName] = access
+	cfg.Users[userName] = u
+	return cfg, nil
+}
+
+// RemoveUserAccess revokes a user's access on one router. The user entity
+// remains (users are top-level); use RemoveUser to delete it entirely.
 func RemoveUserAccess(cfg config.Config, routerName, name string) (config.Config, error) {
 	u, ok := cfg.Users[name]
 	if !ok {
@@ -428,11 +492,7 @@ func RemoveUserAccess(cfg config.Config, routerName, name string) (config.Config
 		return cfg, fmt.Errorf("user %q has no access to router %q", name, routerName)
 	}
 	delete(u.Access, routerName)
-	if len(u.Access) == 0 {
-		delete(cfg.Users, name)
-	} else {
-		cfg.Users[name] = u
-	}
+	cfg.Users[name] = u
 	return cfg, nil
 }
 
