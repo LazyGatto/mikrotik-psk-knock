@@ -36,6 +36,8 @@ const ICONS = {
 function icon(name, cls) {
   const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   s.setAttribute("viewBox", "0 0 24 24");
+  s.setAttribute("width", "16");
+  s.setAttribute("height", "16");
   s.setAttribute("fill", "none");
   s.setAttribute("stroke", "currentColor");
   s.setAttribute("stroke-width", "1.7");

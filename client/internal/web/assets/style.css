@@ -236,7 +236,8 @@ pre.term { margin: 0; padding: 12px 14px; background: var(--term-bg); color: var
 
 /* ---------- empty state ---------- */
 .empty { display: grid; place-items: center; text-align: center; padding: 60px 20px; gap: 10px; }
-.empty .glyph { color: var(--faint); }
+.empty .glyph { width: 44px; height: 44px; color: var(--faint); }
+.empty .glyph svg, .empty svg.glyph { width: 44px; height: 44px; }
 .empty h3 { margin: 4px 0 0; font-size: 16px; font-weight: 650; }
 .empty p { margin: 0; max-width: 420px; font-size: 12.5px; color: var(--text-3); line-height: 1.5; }
 
