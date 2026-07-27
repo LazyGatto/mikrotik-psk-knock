@@ -60,12 +60,12 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `Usage:
   mkpk-provision secret generate [--bytes 32]
   mkpk-provision config validate --config mkpk.yaml
-  mkpk-provision profile init --out mkpk.yaml --router-address host
-  mkpk-provision service add --config mkpk.yaml --name ssh --stage1-port 41011 --stage2-port 41012 --token-port 41013 --nat-dst-port 2022 --nat-to-address 192.0.2.10 --nat-to-port 22
-  mkpk-provision client add --config mkpk.yaml --name laptop --service service
-  mkpk-provision token --config mkpk.yaml --client laptop [--bucket N] [--debug]
-  mkpk-provision routeros render --config mkpk.yaml [--client laptop] [--out generated.rsc]
-  mkpk-provision deploy [status|uninstall] --config mkpk.yaml --user admin [--key ~/.ssh/id_ed25519] [--address host]
+  mkpk-provision profile init --out mkpk.yaml --router-name r1 --router-address host
+  mkpk-provision service add --config mkpk.yaml [--router r1] --name ssh --stage1-port 41011 --stage2-port 41012 --token-port 41013 --nat-dst-port 2022 --nat-to-address 192.0.2.10 --nat-to-port 22
+  mkpk-provision client add --config mkpk.yaml [--router r1] --name laptop --services ssh,web
+  mkpk-provision token --config mkpk.yaml [--router r1] --client laptop [--service ssh] [--bucket N] [--debug]
+  mkpk-provision routeros render --config mkpk.yaml [--router r1] [--out generated.rsc]
+  mkpk-provision deploy [status|uninstall] --config mkpk.yaml [--router r1] --user admin [--key ~/.ssh/id_ed25519]
   mkpk-provision serve --config mkpk.yaml [--addr 127.0.0.1:8765]
 `)
 }
@@ -147,6 +147,7 @@ func serviceCmd(args []string) error {
 	}
 	fs := flag.NewFlagSet("service add", flag.ContinueOnError)
 	configPath := fs.String("config", "mkpk.yaml", "config path")
+	router := fs.String("router", "", "router name; sole router when empty")
 	name := fs.String("name", "", "service map key")
 	serviceName := fs.String("service-name", "", "service_name; --name when empty")
 	stage1Port := fs.Int("stage1-port", 0, "stage1 UDP port")
@@ -178,7 +179,11 @@ func serviceCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	cfg, err = admin.AddService(cfg, admin.ServiceOptions{
+	rn, err := pickRouter(cfg, *router)
+	if err != nil {
+		return err
+	}
+	cfg, err = admin.AddService(cfg, rn, admin.ServiceOptions{
 		Name:        *name,
 		ServiceName: *serviceName,
 		Stage1Port:  *stage1Port,
@@ -215,9 +220,9 @@ func serviceCmd(args []string) error {
 	if err := admin.SaveConfig(*configPath, cfg); err != nil {
 		return err
 	}
-	svc := cfg.Services[*name]
-	fmt.Printf("service added config=%s name=%s service_name=%s stage1=%d stage2=%d token=%d nat_enabled=%t nat_dst_port=%d nat_to=%s:%d\n",
-		*configPath, *name, svc.ServiceName, svc.Stage1Port, svc.Stage2Port, svc.TokenPort, svc.NAT.Enabled, svc.NAT.DstPort, svc.NAT.ToAddress, svc.NAT.ToPort)
+	svc := cfg.Routers[rn].Services[*name]
+	fmt.Printf("service added config=%s router=%s name=%s service_name=%s stage1=%d stage2=%d token=%d nat_enabled=%t nat_dst_port=%d nat_to=%s:%d\n",
+		*configPath, rn, *name, svc.ServiceName, svc.Stage1Port, svc.Stage2Port, svc.TokenPort, svc.NAT.Enabled, svc.NAT.DstPort, svc.NAT.ToAddress, svc.NAT.ToPort)
 	return nil
 }
 
@@ -227,11 +232,12 @@ func clientCmd(args []string) error {
 	}
 	fs := flag.NewFlagSet("client add", flag.ContinueOnError)
 	configPath := fs.String("config", "mkpk.yaml", "config path")
-	name := fs.String("name", "", "client map key")
+	router := fs.String("router", "", "router name; sole router when empty")
+	name := fs.String("name", "", "user map key")
 	clientID := fs.String("client-id", "", "client_id; --name when empty")
-	serviceName := fs.String("service", "", "service name")
-	pskFlag := fs.String("psk", "", "client PSK; generated when empty")
-	force := fs.Bool("force", false, "replace existing client")
+	services := fs.String("services", "", "comma-separated service names")
+	pskFlag := fs.String("psk", "", "user PSK; generated when empty")
+	force := fs.Bool("force", false, "replace existing user")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -239,10 +245,14 @@ func clientCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	res, err := admin.AddClient(cfg, admin.ClientOptions{
+	rn, err := pickRouter(cfg, *router)
+	if err != nil {
+		return err
+	}
+	res, err := admin.AddClient(cfg, rn, admin.ClientOptions{
 		Name:     *name,
 		ClientID: *clientID,
-		Service:  *serviceName,
+		Services: splitList(*services),
 		PSK:      *pskFlag,
 		Force:    *force,
 	})
@@ -252,25 +262,58 @@ func clientCmd(args []string) error {
 	if err := admin.SaveConfig(*configPath, res.Config); err != nil {
 		return err
 	}
-	cl := res.Config.Clients[*name]
-	fmt.Printf("client added config=%s name=%s client_id=%s service=%s psk=%s\n", *configPath, *name, cl.ClientID, *serviceName, res.PSKSource)
+	cl := res.Config.Routers[rn].Clients[*name]
+	fmt.Printf("user added config=%s router=%s name=%s client_id=%s services=%s psk=%s\n",
+		*configPath, rn, *name, cl.ClientID, strings.Join(cl.Services, ","), res.PSKSource)
 	return nil
+}
+
+func splitList(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func pickRouter(cfg config.Config, name string) (string, error) {
+	if name != "" {
+		if _, ok := cfg.Routers[name]; !ok {
+			return "", fmt.Errorf("unknown router %q", name)
+		}
+		return name, nil
+	}
+	if len(cfg.Routers) != 1 {
+		return "", fmt.Errorf("--router is required (config has %d routers)", len(cfg.Routers))
+	}
+	for n := range cfg.Routers {
+		return n, nil
+	}
+	return "", fmt.Errorf("config has no routers")
 }
 
 func tokenCmd(args []string) error {
 	fs := flag.NewFlagSet("token", flag.ContinueOnError)
 	configPath := fs.String("config", "mkpk.yaml", "config path")
-	clientName := fs.String("client", "", "client name")
+	routerName := fs.String("router", "", "router name; sole router when empty")
+	clientName := fs.String("client", "", "user name")
+	serviceName := fs.String("service", "", "service name; sole service when empty")
 	bucketFlag := fs.String("bucket", "", "override time bucket")
 	debug := fs.Bool("debug", false, "print token metadata")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	res, err := loadResolved(*configPath, *clientName)
+	res, err := loadResolved(*configPath, *routerName, *clientName, *serviceName)
 	if err != nil {
 		return err
 	}
-	window := token.InspectWindow(time.Now(), res.Config.Defaults.BucketSeconds)
+	window := token.InspectWindow(time.Now(), res.Router.Defaults.BucketSeconds)
 	bucket := window.Bucket
 	if *bucketFlag != "" {
 		bucket, err = strconv.ParseInt(*bucketFlag, 10, 64)
@@ -294,7 +337,7 @@ func routerosCmd(args []string) error {
 	}
 	fs := flag.NewFlagSet("routeros render", flag.ContinueOnError)
 	configPath := fs.String("config", "mkpk.yaml", "config path")
-	clientName := fs.String("client", "", "client name; renders all clients when empty")
+	router := fs.String("router", "", "router name; sole router when empty")
 	outPath := fs.String("out", "", "output .rsc path; stdout when empty")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
@@ -303,7 +346,11 @@ func routerosCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	rendered, err := admin.Render(cfg, *clientName)
+	rn, err := pickRouter(cfg, *router)
+	if err != nil {
+		return err
+	}
+	rendered, err := admin.Render(cfg, rn)
 	if err != nil {
 		return err
 	}
@@ -322,7 +369,8 @@ func deployCmd(args []string) error {
 	}
 	fs := flag.NewFlagSet("deploy", flag.ContinueOnError)
 	configPath := fs.String("config", "mkpk.yaml", "config path")
-	address := fs.String("address", "", "router address override; router.address when empty")
+	routerName := fs.String("router", "", "router name; sole router when empty")
+	address := fs.String("address", "", "router address override; router address when empty")
 	user := fs.String("user", "admin", "SSH username")
 	port := fs.Int("port", 22, "SSH port")
 	keyPath := fs.String("key", "", "SSH private key path")
@@ -335,6 +383,10 @@ func deployCmd(args []string) error {
 		return err
 	}
 	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	rn, err := pickRouter(cfg, *routerName)
 	if err != nil {
 		return err
 	}
@@ -352,7 +404,7 @@ func deployCmd(args []string) error {
 
 	switch sub {
 	case "status":
-		st, err := admin.Status(cfg, opts)
+		st, err := admin.Status(cfg, rn, opts)
 		if err != nil {
 			return err
 		}
@@ -365,7 +417,7 @@ func deployCmd(args []string) error {
 		return nil
 
 	case "uninstall":
-		addr, applied, err := admin.Uninstall(cfg, opts, *dryRun)
+		addr, applied, err := admin.Uninstall(cfg, rn, opts, *dryRun)
 		if err != nil {
 			return err
 		}
@@ -377,7 +429,7 @@ func deployCmd(args []string) error {
 		return nil
 
 	default:
-		res, err := admin.Apply(cfg, opts, *force, *dryRun)
+		res, err := admin.Apply(cfg, rn, opts, *force, *dryRun)
 		if err != nil {
 			return err
 		}
@@ -413,43 +465,24 @@ func serveCmd(args []string) error {
 }
 
 func printSummary(path string, s admin.Summary) {
-	fmt.Printf("config=%s status=valid\n", path)
-	fmt.Printf("router name=%s address=%s\n", s.Router.Name, s.Router.Address)
-	fmt.Printf("defaults bucket_seconds=%d stage_timeout=%s token_hit_timeout=%s allowed_timeout=%s used_timeout=%s\n",
-		s.Defaults.BucketSeconds, s.Defaults.StageTimeout, s.Defaults.TokenHitTimeout, s.Defaults.AllowedTimeout, s.Defaults.UsedTimeout)
-	fmt.Printf("services count=%d names=%s\n", len(s.Services), joinServiceNames(s.Services))
-	for _, svc := range s.Services {
-		fmt.Printf("service name=%s service_name=%s stage1=%d stage2=%d token=%d allowed_list=%s nat_enabled=%t nat_dst_port=%d nat_to=%s:%d notify_enabled=%t notify_channel=%s\n",
-			svc.Name, svc.ServiceName, svc.Stage1Port, svc.Stage2Port, svc.TokenPort, svc.AllowedList,
-			svc.NATEnabled, svc.NATDstPort, svc.NATToAddress, svc.NATToPort, svc.NotifyEnabled, svc.NotifyChannel)
+	fmt.Printf("config=%s status=valid routers=%d\n", path, len(s.Routers))
+	for _, r := range s.Routers {
+		fmt.Printf("router name=%s address=%s hash=%s\n", r.Name, r.Address, r.Hash[:min(16, len(r.Hash))])
+		fmt.Printf("  defaults bucket_seconds=%d stage_timeout=%s token_hit_timeout=%s allowed_timeout=%s used_timeout=%s\n",
+			r.Defaults.BucketSeconds, r.Defaults.StageTimeout, r.Defaults.TokenHitTimeout, r.Defaults.AllowedTimeout, r.Defaults.UsedTimeout)
+		for _, svc := range r.Services {
+			state := "enabled"
+			if !svc.Enabled {
+				state = "disabled"
+			}
+			fmt.Printf("  service name=%s [%s] service_name=%s stage1=%d stage2=%d token=%d allowed_list=%s nat_enabled=%t nat_dst_port=%d nat_to=%s:%d notify_enabled=%t notify_channel=%s\n",
+				svc.Name, state, svc.ServiceName, svc.Stage1Port, svc.Stage2Port, svc.TokenPort, svc.AllowedList,
+				svc.NATEnabled, svc.NATDstPort, svc.NATToAddress, svc.NATToPort, svc.NotifyEnabled, svc.NotifyChannel)
+		}
+		for _, cl := range r.Clients {
+			fmt.Printf("  user name=%s client_id=%s services=%s psk=set\n", cl.Name, cl.ClientID, strings.Join(cl.Services, ","))
+		}
 	}
-	fmt.Printf("clients count=%d names=%s\n", len(s.Clients), joinClientNames(s.Clients))
-	for _, cl := range s.Clients {
-		fmt.Printf("client name=%s client_id=%s service=%s psk=set\n", cl.Name, cl.ClientID, cl.Service)
-	}
-}
-
-func joinServiceNames(services []admin.ServiceSummary) string {
-	names := make([]string, 0, len(services))
-	for _, s := range services {
-		names = append(names, s.Name)
-	}
-	return joinNames(names)
-}
-
-func joinClientNames(clients []admin.ClientSummary) string {
-	names := make([]string, 0, len(clients))
-	for _, c := range clients {
-		names = append(names, c.Name)
-	}
-	return joinNames(names)
-}
-
-func joinNames(names []string) string {
-	if len(names) == 0 {
-		return "-"
-	}
-	return strings.Join(names, ",")
 }
 
 func printWindowDebug(window token.Window) {
@@ -467,7 +500,7 @@ func printWindowDebug(window token.Window) {
 	)
 }
 
-func loadResolved(path, clientName string) (config.Resolved, error) {
+func loadResolved(path, routerName, clientName, serviceName string) (config.Resolved, error) {
 	if clientName == "" {
 		return config.Resolved{}, fmt.Errorf("--client is required")
 	}
@@ -475,5 +508,10 @@ func loadResolved(path, clientName string) (config.Resolved, error) {
 	if err != nil {
 		return config.Resolved{}, err
 	}
-	return cfg.Resolve(clientName)
+	rn, err := pickRouter(cfg, routerName)
+	if err != nil {
+		return config.Resolved{}, err
+	}
+	r, _ := cfg.Router(rn)
+	return r.Resolve(rn, clientName, serviceName)
 }

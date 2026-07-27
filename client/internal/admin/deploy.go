@@ -9,7 +9,7 @@ import (
 
 // DeployOptions carries the connection parameters for a deploy operation.
 type DeployOptions struct {
-	Address string // override; cfg.Router.Address when empty
+	Address string // override; router.Address when empty
 	Port    int    // 0 → 22
 	Auth    deploy.Auth
 }
@@ -17,6 +17,7 @@ type DeployOptions struct {
 // StatusResult is the detected install state of a router.
 type StatusResult struct {
 	Router        string `json:"router"`
+	Address       string `json:"address"`
 	Installed     bool   `json:"installed"`
 	UpToDate      bool   `json:"up_to_date"`
 	InstalledHash string `json:"installed_hash"`
@@ -26,15 +27,20 @@ type StatusResult struct {
 // ApplyResult reports what an install/update did or would do.
 type ApplyResult struct {
 	Router        string `json:"router"`
+	Address       string `json:"address"`
 	Action        string `json:"action"` // skip | install | update
 	Applied       bool   `json:"applied"`
 	Hash          string `json:"hash"`
 	InstalledHash string `json:"installed_hash"`
 }
 
-// Status connects and reports whether mkpk is installed and up to date.
-func Status(cfg config.Config, o DeployOptions) (StatusResult, error) {
-	c, addr, err := connect(cfg, o)
+// Status connects to routerName and reports whether mkpk is installed and up to date.
+func Status(cfg config.Config, routerName string, o DeployOptions) (StatusResult, error) {
+	r, err := getRouter(cfg, routerName)
+	if err != nil {
+		return StatusResult{}, err
+	}
+	c, addr, err := connect(r, o)
 	if err != nil {
 		return StatusResult{}, err
 	}
@@ -43,9 +49,10 @@ func Status(cfg config.Config, o DeployOptions) (StatusResult, error) {
 	if err != nil {
 		return StatusResult{}, err
 	}
-	desired := cfg.Hash()
+	desired := r.Hash()
 	return StatusResult{
-		Router:        addr,
+		Router:        routerName,
+		Address:       addr,
 		Installed:     state.Installed,
 		UpToDate:      state.Installed && state.Hash == desired,
 		InstalledHash: state.Hash,
@@ -53,14 +60,18 @@ func Status(cfg config.Config, o DeployOptions) (StatusResult, error) {
 	}, nil
 }
 
-// Apply installs or updates the mkpk layer. With dryRun it only reports the
-// action; without force it skips when the router is already up to date.
-func Apply(cfg config.Config, o DeployOptions, force, dryRun bool) (ApplyResult, error) {
-	rendered, err := Render(cfg, "")
+// Apply installs or updates the mkpk layer on routerName. With dryRun it only
+// reports the action; without force it skips when already up to date.
+func Apply(cfg config.Config, routerName string, o DeployOptions, force, dryRun bool) (ApplyResult, error) {
+	r, err := getRouter(cfg, routerName)
 	if err != nil {
 		return ApplyResult{}, err
 	}
-	c, addr, err := connect(cfg, o)
+	rendered, err := Render(cfg, routerName)
+	if err != nil {
+		return ApplyResult{}, err
+	}
+	c, addr, err := connect(r, o)
 	if err != nil {
 		return ApplyResult{}, err
 	}
@@ -69,8 +80,8 @@ func Apply(cfg config.Config, o DeployOptions, force, dryRun bool) (ApplyResult,
 	if err != nil {
 		return ApplyResult{}, err
 	}
-	desired := cfg.Hash()
-	res := ApplyResult{Router: addr, Hash: desired, InstalledHash: state.Hash}
+	desired := r.Hash()
+	res := ApplyResult{Router: routerName, Address: addr, Hash: desired, InstalledHash: state.Hash}
 	if state.Installed && state.Hash == desired && !force {
 		res.Action = "skip"
 		return res, nil
@@ -89,9 +100,13 @@ func Apply(cfg config.Config, o DeployOptions, force, dryRun bool) (ApplyResult,
 	return res, nil
 }
 
-// Uninstall removes the mkpk layer. Returns the resolved router address.
-func Uninstall(cfg config.Config, o DeployOptions, dryRun bool) (string, bool, error) {
-	c, addr, err := connect(cfg, o)
+// Uninstall removes the mkpk layer from routerName.
+func Uninstall(cfg config.Config, routerName string, o DeployOptions, dryRun bool) (string, bool, error) {
+	r, err := getRouter(cfg, routerName)
+	if err != nil {
+		return "", false, err
+	}
+	c, addr, err := connect(r, o)
 	if err != nil {
 		return "", false, err
 	}
@@ -105,13 +120,13 @@ func Uninstall(cfg config.Config, o DeployOptions, dryRun bool) (string, bool, e
 	return addr, true, nil
 }
 
-func connect(cfg config.Config, o DeployOptions) (*deploy.Client, string, error) {
+func connect(r config.Router, o DeployOptions) (*deploy.Client, string, error) {
 	addr := o.Address
 	if addr == "" {
-		addr = cfg.Router.Address
+		addr = r.Address
 	}
 	if addr == "" {
-		return nil, "", fmt.Errorf("router address is required (option or router.address)")
+		return nil, "", fmt.Errorf("router address is required (option or router address)")
 	}
 	port := o.Port
 	if port == 0 {

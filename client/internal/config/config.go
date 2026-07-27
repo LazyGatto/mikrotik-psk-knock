@@ -5,21 +5,24 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"slices"
 	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
+// Config is the top-level admin config: a set of routers, each with its own
+// defaults, services and users (clients).
 type Config struct {
-	Router   Router             `yaml:"router"`
-	Defaults Defaults           `yaml:"defaults"`
-	Services map[string]Service `yaml:"services"`
-	Clients  map[string]Client  `yaml:"clients"`
+	Routers map[string]Router `yaml:"routers" json:"routers"`
 }
 
+// Router holds everything provisioned onto one MikroTik.
 type Router struct {
-	Name    string `yaml:"name" json:"name"`
-	Address string `yaml:"address" json:"address"`
+	Address  string             `yaml:"address" json:"address"`
+	Defaults Defaults           `yaml:"defaults" json:"defaults"`
+	Services map[string]Service `yaml:"services" json:"services"`
+	Clients  map[string]Client  `yaml:"clients" json:"clients"`
 }
 
 type Defaults struct {
@@ -31,13 +34,14 @@ type Defaults struct {
 }
 
 type Service struct {
-	ServiceName string `yaml:"service_name"`
-	Stage1Port  int    `yaml:"stage1_port"`
-	Stage2Port  int    `yaml:"stage2_port"`
-	TokenPort   int    `yaml:"token_port"`
-	AllowedList string `yaml:"allowed_list"`
-	NAT         NAT    `yaml:"nat"`
-	Notify      Notify `yaml:"notify"`
+	ServiceName string `yaml:"service_name" json:"service_name"`
+	Disabled    bool   `yaml:"disabled" json:"disabled"` // absent → false → enabled
+	Stage1Port  int    `yaml:"stage1_port" json:"stage1_port"`
+	Stage2Port  int    `yaml:"stage2_port" json:"stage2_port"`
+	TokenPort   int    `yaml:"token_port" json:"token_port"`
+	AllowedList string `yaml:"allowed_list" json:"allowed_list"`
+	NAT         NAT    `yaml:"nat" json:"nat"`
+	Notify      Notify `yaml:"notify" json:"notify"`
 }
 
 type NAT struct {
@@ -71,24 +75,33 @@ type NotifyEmail struct {
 	Password string `yaml:"password" json:"password"`
 }
 
+// Client is a user: an identity with one PSK, allowed a set of services on the
+// router. The service name is part of the token, so one PSK yields distinct
+// per-service tokens.
 type Client struct {
-	ClientID string `yaml:"client_id"`
-	Service  string `yaml:"service"`
-	PSK      string `yaml:"psk"`
+	ClientID string   `yaml:"client_id" json:"client_id"`
+	Services []string `yaml:"services" json:"services"`
+	PSK      string   `yaml:"psk" json:"psk"`
 }
 
+// Resolved is a single (router, client, service) triple used by token/knock.
 type Resolved struct {
-	Config  Config
-	Client  Client
-	Service Service
+	RouterName  string
+	Router      Router
+	ClientName  string
+	Client      Client
+	ServiceName string
+	Service     Service
 }
+
+// Enabled reports whether the service is active (rendered/deployed).
+func (s Service) Enabled() bool { return !s.Disabled }
 
 func Load(path string) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Config{}, err
 	}
-
 	var cfg Config
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return Config{}, err
@@ -101,22 +114,29 @@ func Load(path string) (Config, error) {
 }
 
 func (c *Config) applyDefaults() {
-	if c.Defaults.BucketSeconds == 0 {
-		c.Defaults.BucketSeconds = 30
+	for name, r := range c.Routers {
+		r.applyDefaults()
+		c.Routers[name] = r
 	}
-	if c.Defaults.StageTimeout == "" {
-		c.Defaults.StageTimeout = "5s"
+}
+
+func (r *Router) applyDefaults() {
+	if r.Defaults.BucketSeconds == 0 {
+		r.Defaults.BucketSeconds = 30
 	}
-	if c.Defaults.TokenHitTimeout == "" {
-		c.Defaults.TokenHitTimeout = "2s"
+	if r.Defaults.StageTimeout == "" {
+		r.Defaults.StageTimeout = "5s"
 	}
-	if c.Defaults.AllowedTimeout == "" {
-		c.Defaults.AllowedTimeout = "3m"
+	if r.Defaults.TokenHitTimeout == "" {
+		r.Defaults.TokenHitTimeout = "2s"
 	}
-	if c.Defaults.UsedTimeout == "" {
-		c.Defaults.UsedTimeout = "65s"
+	if r.Defaults.AllowedTimeout == "" {
+		r.Defaults.AllowedTimeout = "3m"
 	}
-	for name, svc := range c.Services {
+	if r.Defaults.UsedTimeout == "" {
+		r.Defaults.UsedTimeout = "65s"
+	}
+	for name, svc := range r.Services {
 		if svc.ServiceName == "" {
 			svc.ServiceName = name
 		}
@@ -137,44 +157,53 @@ func (c *Config) applyDefaults() {
 				svc.Notify.Email.TLS = "starttls"
 			}
 		}
-		c.Services[name] = svc
+		r.Services[name] = svc
 	}
-	for name, client := range c.Clients {
+	for name, client := range r.Clients {
 		if client.ClientID == "" {
 			client.ClientID = name
 		}
-		c.Clients[name] = client
+		r.Clients[name] = client
 	}
 }
 
 func (c Config) Validate() error {
-	if len(c.Services) == 0 {
-		return fmt.Errorf("services must not be empty")
+	if len(c.Routers) == 0 {
+		return fmt.Errorf("routers must not be empty")
 	}
-	if len(c.Clients) == 0 {
-		return fmt.Errorf("clients must not be empty")
+	for name, r := range c.Routers {
+		if !isSafeName(name) {
+			return fmt.Errorf("router key %q must match ^[A-Za-z0-9][A-Za-z0-9_-]*$", name)
+		}
+		if err := r.Validate(); err != nil {
+			return fmt.Errorf("router %q %w", name, err)
+		}
 	}
-	if c.Defaults.BucketSeconds <= 0 {
+	return nil
+}
+
+func (r Router) Validate() error {
+	if r.Defaults.BucketSeconds <= 0 {
 		return fmt.Errorf("defaults.bucket_seconds must be positive")
 	}
-	if _, err := time.ParseDuration(c.Defaults.StageTimeout); err != nil {
+	if _, err := time.ParseDuration(r.Defaults.StageTimeout); err != nil {
 		return fmt.Errorf("defaults.stage_timeout: %w", err)
 	}
-	if _, err := time.ParseDuration(c.Defaults.TokenHitTimeout); err != nil {
+	if _, err := time.ParseDuration(r.Defaults.TokenHitTimeout); err != nil {
 		return fmt.Errorf("defaults.token_hit_timeout: %w", err)
 	}
-	if _, err := time.ParseDuration(c.Defaults.AllowedTimeout); err != nil {
+	if _, err := time.ParseDuration(r.Defaults.AllowedTimeout); err != nil {
 		return fmt.Errorf("defaults.allowed_timeout: %w", err)
 	}
-	usedTimeout, err := time.ParseDuration(c.Defaults.UsedTimeout)
+	usedTimeout, err := time.ParseDuration(r.Defaults.UsedTimeout)
 	if err != nil {
 		return fmt.Errorf("defaults.used_timeout: %w", err)
 	}
-	minUsedTimeout := 2 * time.Duration(c.Defaults.BucketSeconds) * time.Second
+	minUsedTimeout := 2 * time.Duration(r.Defaults.BucketSeconds) * time.Second
 	if usedTimeout < minUsedTimeout {
 		return fmt.Errorf("defaults.used_timeout must be at least %s to cover current and previous token buckets", minUsedTimeout)
 	}
-	for name, svc := range c.Services {
+	for name, svc := range r.Services {
 		if !isSafeName(name) {
 			return fmt.Errorf("service key %q must match ^[A-Za-z0-9][A-Za-z0-9_-]*$", name)
 		}
@@ -206,12 +235,9 @@ func (c Config) Validate() error {
 			return fmt.Errorf("service %q %w", name, err)
 		}
 	}
-	for name, client := range c.Clients {
+	for name, client := range r.Clients {
 		if !isSafeName(name) {
 			return fmt.Errorf("client key %q must match ^[A-Za-z0-9][A-Za-z0-9_-]*$", name)
-		}
-		if client.Service == "" {
-			return fmt.Errorf("client %q service is required", name)
 		}
 		if client.PSK == "" {
 			return fmt.Errorf("client %q psk is required", name)
@@ -219,18 +245,20 @@ func (c Config) Validate() error {
 		if !isSafePSK(client.PSK) {
 			return fmt.Errorf("client %q psk must use only base64url-safe characters: A-Z, a-z, 0-9, - and _", name)
 		}
-		if _, ok := c.Services[client.Service]; !ok {
-			return fmt.Errorf("client %q references unknown service %q", name, client.Service)
+		for _, svc := range client.Services {
+			if _, ok := r.Services[svc]; !ok {
+				return fmt.Errorf("client %q references unknown service %q", name, svc)
+			}
 		}
 	}
 	return nil
 }
 
-// Hash returns a stable fingerprint of the configuration, used to detect whether
-// the RouterOS side is up to date. The rendered .rsc is a deterministic function
-// of the config, so hashing the marshaled config detects any drift.
-func (c Config) Hash() string {
-	data, err := yaml.Marshal(c)
+// Hash returns a stable per-router fingerprint used to detect whether that
+// router is up to date. The rendered .rsc is a deterministic function of the
+// router config, so hashing the marshaled router detects any drift.
+func (r Router) Hash() string {
+	data, err := yaml.Marshal(r)
 	if err != nil {
 		return ""
 	}
@@ -238,13 +266,45 @@ func (c Config) Hash() string {
 	return hex.EncodeToString(sum[:])
 }
 
-func (c Config) Resolve(clientName string) (Resolved, error) {
-	client, ok := c.Clients[clientName]
+// Router returns the named router.
+func (c Config) Router(name string) (Router, bool) {
+	r, ok := c.Routers[name]
+	return r, ok
+}
+
+// Resolve locates a (client, service) pair on the router. serviceName may be
+// empty when the client has exactly one service.
+func (r Router) Resolve(routerName, clientName, serviceName string) (Resolved, error) {
+	client, ok := r.Clients[clientName]
 	if !ok {
 		return Resolved{}, fmt.Errorf("unknown client %q", clientName)
 	}
-	service := c.Services[client.Service]
-	return Resolved{Config: c, Client: client, Service: service}, nil
+	if serviceName == "" {
+		switch len(client.Services) {
+		case 1:
+			serviceName = client.Services[0]
+		case 0:
+			return Resolved{}, fmt.Errorf("client %q has no services", clientName)
+		default:
+			return Resolved{}, fmt.Errorf("client %q has multiple services; specify one of %v", clientName, client.Services)
+		}
+	}
+	if !clientHasService(client, serviceName) {
+		return Resolved{}, fmt.Errorf("client %q is not assigned service %q", clientName, serviceName)
+	}
+	svc, ok := r.Services[serviceName]
+	if !ok {
+		return Resolved{}, fmt.Errorf("unknown service %q", serviceName)
+	}
+	return Resolved{
+		RouterName: routerName, Router: r,
+		ClientName: clientName, Client: client,
+		ServiceName: serviceName, Service: svc,
+	}, nil
+}
+
+func clientHasService(c Client, name string) bool {
+	return slices.Contains(c.Services, name)
 }
 
 func validateNotify(n Notify) error {

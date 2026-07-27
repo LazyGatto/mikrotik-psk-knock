@@ -6,3 +6,6 @@ secrets/
 *.key
 *.pem
 routeros/generated-*.rsc
+# built Go binaries
+/client/mkpk
+/client/mkpk-provision

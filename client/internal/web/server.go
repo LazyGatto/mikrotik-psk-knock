@@ -151,8 +151,10 @@ func (s *Server) handleSecret(w http.ResponseWriter, r *http.Request) {
 }
 
 type serviceReq struct {
+	Router      string        `json:"router"`
 	Name        string        `json:"name"`
 	ServiceName string        `json:"service_name"`
+	Disabled    bool          `json:"disabled"`
 	Stage1Port  int           `json:"stage1_port"`
 	Stage2Port  int           `json:"stage2_port"`
 	TokenPort   int           `json:"token_port"`
@@ -175,13 +177,14 @@ func (s *Server) handleService(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "invalid json: "+err.Error())
 			return
 		}
-		cfg, err = admin.AddService(cfg, admin.ServiceOptions{
-			Name: req.Name, ServiceName: req.ServiceName,
+		cfg, err = admin.AddService(cfg, req.Router, admin.ServiceOptions{
+			Name: req.Name, ServiceName: req.ServiceName, Disabled: req.Disabled,
 			Stage1Port: req.Stage1Port, Stage2Port: req.Stage2Port, TokenPort: req.TokenPort,
 			AllowedList: req.AllowedList, NAT: req.NAT, Notify: req.Notify, Force: true,
 		})
 	case http.MethodDelete:
-		cfg, err = admin.RemoveService(cfg, r.URL.Query().Get("name"))
+		q := r.URL.Query()
+		cfg, err = admin.RemoveService(cfg, q.Get("router"), q.Get("name"))
 	default:
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -198,10 +201,11 @@ func (s *Server) handleService(w http.ResponseWriter, r *http.Request) {
 }
 
 type clientReq struct {
-	Name     string `json:"name"`
-	ClientID string `json:"client_id"`
-	Service  string `json:"service"`
-	PSK      string `json:"psk"`
+	Router   string   `json:"router"`
+	Name     string   `json:"name"`
+	ClientID string   `json:"client_id"`
+	Services []string `json:"services"`
+	PSK      string   `json:"psk"`
 }
 
 func (s *Server) handleClient(w http.ResponseWriter, r *http.Request) {
@@ -218,12 +222,13 @@ func (s *Server) handleClient(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var res admin.AddClientResult
-		res, err = admin.AddClient(cfg, admin.ClientOptions{
-			Name: req.Name, ClientID: req.ClientID, Service: req.Service, PSK: req.PSK, Force: true,
+		res, err = admin.AddClient(cfg, req.Router, admin.ClientOptions{
+			Name: req.Name, ClientID: req.ClientID, Services: req.Services, PSK: req.PSK, Force: true,
 		})
 		cfg = res.Config
 	case http.MethodDelete:
-		cfg, err = admin.RemoveClient(cfg, r.URL.Query().Get("name"))
+		q := r.URL.Query()
+		cfg, err = admin.RemoveClient(cfg, q.Get("router"), q.Get("name"))
 	default:
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -245,7 +250,7 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	rendered, err := admin.Render(cfg, r.URL.Query().Get("client"))
+	rendered, err := admin.Render(cfg, r.URL.Query().Get("router"))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -257,6 +262,7 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 // --- deploy ---
 
 type deployReq struct {
+	Router   string `json:"router"`
 	Address  string `json:"address"`
 	Port     int    `json:"port"`
 	User     string `json:"user"`
@@ -294,7 +300,7 @@ func (s *Server) handleDeployStatus(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	res, err := admin.Status(cfg, req.options())
+	res, err := admin.Status(cfg, req.Router, req.options())
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return
@@ -308,7 +314,7 @@ func (s *Server) handleDeployApply(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	res, err := admin.Apply(cfg, req.options(), req.Force, req.DryRun)
+	res, err := admin.Apply(cfg, req.Router, req.options(), req.Force, req.DryRun)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return
@@ -322,7 +328,7 @@ func (s *Server) handleDeployUninstall(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	addr, applied, err := admin.Uninstall(cfg, req.options(), req.DryRun)
+	addr, applied, err := admin.Uninstall(cfg, req.Router, req.options(), req.DryRun)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return
@@ -335,7 +341,6 @@ func (s *Server) handleDeployUninstall(w http.ResponseWriter, r *http.Request) {
 func writeConfig(w http.ResponseWriter, path string, cfg config.Config) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"path":    path,
-		"hash":    cfg.Hash(),
 		"summary": admin.Summarize(cfg),
 	})
 }

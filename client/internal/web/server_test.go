@@ -13,7 +13,7 @@ func testConfigPath(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "mkpk.yaml")
-	cfg, err := admin.InitConfig(admin.InitOptions{RouterAddress: "r.example", ServiceName: "svc", ClientName: "cli"})
+	cfg, err := admin.InitConfig(admin.InitOptions{RouterName: "r1", RouterAddress: "r.example", ServiceName: "svc", ClientName: "cli"})
 	if err != nil {
 		t.Fatalf("InitConfig() error = %v", err)
 	}
@@ -54,7 +54,7 @@ func TestAddServicePersists(t *testing.T) {
 	path := testConfigPath(t)
 	h := Handler(path, "tok")
 
-	body := `{"name":"web","stage1_port":42001,"stage2_port":42002,"token_port":42003,"nat":{"dst_port":3443,"to_address":"192.0.2.20","to_port":443}}`
+	body := `{"router":"r1","name":"web","stage1_port":42001,"stage2_port":42002,"token_port":42003,"nat":{"dst_port":3443,"to_address":"192.0.2.20","to_port":443}}`
 	req := httptest.NewRequest("POST", "/api/service", strings.NewReader(body))
 	req.Host = "127.0.0.1:8765"
 	req.Header.Set("X-MKPK-Token", "tok")

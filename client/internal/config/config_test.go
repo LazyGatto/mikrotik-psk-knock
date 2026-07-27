@@ -3,255 +3,233 @@ package config
 import "testing"
 
 func TestValidateAcceptsSafePSK(t *testing.T) {
-	cfg := validConfig()
-
-	if err := cfg.Validate(); err != nil {
+	if err := validRouter().Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)
 	}
 }
 
 func TestValidateRejectsUnsafePSK(t *testing.T) {
-	cfg := validConfig()
-	client := cfg.Clients["demo-client"]
-	client.PSK = "bad$psk"
-	cfg.Clients["demo-client"] = client
-
-	if err := cfg.Validate(); err == nil {
+	r := validRouter()
+	c := r.Clients["demo-client"]
+	c.PSK = "bad$psk"
+	r.Clients["demo-client"] = c
+	if err := r.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want unsafe PSK error")
 	}
 }
 
 func TestValidateRejectsDuplicateStagePorts(t *testing.T) {
-	cfg := validConfig()
-	svc := cfg.Services["demo-service"]
+	r := validRouter()
+	svc := r.Services["demo-service"]
 	svc.Stage2Port = svc.Stage1Port
-	cfg.Services["demo-service"] = svc
-
-	if err := cfg.Validate(); err == nil {
+	r.Services["demo-service"] = svc
+	if err := r.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want duplicate port error")
 	}
 }
 
 func TestValidateRejectsInvalidTimeouts(t *testing.T) {
-	cfg := validConfig()
-	cfg.Defaults.AllowedTimeout = "1d"
-
-	if err := cfg.Validate(); err == nil {
+	r := validRouter()
+	r.Defaults.AllowedTimeout = "1d"
+	if err := r.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want invalid timeout error")
 	}
 }
 
 func TestValidateRejectsUsedTimeoutShorterThanAcceptedBuckets(t *testing.T) {
-	cfg := validConfig()
-	cfg.Defaults.BucketSeconds = 30
-	cfg.Defaults.UsedTimeout = "59s"
-
-	if err := cfg.Validate(); err == nil {
+	r := validRouter()
+	r.Defaults.BucketSeconds = 30
+	r.Defaults.UsedTimeout = "59s"
+	if err := r.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want short used timeout error")
 	}
 }
 
 func TestValidateRejectsUnsafeServiceName(t *testing.T) {
-	cfg := validConfig()
-	svc := cfg.Services["demo-service"]
-	delete(cfg.Services, "demo-service")
-	cfg.Services["bad name"] = svc
-	client := cfg.Clients["demo-client"]
-	client.Service = "bad name"
-	cfg.Clients["demo-client"] = client
-
-	if err := cfg.Validate(); err == nil {
+	r := validRouter()
+	svc := r.Services["demo-service"]
+	delete(r.Services, "demo-service")
+	r.Services["bad name"] = svc
+	c := r.Clients["demo-client"]
+	c.Services = []string{"bad name"}
+	r.Clients["demo-client"] = c
+	if err := r.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want unsafe service name error")
 	}
 }
 
-func TestValidateRejectsUnsafeAllowedList(t *testing.T) {
-	cfg := validConfig()
-	svc := cfg.Services["demo-service"]
-	svc.AllowedList = "bad list"
-	cfg.Services["demo-service"] = svc
+func TestValidateRejectsClientUnknownService(t *testing.T) {
+	r := validRouter()
+	c := r.Clients["demo-client"]
+	c.Services = []string{"nope"}
+	r.Clients["demo-client"] = c
+	if err := r.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want unknown service error")
+	}
+}
 
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("Validate() error = nil, want unsafe allowed_list error")
+func TestValidateRejectsEmptyRouters(t *testing.T) {
+	if err := (Config{}).Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want empty routers error")
 	}
 }
 
 func TestApplyDefaultsPerServiceAllowedList(t *testing.T) {
-	cfg := Config{
-		Services: map[string]Service{
-			"ssh-home": {Stage1Port: 1, Stage2Port: 2, TokenPort: 3},
-		},
-		Clients: map[string]Client{},
-	}
+	cfg := Config{Routers: map[string]Router{
+		"r1": {Services: map[string]Service{"ssh-home": {Stage1Port: 1, Stage2Port: 2, TokenPort: 3}}},
+	}}
 	cfg.applyDefaults()
-
-	if got := cfg.Services["ssh-home"].AllowedList; got != "mkpk-tt-allowed-ssh-home" {
+	if got := cfg.Routers["r1"].Services["ssh-home"].AllowedList; got != "mkpk-tt-allowed-ssh-home" {
 		t.Fatalf("allowed_list = %q, want mkpk-tt-allowed-ssh-home", got)
 	}
 }
 
-func TestValidateAcceptsTelegramNotify(t *testing.T) {
-	cfg := validConfig()
-	svc := cfg.Services["demo-service"]
-	svc.Notify = Notify{
-		Enabled:  true,
-		Channel:  "telegram",
-		Telegram: NotifyTelegram{BotToken: "123456:AA-bb_CC", ChatID: "-100200300"},
-	}
-	cfg.Services["demo-service"] = svc
-
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("Validate() error = %v", err)
-	}
-}
-
-func TestValidateRejectsBadTelegramToken(t *testing.T) {
-	cfg := validConfig()
-	svc := cfg.Services["demo-service"]
-	svc.Notify = Notify{
-		Enabled:  true,
-		Channel:  "telegram",
-		Telegram: NotifyTelegram{BotToken: "not-a-token", ChatID: "123"},
-	}
-	cfg.Services["demo-service"] = svc
-
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("Validate() error = nil, want bad telegram token error")
-	}
-}
-
-func TestValidateRejectsWebhookWithoutURL(t *testing.T) {
-	cfg := validConfig()
-	svc := cfg.Services["demo-service"]
-	svc.Notify = Notify{Enabled: true, Channel: "webhook", URL: ""}
-	cfg.Services["demo-service"] = svc
-
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("Validate() error = nil, want missing webhook url error")
-	}
-}
-
-func TestValidateRejectsUnknownNotifyChannel(t *testing.T) {
-	cfg := validConfig()
-	svc := cfg.Services["demo-service"]
-	svc.Notify = Notify{Enabled: true, Channel: "carrier-pigeon", URL: "https://x"}
-	cfg.Services["demo-service"] = svc
-
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("Validate() error = nil, want unknown channel error")
-	}
-}
-
-func TestValidateAcceptsEmailNotify(t *testing.T) {
-	cfg := validConfig()
-	svc := cfg.Services["demo-service"]
-	svc.Notify = Notify{
-		Enabled: true,
-		Channel: "email",
-		Email: NotifyEmail{
-			To: "alerts@example.com", From: "mkpk@example.com",
-			Server: "smtp.example.com", Port: 587, TLS: "starttls",
-		},
-	}
-	cfg.Services["demo-service"] = svc
-
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("Validate() error = %v", err)
-	}
-}
-
-func TestValidateRejectsEmailWithoutServer(t *testing.T) {
-	cfg := validConfig()
-	svc := cfg.Services["demo-service"]
-	svc.Notify = Notify{
-		Enabled: true,
-		Channel: "email",
-		Email:   NotifyEmail{To: "a@b.co", From: "m@b.co", Port: 587, TLS: "starttls"},
-	}
-	cfg.Services["demo-service"] = svc
-
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("Validate() error = nil, want missing email server error")
-	}
-}
-
-func TestValidateRejectsEmailBadTLS(t *testing.T) {
-	cfg := validConfig()
-	svc := cfg.Services["demo-service"]
-	svc.Notify = Notify{
-		Enabled: true,
-		Channel: "email",
-		Email:   NotifyEmail{To: "a@b.co", From: "m@b.co", Server: "s", Port: 587, TLS: "ssl"},
-	}
-	cfg.Services["demo-service"] = svc
-
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("Validate() error = nil, want bad email tls error")
-	}
-}
-
 func TestApplyDefaultsEmailPortAndTLS(t *testing.T) {
-	cfg := Config{
-		Services: map[string]Service{
+	cfg := Config{Routers: map[string]Router{
+		"r1": {Services: map[string]Service{
 			"s": {Stage1Port: 1, Stage2Port: 2, TokenPort: 3, Notify: Notify{Enabled: true, Channel: "email"}},
-		},
-		Clients: map[string]Client{},
-	}
+		}},
+	}}
 	cfg.applyDefaults()
-
-	got := cfg.Services["s"].Notify.Email
+	got := cfg.Routers["r1"].Services["s"].Notify.Email
 	if got.Port != 587 || got.TLS != "starttls" {
 		t.Fatalf("email defaults = port %d tls %q, want 587/starttls", got.Port, got.TLS)
 	}
 }
 
-func TestConfigHashStableAndSensitive(t *testing.T) {
-	h1 := validConfig().Hash()
-	if h1 == "" {
-		t.Fatal("Hash() returned empty")
+func TestServiceEnabled(t *testing.T) {
+	if !(Service{}).Enabled() {
+		t.Fatal("service with Disabled=false should be enabled")
 	}
-	if h1 != validConfig().Hash() {
-		t.Fatal("Hash() not stable across identical configs")
+	if (Service{Disabled: true}).Enabled() {
+		t.Fatal("service with Disabled=true should not be enabled")
 	}
+}
 
-	c2 := validConfig()
-	client := c2.Clients["demo-client"]
-	client.PSK = "different-psk-value"
-	c2.Clients["demo-client"] = client
-	if c2.Hash() == h1 {
+func TestValidateAcceptsTelegramNotify(t *testing.T) {
+	r := validRouter()
+	svc := r.Services["demo-service"]
+	svc.Notify = Notify{Enabled: true, Channel: "telegram", Telegram: NotifyTelegram{BotToken: "123456:AA-bb_CC", ChatID: "-100200300"}}
+	r.Services["demo-service"] = svc
+	if err := r.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestValidateRejectsBadTelegramToken(t *testing.T) {
+	r := validRouter()
+	svc := r.Services["demo-service"]
+	svc.Notify = Notify{Enabled: true, Channel: "telegram", Telegram: NotifyTelegram{BotToken: "not-a-token", ChatID: "123"}}
+	r.Services["demo-service"] = svc
+	if err := r.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want bad telegram token error")
+	}
+}
+
+func TestValidateRejectsWebhookWithoutURL(t *testing.T) {
+	r := validRouter()
+	svc := r.Services["demo-service"]
+	svc.Notify = Notify{Enabled: true, Channel: "webhook", URL: ""}
+	r.Services["demo-service"] = svc
+	if err := r.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want missing webhook url error")
+	}
+}
+
+func TestValidateRejectsUnknownNotifyChannel(t *testing.T) {
+	r := validRouter()
+	svc := r.Services["demo-service"]
+	svc.Notify = Notify{Enabled: true, Channel: "carrier-pigeon", URL: "https://x"}
+	r.Services["demo-service"] = svc
+	if err := r.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want unknown channel error")
+	}
+}
+
+func TestValidateAcceptsEmailNotify(t *testing.T) {
+	r := validRouter()
+	svc := r.Services["demo-service"]
+	svc.Notify = Notify{Enabled: true, Channel: "email", Email: NotifyEmail{To: "alerts@example.com", From: "mkpk@example.com", Server: "smtp.example.com", Port: 587, TLS: "starttls"}}
+	r.Services["demo-service"] = svc
+	if err := r.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+func TestValidateRejectsEmailWithoutServer(t *testing.T) {
+	r := validRouter()
+	svc := r.Services["demo-service"]
+	svc.Notify = Notify{Enabled: true, Channel: "email", Email: NotifyEmail{To: "a@b.co", From: "m@b.co", Port: 587, TLS: "starttls"}}
+	r.Services["demo-service"] = svc
+	if err := r.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want missing email server error")
+	}
+}
+
+func TestValidateRejectsEmailBadTLS(t *testing.T) {
+	r := validRouter()
+	svc := r.Services["demo-service"]
+	svc.Notify = Notify{Enabled: true, Channel: "email", Email: NotifyEmail{To: "a@b.co", From: "m@b.co", Server: "s", Port: 587, TLS: "ssl"}}
+	r.Services["demo-service"] = svc
+	if err := r.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want bad email tls error")
+	}
+}
+
+func TestRouterHashStableAndSensitive(t *testing.T) {
+	h1 := validRouter().Hash()
+	if h1 == "" || h1 != validRouter().Hash() {
+		t.Fatal("Hash() empty or not stable")
+	}
+	r := validRouter()
+	c := r.Clients["demo-client"]
+	c.PSK = "different-psk-value"
+	r.Clients["demo-client"] = c
+	if r.Hash() == h1 {
 		t.Fatal("Hash() did not change after config change")
 	}
 }
 
-func validConfig() Config {
-	return Config{
-		Defaults: Defaults{
-			BucketSeconds:   30,
-			StageTimeout:    "5s",
-			TokenHitTimeout: "2s",
-			AllowedTimeout:  "3m",
-			UsedTimeout:     "65s",
-		},
+func TestResolveMultiService(t *testing.T) {
+	r := validRouter()
+	r.Services["web"] = Service{ServiceName: "web", Stage1Port: 42001, Stage2Port: 42002, TokenPort: 42003, AllowedList: "mkpk-tt-allowed-web", NAT: NAT{DstPort: 3443, ToAddress: "192.0.2.20", ToPort: 443}}
+	c := r.Clients["demo-client"]
+	c.Services = []string{"demo-service", "web"}
+	r.Clients["demo-client"] = c
+
+	// ambiguous without a service name
+	if _, err := r.Resolve("r1", "demo-client", ""); err == nil {
+		t.Fatal("Resolve without service on multi-service client should error")
+	}
+	// explicit service works
+	res, err := r.Resolve("r1", "demo-client", "web")
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if res.Service.TokenPort != 42003 {
+		t.Fatalf("resolved wrong service: token port %d", res.Service.TokenPort)
+	}
+	// unassigned service rejected
+	r.Services["other"] = r.Services["demo-service"]
+	if _, err := r.Resolve("r1", "demo-client", "other"); err == nil {
+		t.Fatal("Resolve of unassigned service should error")
+	}
+}
+
+func validRouter() Router {
+	return Router{
+		Address:  "r.example",
+		Defaults: Defaults{BucketSeconds: 30, StageTimeout: "5s", TokenHitTimeout: "2s", AllowedTimeout: "3m", UsedTimeout: "65s"},
 		Services: map[string]Service{
 			"demo-service": {
 				ServiceName: "demo-service",
-				Stage1Port:  41001,
-				Stage2Port:  41002,
-				TokenPort:   41003,
-				AllowedList: "mkpk-tt-allowed",
-				NAT: NAT{
-					DstPort:   2222,
-					ToAddress: "192.0.2.10",
-					ToPort:    22,
-				},
+				Stage1Port:  41001, Stage2Port: 41002, TokenPort: 41003,
+				AllowedList: "mkpk-tt-allowed-demo-service",
+				NAT:         NAT{DstPort: 2222, ToAddress: "192.0.2.10", ToPort: 22},
 			},
 		},
 		Clients: map[string]Client{
-			"demo-client": {
-				ClientID: "demo-client",
-				Service:  "demo-service",
-				PSK:      "mkpk-prototype-psk",
-			},
+			"demo-client": {ClientID: "demo-client", Services: []string{"demo-service"}, PSK: "mkpk-prototype-psk"},
 		},
 	}
 }

@@ -58,17 +58,23 @@ type renderConfigData struct {
 	MetaHash        string // config fingerprint stamped into the persistent mkpk-tt-meta marker
 }
 
-// RenderConfig renders every service and client in cfg into per-profile RouterOS
-// objects. cfg is expected to be already validated (config.Load validates it).
-func RenderConfig(cfg config.Config) (string, error) {
+// RenderConfig renders one router's enabled services and its users into RouterOS
+// objects. The render unit is a (user × service) pair: a user assigned N services
+// yields N token rules / hit lists, each gated on its service's stage2 list. r is
+// expected to be already validated (config.Load validates it). Disabled services
+// (and their user pairs) are skipped.
+func RenderConfig(r config.Router) (string, error) {
 	data := renderConfigData{
-		BucketSeconds:   cfg.Defaults.BucketSeconds,
-		StageTimeout:    cfg.Defaults.StageTimeout,
-		TokenHitTimeout: cfg.Defaults.TokenHitTimeout,
+		BucketSeconds:   r.Defaults.BucketSeconds,
+		StageTimeout:    r.Defaults.StageTimeout,
+		TokenHitTimeout: r.Defaults.TokenHitTimeout,
 	}
 
-	for _, k := range sortedKeys(cfg.Services) {
-		s := cfg.Services[k]
+	for _, k := range sortedKeys(r.Services) {
+		s := r.Services[k]
+		if !s.Enabled() {
+			continue
+		}
 		data.Services = append(data.Services, svcData{
 			Key:          k,
 			Stage1Port:   s.Stage1Port,
@@ -83,39 +89,47 @@ func RenderConfig(cfg config.Config) (string, error) {
 		})
 	}
 
-	for _, k := range sortedKeys(cfg.Clients) {
-		c := cfg.Clients[k]
-		s, ok := cfg.Services[c.Service]
-		if !ok {
-			return "", fmt.Errorf("client %q references unknown service %q", k, c.Service)
+	seen := map[string]string{} // pairKey → "client/service" for collision detection
+	for _, ck := range sortedKeys(r.Clients) {
+		c := r.Clients[ck]
+		for _, sk := range sortedStrings(c.Services) {
+			s, ok := r.Services[sk]
+			if !ok || !s.Enabled() {
+				continue
+			}
+			pairKey := ck + "-" + sk
+			if prev, dup := seen[pairKey]; dup {
+				return "", fmt.Errorf("object name collision %q from client/service %q and %q; rename one", pairKey, prev, ck+"/"+sk)
+			}
+			seen[pairKey] = ck + "/" + sk
+			data.Clients = append(data.Clients, cliData{
+				Key:                 pairKey,
+				ServiceKey:          sk,
+				Service:             rosString(s.ServiceName),
+				ClientID:            rosString(c.ClientID),
+				PSK:                 rosString(c.PSK),
+				TokenPort:           s.TokenPort,
+				AllowedList:         s.AllowedList,
+				AllowedListStr:      rosString(s.AllowedList),
+				AllowedTimeout:      r.Defaults.AllowedTimeout,
+				UsedTimeout:         r.Defaults.UsedTimeout,
+				NotifyEnabled:       rosBool(s.Notify.Enabled),
+				NotifyChannel:       rosString(s.Notify.Channel),
+				NotifyURL:           rosString(s.Notify.URL),
+				NotifyBotToken:      rosString(s.Notify.Telegram.BotToken),
+				NotifyChatID:        rosString(s.Notify.Telegram.ChatID),
+				NotifyEmailTo:       rosString(s.Notify.Email.To),
+				NotifyEmailFrom:     rosString(s.Notify.Email.From),
+				NotifyEmailServer:   rosString(s.Notify.Email.Server),
+				NotifyEmailPort:     s.Notify.Email.Port,
+				NotifyEmailTLS:      rosString(s.Notify.Email.TLS),
+				NotifyEmailUser:     rosString(s.Notify.Email.User),
+				NotifyEmailPassword: rosString(s.Notify.Email.Password),
+			})
 		}
-		data.Clients = append(data.Clients, cliData{
-			Key:                 k,
-			ServiceKey:          c.Service,
-			Service:             rosString(s.ServiceName),
-			ClientID:            rosString(c.ClientID),
-			PSK:                 rosString(c.PSK),
-			TokenPort:           s.TokenPort,
-			AllowedList:         s.AllowedList,
-			AllowedListStr:      rosString(s.AllowedList),
-			AllowedTimeout:      cfg.Defaults.AllowedTimeout,
-			UsedTimeout:         cfg.Defaults.UsedTimeout,
-			NotifyEnabled:       rosBool(s.Notify.Enabled),
-			NotifyChannel:       rosString(s.Notify.Channel),
-			NotifyURL:           rosString(s.Notify.URL),
-			NotifyBotToken:      rosString(s.Notify.Telegram.BotToken),
-			NotifyChatID:        rosString(s.Notify.Telegram.ChatID),
-			NotifyEmailTo:       rosString(s.Notify.Email.To),
-			NotifyEmailFrom:     rosString(s.Notify.Email.From),
-			NotifyEmailServer:   rosString(s.Notify.Email.Server),
-			NotifyEmailPort:     s.Notify.Email.Port,
-			NotifyEmailTLS:      rosString(s.Notify.Email.TLS),
-			NotifyEmailUser:     rosString(s.Notify.Email.User),
-			NotifyEmailPassword: rosString(s.Notify.Email.Password),
-		})
 	}
 	data.ClientsArray = buildClientsArray(data.Clients)
-	data.MetaHash = cfg.Hash()
+	data.MetaHash = r.Hash()
 
 	var out bytes.Buffer
 	if err := configTemplate.Execute(&out, data); err != nil {
@@ -124,22 +138,10 @@ func RenderConfig(cfg config.Config) (string, error) {
 	return out.String(), nil
 }
 
-// Render keeps the single-client entry point by rendering a config that contains
-// only the resolved service and client.
-func Render(res config.Resolved) (string, error) {
-	serviceKey := res.Client.Service
-	if serviceKey == "" {
-		serviceKey = res.Service.ServiceName
-	}
-	clientKey := res.Client.ClientID
-	cfg := res.Config
-	cfg.Services = map[string]config.Service{serviceKey: res.Service}
-	cfg.Clients = map[string]config.Client{clientKey: {
-		ClientID: res.Client.ClientID,
-		Service:  serviceKey,
-		PSK:      res.Client.PSK,
-	}}
-	return RenderConfig(cfg)
+func sortedStrings(s []string) []string {
+	out := append([]string(nil), s...)
+	sort.Strings(out)
+	return out
 }
 
 // buildClientsArray builds the RouterOS array-of-arrays literal consumed by the

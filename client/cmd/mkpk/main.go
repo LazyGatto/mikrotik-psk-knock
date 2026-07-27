@@ -55,8 +55,8 @@ func run(args []string) error {
 
 func usage() {
 	fmt.Fprintf(os.Stderr, `Usage:
-  mkpk check --config mkpk.yaml --client laptop [--host host] [--port port] [--json] [--debug]
-  mkpk knock --config mkpk.yaml --client laptop [--router host] [--check] [--debug]
+  mkpk check --config mkpk.yaml --client laptop [--router name] [--service name] [--host host] [--port port] [--json] [--debug]
+  mkpk knock --config mkpk.yaml --client laptop [--router name] [--service name] [--address host] [--check] [--debug]
 `)
 }
 
@@ -64,7 +64,9 @@ func knockCmd(args []string) error {
 	fs := flag.NewFlagSet("knock", flag.ContinueOnError)
 	configPath := fs.String("config", "mkpk.yaml", "config path")
 	clientName := fs.String("client", "", "client name")
-	routerAddr := fs.String("router", "", "router address override")
+	routerName := fs.String("router", "", "router name; sole router when empty")
+	serviceName := fs.String("service", "", "service name; sole service when empty")
+	routerAddr := fs.String("address", "", "router address override")
 	timeout := fs.Duration("timeout", time.Second, "UDP write timeout")
 	interval := fs.Duration("interval", 250*time.Millisecond, "retry interval inside each phase")
 	stageDuration := fs.Duration("stage-duration", 2*time.Second, "stage1/stage2 retry duration")
@@ -81,19 +83,19 @@ func knockCmd(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	res, err := loadResolved(*configPath, *clientName)
+	res, err := loadResolved(*configPath, *routerName, *clientName, *serviceName)
 	if err != nil {
 		return err
 	}
 	router := *routerAddr
 	if router == "" {
-		router = res.Config.Router.Address
+		router = res.Router.Address
 	}
-	now, err := waitForBucketAge(res.Config.Defaults.BucketSeconds, *minBucketAge, *debug)
+	now, err := waitForBucketAge(res.Router.Defaults.BucketSeconds, *minBucketAge, *debug)
 	if err != nil {
 		return err
 	}
-	window := token.InspectWindow(now, res.Config.Defaults.BucketSeconds)
+	window := token.InspectWindow(now, res.Router.Defaults.BucketSeconds)
 	bucket := window.Bucket
 	value := token.Compute(res.Client.PSK, res.Service.ServiceName, res.Client.ClientID, bucket)
 	if *debug {
@@ -144,7 +146,9 @@ func checkCmd(args []string) error {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
 	configPath := fs.String("config", "mkpk.yaml", "config path")
 	clientName := fs.String("client", "", "client name")
-	routerAddr := fs.String("router", "", "router address override")
+	routerName := fs.String("router", "", "router name; sole router when empty")
+	serviceName := fs.String("service", "", "service name; sole service when empty")
+	routerAddr := fs.String("address", "", "router address override")
 	hostFlag := fs.String("host", "", "target host override; router address when empty")
 	portFlag := fs.Int("port", 0, "target TCP port override; service nat.dst_port when empty")
 	timeout := fs.Duration("timeout", time.Second, "per-attempt TCP check timeout")
@@ -155,13 +159,13 @@ func checkCmd(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	res, err := loadResolved(*configPath, *clientName)
+	res, err := loadResolved(*configPath, *routerName, *clientName, *serviceName)
 	if err != nil {
 		return err
 	}
 	router := *routerAddr
 	if router == "" {
-		router = res.Config.Router.Address
+		router = res.Router.Address
 	}
 	host, port := resolveCheckTarget(res, router, *hostFlag, *portFlag)
 	var logf func(string, ...any)
@@ -268,7 +272,7 @@ func printWindowDebug(window token.Window) {
 	)
 }
 
-func loadResolved(path, clientName string) (config.Resolved, error) {
+func loadResolved(path, routerName, clientName, serviceName string) (config.Resolved, error) {
 	if clientName == "" {
 		return config.Resolved{}, fmt.Errorf("--client is required")
 	}
@@ -276,5 +280,17 @@ func loadResolved(path, clientName string) (config.Resolved, error) {
 	if err != nil {
 		return config.Resolved{}, err
 	}
-	return cfg.Resolve(clientName)
+	if routerName == "" {
+		if len(cfg.Routers) != 1 {
+			return config.Resolved{}, fmt.Errorf("--router is required (config has %d routers)", len(cfg.Routers))
+		}
+		for name := range cfg.Routers {
+			routerName = name
+		}
+	}
+	r, ok := cfg.Router(routerName)
+	if !ok {
+		return config.Resolved{}, fmt.Errorf("unknown router %q", routerName)
+	}
+	return r.Resolve(routerName, clientName, serviceName)
 }
