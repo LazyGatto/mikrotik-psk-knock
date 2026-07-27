@@ -3,173 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>mkpk provision</title>
+<title>mkpk-provision</title>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
 <script>window.MKPK_TOKEN = "__MKPK_TOKEN__";</script>
-
-<header>
-  <h1>mkpk provision</h1>
-  <div class="meta"><span id="cfg-path">—</span></div>
-</header>
-
-<div id="toast" class="toast hidden"></div>
-
-<div class="routerbar">
-  <label>Router
-    <select id="router-select"></select>
-  </label>
-  <span id="router-meta" class="muted mono small"></span>
-  <span class="spacer"></span>
-  <button type="button" id="add-router-btn" class="ghost">+ router</button>
-  <button type="button" id="edit-router-btn" class="ghost">edit router</button>
-  <button type="button" id="del-router-btn" class="danger">remove router</button>
-  <form id="add-router-form" class="form hidden">
-    <div class="row">
-      <label>name <input name="name" required></label>
-      <label>address <input name="address" required></label>
-    </div>
-    <fieldset><legend>SSH deploy credentials (stored on the router)</legend>
-      <div class="row">
-        <label>ssh user <input name="user" placeholder="admin"></label>
-        <label>ssh port <input name="port" type="number" placeholder="22"></label>
-      </div>
-      <label>key path <input name="key_path" placeholder="~/.ssh/id_ed25519"></label>
-      <label class="inline"><input name="use_agent" type="checkbox"> use ssh-agent</label>
-      <div class="row">
-        <label>key pass <input name="key_pass" type="password" placeholder="unchanged"></label>
-        <label>password <input name="password" type="password" placeholder="unchanged"></label>
-      </div>
-      <p class="muted small">Key or ssh-agent is preferred; password is a fallback. On edit, leave secrets blank to keep them.</p>
-    </fieldset>
-    <fieldset><legend>Notify (per router — fires on every successful knock)</legend>
-      <label class="inline"><input name="notify_enabled" type="checkbox"> enabled</label>
-      <label>channel
-        <select name="notify_channel" id="notify-channel">
-          <option value="webhook">webhook</option>
-          <option value="telegram">telegram</option>
-          <option value="email">email</option>
-        </select>
-      </label>
-      <div class="notify-fields" data-channel="webhook"><label>url <input name="notify_url"></label></div>
-      <div class="notify-fields hidden" data-channel="telegram">
-        <label>bot_token <input name="tg_bot_token" type="password" placeholder="unchanged"></label>
-        <label>chat_id <input name="tg_chat_id"></label>
-      </div>
-      <div class="notify-fields hidden" data-channel="email">
-        <div class="row"><label>to <input name="email_to"></label><label>from <input name="email_from"></label></div>
-        <div class="row"><label>server <input name="email_server"></label><label>port <input name="email_port" type="number" placeholder="587"></label><label>tls <input name="email_tls" placeholder="starttls"></label></div>
-        <div class="row"><label>user <input name="email_user"></label><label>password <input name="email_password" type="password" placeholder="unchanged"></label></div>
-      </div>
-    </fieldset>
-    <div class="row nowrap">
-      <button type="submit">save</button>
-      <button type="button" id="add-router-cancel" class="ghost">cancel</button>
-    </div>
-  </form>
+<div id="app">
+  <aside id="sidebar"></aside>
+  <div id="main"></div>
 </div>
-
-<main>
-  <section class="card">
-    <h2>Services</h2>
-    <table id="services"><thead><tr>
-      <th>on</th><th>name</th><th>ports (s1/s2/token)</th><th>allowed-list</th><th>target</th><th></th>
-    </tr></thead><tbody></tbody></table>
-    <details class="addbox"><summary>Add service</summary>
-      <form id="svc-form" class="form">
-        <label>name <input name="name" required></label>
-        <div class="row">
-          <label>stage1 <input name="stage1_port" type="number" required></label>
-          <label>stage2 <input name="stage2_port" type="number" required></label>
-          <label>token <input name="token_port" type="number" required></label>
-          <button type="button" id="random-ports" class="ghost">randomize</button>
-        </div>
-        <fieldset><legend>Target</legend>
-          <div class="row">
-            <label>type
-              <select name="target_type" id="target-type">
-                <option value="forward">forward (dst-nat)</option>
-                <option value="local">local (router input)</option>
-              </select>
-            </label>
-            <label>protocol
-              <select name="target_protocol">
-                <option value="tcp">tcp</option>
-                <option value="udp">udp</option>
-              </select>
-            </label>
-            <label>port <input name="target_port" type="number" required></label>
-          </div>
-          <div class="row target-forward">
-            <label>to_address <input name="target_to_address"></label>
-            <label>to_port <input name="target_to_port" type="number"></label>
-          </div>
-        </fieldset>
-        <button type="submit">Add service</button>
-      </form>
-    </details>
-  </section>
-
-  <section class="card">
-    <h2>Users</h2>
-    <table id="users"><thead><tr>
-      <th>name</th><th>client_id</th><th>services</th><th></th>
-    </tr></thead><tbody></tbody></table>
-    <details class="addbox"><summary>Add user</summary>
-      <form id="usr-form" class="form">
-        <label>name <input name="name" required></label>
-        <div>services<div id="usr-services" class="checkboxes"></div></div>
-        <label>psk (empty → generated)
-          <span class="row nowrap"><input name="psk" id="usr-psk"><button type="button" id="gen-psk">generate</button></span>
-        </label>
-        <button type="submit">Add user</button>
-      </form>
-    </details>
-  </section>
-
-  <div class="grid">
-    <section class="card">
-      <h2>Render</h2>
-      <div class="row nowrap">
-        <button id="render-btn">Render</button>
-        <button id="download-btn" type="button" class="ghost">Download .rsc</button>
-      </div>
-      <pre id="rsc" class="mono small wrap hidden"></pre>
-    </section>
-
-    <section class="card">
-      <h2>Deploy (SSH)</h2>
-      <p id="deploy-creds" class="muted small">Credentials come from the router settings (edit router).</p>
-      <form id="deploy-form" class="form">
-        <div class="row nowrap">
-          <label class="inline"><input name="force" type="checkbox"> force</label>
-          <label class="inline"><input name="dry_run" type="checkbox" checked> dry-run</label>
-        </div>
-        <div class="row nowrap">
-          <button type="button" data-action="status">Status</button>
-          <button type="button" data-action="apply">Apply</button>
-          <button type="button" data-action="uninstall" class="danger">Uninstall</button>
-        </div>
-      </form>
-      <pre id="deploy-out" class="mono small wrap hidden"></pre>
-    </section>
-  </div>
-</main>
-
-<div id="invite-modal" class="modal hidden">
-  <div class="modal-box">
-    <h3>Invite for <span id="invite-user" class="mono"></span></h3>
-    <p class="muted small">Передавать только в safe-env. Содержит PSK и сервисы этого юзера.</p>
-    <textarea id="invite-blob" class="mono small" readonly rows="4"></textarea>
-    <div class="row nowrap">
-      <button type="button" id="invite-copy">Copy</button>
-      <button type="button" id="invite-download" class="ghost">Download .mkpk</button>
-      <button type="button" id="invite-close" class="ghost">Close</button>
-    </div>
-  </div>
-</div>
-
+<div id="modal-root"></div>
+<div id="toast" class="hidden"></div>
 <script src="/app.js"></script>
 </body>
 </html>
