@@ -112,20 +112,37 @@ func InitConfig(o InitOptions) (config.Config, error) {
 	return config.Config{Routers: map[string]config.Router{o.RouterName: router}}, nil
 }
 
-// AddRouter adds an empty router with default timeouts.
-func AddRouter(cfg config.Config, name, address string) (config.Config, error) {
-	if name == "" || address == "" {
+// RouterOptions describes a router to create or update: its address plus the
+// SSH deploy credentials that live on the router.
+type RouterOptions struct {
+	Name    string
+	Address string
+	Deploy  config.Deploy
+}
+
+// SetRouter creates the router when absent (default timeouts, empty services and
+// clients) or updates its address and deploy credentials when present, keeping
+// its services and clients. This is the single add/edit entry point.
+func SetRouter(cfg config.Config, o RouterOptions) (config.Config, error) {
+	if o.Name == "" || o.Address == "" {
 		return cfg, fmt.Errorf("router name and address are required")
 	}
-	if _, ok := cfg.Routers[name]; ok {
-		return cfg, fmt.Errorf("router %q already exists", name)
+	if o.Deploy.Port != 0 {
+		if o.Deploy.Port < 1 || o.Deploy.Port > 65535 {
+			return cfg, fmt.Errorf("deploy.port must be between 1 and 65535")
+		}
 	}
-	return putRouter(cfg, name, config.Router{
-		Address:  address,
-		Defaults: defaultDefaults(),
-		Services: map[string]config.Service{},
-		Clients:  map[string]config.Client{},
-	}), nil
+	r, ok := cfg.Routers[o.Name]
+	if !ok {
+		r = config.Router{
+			Defaults: defaultDefaults(),
+			Services: map[string]config.Service{},
+			Clients:  map[string]config.Client{},
+		}
+	}
+	r.Address = o.Address
+	r.Deploy = o.Deploy
+	return putRouter(cfg, o.Name, r), nil
 }
 
 // RemoveRouter removes a router entirely.
@@ -371,9 +388,23 @@ type RouterSummary struct {
 	Name     string           `json:"name"`
 	Address  string           `json:"address"`
 	Hash     string           `json:"hash"`
+	Deploy   DeploySummary    `json:"deploy"`
 	Defaults config.Defaults  `json:"defaults"`
 	Services []ServiceSummary `json:"services"`
 	Clients  []ClientSummary  `json:"clients"`
+}
+
+// DeploySummary is a secret-free view of a router's SSH deploy credentials:
+// non-secret connection params plus booleans for whether secrets are set.
+// Configured reports whether there is enough to attempt a connection.
+type DeploySummary struct {
+	Port        int    `json:"port"`
+	User        string `json:"user"`
+	KeyPath     string `json:"key_path"`
+	UseAgent    bool   `json:"use_agent"`
+	PasswordSet bool   `json:"password_set"`
+	KeyPassSet  bool   `json:"key_pass_set"`
+	Configured  bool   `json:"configured"`
 }
 
 type ServiceSummary struct {
@@ -404,7 +435,7 @@ func Summarize(cfg config.Config) Summary {
 	var s Summary
 	for _, rn := range sortedKeys(cfg.Routers) {
 		r := cfg.Routers[rn]
-		rs := RouterSummary{Name: rn, Address: r.Address, Hash: r.Hash(), Defaults: r.Defaults}
+		rs := RouterSummary{Name: rn, Address: r.Address, Hash: r.Hash(), Deploy: deploySummary(r), Defaults: r.Defaults}
 		for _, name := range sortedKeys(r.Services) {
 			svc := r.Services[name]
 			rs.Services = append(rs.Services, ServiceSummary{
@@ -432,6 +463,20 @@ func Summarize(cfg config.Config) Summary {
 		s.Routers = append(s.Routers, rs)
 	}
 	return s
+}
+
+func deploySummary(r config.Router) DeploySummary {
+	d := r.Deploy
+	return DeploySummary{
+		Port:        d.Port,
+		User:        d.User,
+		KeyPath:     d.KeyPath,
+		UseAgent:    d.UseAgent,
+		PasswordSet: d.Password != "",
+		KeyPassSet:  d.KeyPass != "",
+		// Enough to attempt a connection: an address (router-level) and any auth.
+		Configured: r.Address != "" && (d.KeyPath != "" || d.UseAgent || d.Password != ""),
+	}
 }
 
 func sortedKeys[T any](m map[string]T) []string {

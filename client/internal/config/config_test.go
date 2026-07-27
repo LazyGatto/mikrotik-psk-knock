@@ -190,6 +190,23 @@ func TestRouterHashStableAndSensitive(t *testing.T) {
 	}
 }
 
+func TestRouterHashIgnoresDeployCredentials(t *testing.T) {
+	base := validRouter().Hash()
+	r := validRouter()
+	r.Deploy = Deploy{Port: 2222, User: "admin", KeyPath: "~/.ssh/id_ed25519", UseAgent: true, Password: "secret"}
+	if r.Hash() != base {
+		t.Fatal("Hash() changed after setting deploy credentials; creds must not affect the fingerprint")
+	}
+}
+
+func TestValidateRejectsBadDeployPort(t *testing.T) {
+	r := validRouter()
+	r.Deploy.Port = 70000
+	if err := r.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want bad deploy port error")
+	}
+}
+
 func TestResolveMultiService(t *testing.T) {
 	r := validRouter()
 	r.Services["web"] = Service{ServiceName: "web", Stage1Port: 42001, Stage2Port: 42002, TokenPort: 42003, AllowedList: "mkpk-tt-allowed-web", NAT: NAT{DstPort: 3443, ToAddress: "192.0.2.20", ToPort: 443}}

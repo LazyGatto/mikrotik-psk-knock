@@ -56,6 +56,15 @@ function applyConfig(data) {
 function render() {
   const r = routerObj();
   el("router-meta").textContent = r ? `${r.address} · ${(r.hash || "").slice(0, 12)}` : "no routers";
+  const dc = el("deploy-creds");
+  if (r && r.deploy && r.deploy.configured) {
+    const via = r.deploy.use_agent ? "ssh-agent" : r.deploy.key_path ? "key" : "password";
+    dc.textContent = `Credentials from router: ${r.deploy.user || "?"}@${r.address}:${r.deploy.port || 22} (${via}).`;
+    dc.className = "muted small";
+  } else {
+    dc.textContent = "No deploy credentials on this router — set them via “edit router”.";
+    dc.className = "small err-text";
+  }
   renderServices(r);
   renderUsers(r);
 }
@@ -143,17 +152,45 @@ el("router-select").addEventListener("change", (e) => {
   current = e.target.value;
   render();
 });
-el("add-router-btn").onclick = () => el("add-router-form").classList.remove("hidden");
+function openRouterForm(edit) {
+  const form = el("add-router-form");
+  form.reset();
+  const g = (n) => form.elements[n];
+  const r = edit ? routerObj() : null;
+  g("name").readOnly = !!r;
+  if (r) {
+    g("name").value = r.name;
+    g("address").value = r.address;
+    const d = r.deploy || {};
+    g("user").value = d.user || "";
+    g("port").value = d.port || "";
+    g("key_path").value = d.key_path || "";
+    g("use_agent").checked = !!d.use_agent;
+    // secrets are never sent back; blank means "keep"
+  }
+  form.classList.remove("hidden");
+}
+el("add-router-btn").onclick = () => openRouterForm(false);
+el("edit-router-btn").onclick = () => { if (current) openRouterForm(true); };
 el("add-router-cancel").onclick = () => el("add-router-form").classList.add("hidden");
 el("add-router-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const g = (n) => e.target.elements[n];
   try {
     current = g("name").value.trim();
-    applyConfig(await api("POST", "/api/router", { name: current, address: g("address").value.trim() }));
+    applyConfig(await api("POST", "/api/router", {
+      name: current,
+      address: g("address").value.trim(),
+      user: g("user").value.trim(),
+      port: +g("port").value || 0,
+      key_path: g("key_path").value.trim(),
+      use_agent: g("use_agent").checked,
+      key_pass: g("key_pass").value,
+      password: g("password").value,
+    }));
     e.target.reset();
     e.target.classList.add("hidden");
-    toast("router added");
+    toast("router saved");
   } catch (err) {
     toast(err.message, true);
   }
@@ -303,13 +340,6 @@ function deployBody() {
   const g = (n) => el("deploy-form").elements[n];
   return {
     router: current,
-    address: g("address").value.trim(),
-    port: +g("port").value || 22,
-    user: g("user").value.trim(),
-    key_path: g("key_path").value.trim(),
-    key_pass: g("key_pass").value,
-    use_agent: g("use_agent").checked,
-    password: g("password").value,
     force: g("force").checked,
     dry_run: g("dry_run").checked,
   };

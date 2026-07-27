@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"mikrotik-psk-knock/client/internal/admin"
+	"mikrotik-psk-knock/client/internal/config"
 )
 
 func testConfigPath(t *testing.T) string {
@@ -110,6 +111,42 @@ func TestRouterAddAndServiceEnableAndExport(t *testing.T) {
 	rr = do(t, h, "GET", "/api/export?router=r1&user=cli", "")
 	if rr.Code != 200 || !strings.Contains(rr.Body.String(), `"blob":`) {
 		t.Fatalf("export: %d %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestRouterCredsPersistAndSecretKeptOnEdit(t *testing.T) {
+	path := testConfigPath(t)
+	h := Handler(path, "tok")
+
+	// Create a router with a password secret.
+	if rr := do(t, h, "POST", "/api/router",
+		`{"name":"r2","address":"10.0.0.2","user":"admin","port":2222,"key_path":"~/.ssh/id_ed25519","password":"s3cret"}`); rr.Code != 200 {
+		t.Fatalf("add router: %d %s", rr.Code, rr.Body.String())
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if got := cfg.Routers["r2"].Deploy; got.User != "admin" || got.Port != 2222 || got.Password != "s3cret" {
+		t.Fatalf("creds not persisted: %+v", got)
+	}
+
+	// Response must not leak the secret; it exposes only password_set.
+	rr := do(t, h, "GET", "/api/config", "")
+	if strings.Contains(rr.Body.String(), "s3cret") {
+		t.Fatal("config response leaked the ssh password")
+	}
+	if !strings.Contains(rr.Body.String(), `"password_set":true`) {
+		t.Fatalf("summary missing password_set: %s", rr.Body.String())
+	}
+
+	// Edit with a blank password keeps the stored one.
+	if rr := do(t, h, "POST", "/api/router", `{"name":"r2","address":"10.0.0.3","user":"root","password":""}`); rr.Code != 200 {
+		t.Fatalf("edit router: %d %s", rr.Code, rr.Body.String())
+	}
+	cfg, _ = config.Load(path)
+	if got := cfg.Routers["r2"].Deploy; got.Password != "s3cret" || got.User != "root" {
+		t.Fatalf("edit did not keep secret / update user: %+v", got)
 	}
 }
 

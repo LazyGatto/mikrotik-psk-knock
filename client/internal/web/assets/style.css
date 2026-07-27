@@ -41,6 +41,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 24px; }
 .card h2 { margin: 0 0 12px; font-size: 15px; }
 .card h3 { margin: 16px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .muted { color: var(--muted); }
+.err-text { color: var(--danger); }
 .small { font-size: 12px; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .hidden { display: none !important; }

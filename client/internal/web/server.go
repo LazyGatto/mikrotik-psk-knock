@@ -15,7 +15,6 @@ import (
 
 	"mikrotik-psk-knock/client/internal/admin"
 	"mikrotik-psk-knock/client/internal/config"
-	"mikrotik-psk-knock/client/internal/deploy"
 )
 
 //go:embed assets/index.html assets/app.js assets/style.css
@@ -154,8 +153,14 @@ func (s *Server) handleSecret(w http.ResponseWriter, r *http.Request) {
 }
 
 type routerReq struct {
-	Name    string `json:"name"`
-	Address string `json:"address"`
+	Name     string `json:"name"`
+	Address  string `json:"address"`
+	Port     int    `json:"port"`
+	User     string `json:"user"`
+	KeyPath  string `json:"key_path"`
+	KeyPass  string `json:"key_pass"`
+	UseAgent bool   `json:"use_agent"`
+	Password string `json:"password"`
 }
 
 func (s *Server) handleRouter(w http.ResponseWriter, r *http.Request) {
@@ -171,7 +176,21 @@ func (s *Server) handleRouter(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "invalid json: "+err.Error())
 			return
 		}
-		cfg, err = admin.AddRouter(cfg, req.Name, req.Address)
+		dep := config.Deploy{
+			Port: req.Port, User: req.User, KeyPath: req.KeyPath,
+			KeyPass: req.KeyPass, UseAgent: req.UseAgent, Password: req.Password,
+		}
+		// Secrets are never sent to the browser, so a blank secret on edit means
+		// "keep the stored one" rather than "clear it".
+		if existing, ok := cfg.Routers[req.Name]; ok {
+			if dep.Password == "" {
+				dep.Password = existing.Deploy.Password
+			}
+			if dep.KeyPass == "" {
+				dep.KeyPass = existing.Deploy.KeyPass
+			}
+		}
+		cfg, err = admin.SetRouter(cfg, admin.RouterOptions{Name: req.Name, Address: req.Address, Deploy: dep})
 	case http.MethodDelete:
 		cfg, err = admin.RemoveRouter(cfg, r.URL.Query().Get("name"))
 	default:
@@ -348,28 +367,13 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 
 // --- deploy ---
 
+// deployReq drives a deploy action. Connection credentials are no longer part
+// of it — they live on the router (config.Deploy), so the deploy screen only
+// chooses an action and its modifiers.
 type deployReq struct {
-	Router   string `json:"router"`
-	Address  string `json:"address"`
-	Port     int    `json:"port"`
-	User     string `json:"user"`
-	KeyPath  string `json:"key_path"`
-	KeyPass  string `json:"key_pass"`
-	UseAgent bool   `json:"use_agent"`
-	Password string `json:"password"`
-	Force    bool   `json:"force"`
-	DryRun   bool   `json:"dry_run"`
-}
-
-func (r deployReq) options() admin.DeployOptions {
-	return admin.DeployOptions{
-		Address: r.Address,
-		Port:    r.Port,
-		Auth: deploy.Auth{
-			User: r.User, KeyPath: r.KeyPath, KeyPass: r.KeyPass,
-			UseAgent: r.UseAgent, Password: r.Password,
-		},
-	}
+	Router string `json:"router"`
+	Force  bool   `json:"force"`
+	DryRun bool   `json:"dry_run"`
 }
 
 func (s *Server) deployRequest(r *http.Request) (config.Config, deployReq, error) {
@@ -387,7 +391,7 @@ func (s *Server) handleDeployStatus(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	res, err := admin.Status(cfg, req.Router, req.options())
+	res, err := admin.Status(cfg, req.Router, admin.DeployOptions{})
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return
@@ -401,7 +405,7 @@ func (s *Server) handleDeployApply(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	res, err := admin.Apply(cfg, req.Router, req.options(), req.Force, req.DryRun)
+	res, err := admin.Apply(cfg, req.Router, admin.DeployOptions{}, req.Force, req.DryRun)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return
@@ -415,7 +419,7 @@ func (s *Server) handleDeployUninstall(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	addr, applied, err := admin.Uninstall(cfg, req.Router, req.options(), req.DryRun)
+	addr, applied, err := admin.Uninstall(cfg, req.Router, admin.DeployOptions{}, req.DryRun)
 	if err != nil {
 		writeErr(w, http.StatusBadGateway, err.Error())
 		return

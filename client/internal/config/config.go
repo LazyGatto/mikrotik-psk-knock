@@ -20,9 +20,23 @@ type Config struct {
 // Router holds everything provisioned onto one MikroTik.
 type Router struct {
 	Address  string             `yaml:"address" json:"address"`
+	Deploy   Deploy             `yaml:"deploy,omitempty" json:"deploy"`
 	Defaults Defaults           `yaml:"defaults" json:"defaults"`
 	Services map[string]Service `yaml:"services" json:"services"`
 	Clients  map[string]Client  `yaml:"clients" json:"clients"`
+}
+
+// Deploy holds the SSH connection parameters used to provision this router.
+// They belong to the router (set once when it is added/edited), not to each
+// deploy action. Secrets (key_pass, password) live here alongside the config's
+// other secrets; key or ssh-agent auth is preferred and stores no secret.
+type Deploy struct {
+	Port     int    `yaml:"port,omitempty" json:"port"`
+	User     string `yaml:"user,omitempty" json:"user"`
+	KeyPath  string `yaml:"key_path,omitempty" json:"key_path"`
+	KeyPass  string `yaml:"key_pass,omitempty" json:"key_pass"`
+	UseAgent bool   `yaml:"use_agent,omitempty" json:"use_agent"`
+	Password string `yaml:"password,omitempty" json:"password"`
 }
 
 type Defaults struct {
@@ -203,6 +217,11 @@ func (r Router) Validate() error {
 	if usedTimeout < minUsedTimeout {
 		return fmt.Errorf("defaults.used_timeout must be at least %s to cover current and previous token buckets", minUsedTimeout)
 	}
+	if r.Deploy.Port != 0 {
+		if err := validatePort("deploy.port", r.Deploy.Port); err != nil {
+			return err
+		}
+	}
 	for name, svc := range r.Services {
 		if !isSafeName(name) {
 			return fmt.Errorf("service key %q must match ^[A-Za-z0-9][A-Za-z0-9_-]*$", name)
@@ -256,8 +275,11 @@ func (r Router) Validate() error {
 
 // Hash returns a stable per-router fingerprint used to detect whether that
 // router is up to date. The rendered .rsc is a deterministic function of the
-// router config, so hashing the marshaled router detects any drift.
+// router config, so hashing the marshaled router detects any drift. Deploy
+// (SSH connection) parameters are excluded: they do not affect the rendered
+// layer, so changing them must not read as drift.
 func (r Router) Hash() string {
+	r.Deploy = Deploy{}
 	data, err := yaml.Marshal(r)
 	if err != nil {
 		return ""

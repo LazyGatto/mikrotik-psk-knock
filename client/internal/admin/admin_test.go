@@ -35,6 +35,65 @@ func TestInitConfigValidAndRequiresAddress(t *testing.T) {
 	}
 }
 
+func TestSetRouterCreatesUpdatesAndKeepsChildren(t *testing.T) {
+	cfg := initCfg(t)
+
+	// Create a new router with deploy credentials.
+	cfg, err := SetRouter(cfg, RouterOptions{
+		Name: "r2", Address: "10.0.0.2",
+		Deploy: config.Deploy{User: "admin", KeyPath: "~/.ssh/id_ed25519", Port: 2222},
+	})
+	if err != nil {
+		t.Fatalf("SetRouter(create) error = %v", err)
+	}
+	if got := cfg.Routers["r2"].Deploy.KeyPath; got != "~/.ssh/id_ed25519" {
+		t.Fatalf("deploy key_path = %q, want the provided path", got)
+	}
+
+	// Add a service, then edit the router: address/creds change, service stays.
+	cfg, err = AddService(cfg, "r2", ServiceOptions{
+		Name: "svc2", Stage1Port: 51001, Stage2Port: 51002, TokenPort: 51003,
+		NAT: config.NAT{DstPort: 2223, ToAddress: "192.0.2.30", ToPort: 22},
+	})
+	if err != nil {
+		t.Fatalf("AddService() error = %v", err)
+	}
+	cfg, err = SetRouter(cfg, RouterOptions{Name: "r2", Address: "10.0.0.9", Deploy: config.Deploy{UseAgent: true}})
+	if err != nil {
+		t.Fatalf("SetRouter(update) error = %v", err)
+	}
+	r2 := cfg.Routers["r2"]
+	if r2.Address != "10.0.0.9" || !r2.Deploy.UseAgent || r2.Deploy.KeyPath != "" {
+		t.Fatalf("update did not replace address/creds: %+v", r2.Deploy)
+	}
+	if _, ok := r2.Services["svc2"]; !ok {
+		t.Fatal("SetRouter(update) dropped the router's services")
+	}
+
+	// A bad deploy port is rejected.
+	if _, err := SetRouter(cfg, RouterOptions{Name: "r3", Address: "h", Deploy: config.Deploy{Port: 70000}}); err == nil {
+		t.Fatal("SetRouter with out-of-range port should error")
+	}
+}
+
+func TestSummarizeReportsDeployWithoutSecrets(t *testing.T) {
+	cfg := initCfg(t)
+	cfg, err := SetRouter(cfg, RouterOptions{
+		Name: rn, Address: "r.example",
+		Deploy: config.Deploy{User: "admin", KeyPath: "k", Password: "secret", KeyPass: "kp"},
+	})
+	if err != nil {
+		t.Fatalf("SetRouter() error = %v", err)
+	}
+	d := Summarize(cfg).Routers[0].Deploy
+	if !d.Configured || d.User != "admin" || !d.PasswordSet || !d.KeyPassSet {
+		t.Fatalf("deploy summary wrong: %+v", d)
+	}
+	if d.User == "secret" || d.KeyPath == "secret" {
+		t.Fatal("deploy summary leaked a secret")
+	}
+}
+
 func TestAddServiceDefaultsAndValidation(t *testing.T) {
 	cfg := initCfg(t)
 

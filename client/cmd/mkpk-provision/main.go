@@ -36,6 +36,8 @@ func run(args []string) error {
 		return configCmd(args[1:])
 	case "profile":
 		return profileCmd(args[1:])
+	case "router":
+		return routerCmd(args[1:])
 	case "client":
 		return clientCmd(args[1:])
 	case "service":
@@ -63,12 +65,14 @@ func usage() {
   mkpk-provision secret generate [--bytes 32]
   mkpk-provision config validate --config mkpk.yaml
   mkpk-provision profile init --out mkpk.yaml --router-name r1 --router-address host
+  mkpk-provision router set --config mkpk.yaml --name r1 --address host [--ssh-user admin] [--ssh-key ~/.ssh/id_ed25519] [--ssh-agent] [--ssh-port 22]
+  mkpk-provision router remove --config mkpk.yaml --name r1
   mkpk-provision service add --config mkpk.yaml [--router r1] --name ssh --stage1-port 41011 --stage2-port 41012 --token-port 41013 --nat-dst-port 2022 --nat-to-address 192.0.2.10 --nat-to-port 22
   mkpk-provision client add --config mkpk.yaml [--router r1] --name laptop --services ssh,web
   mkpk-provision token --config mkpk.yaml [--router r1] --client laptop [--service ssh] [--bucket N] [--debug]
   mkpk-provision routeros render --config mkpk.yaml [--router r1] [--out generated.rsc]
   mkpk-provision export --config mkpk.yaml [--router r1] --user laptop [--out laptop.mkpk]
-  mkpk-provision deploy [status|uninstall] --config mkpk.yaml [--router r1] --user admin [--key ~/.ssh/id_ed25519]
+  mkpk-provision deploy [status|uninstall] --config mkpk.yaml [--router r1]   # creds come from the router
   mkpk-provision serve --config mkpk.yaml [--addr 127.0.0.1:8765]
 `)
 }
@@ -141,6 +145,71 @@ func profileCmd(args []string) error {
 		return err
 	}
 	fmt.Printf("created %s service=%s client=%s\n", *outPath, *serviceName, *clientName)
+	return nil
+}
+
+func routerCmd(args []string) error {
+	if len(args) == 0 || (args[0] != "set" && args[0] != "remove") {
+		return fmt.Errorf("usage: mkpk-provision router [set|remove] --config mkpk.yaml --name r1 [--address host] [--ssh-user admin] [--ssh-key path] [--ssh-agent] [--ssh-port 22]")
+	}
+	sub := args[0]
+	fs := flag.NewFlagSet("router "+sub, flag.ContinueOnError)
+	configPath := fs.String("config", "mkpk.yaml", "config path")
+	name := fs.String("name", "", "router name")
+	address := fs.String("address", "", "router address")
+	sshUser := fs.String("ssh-user", "", "SSH username for deploy")
+	sshKey := fs.String("ssh-key", "", "SSH private key path for deploy")
+	sshKeyPass := fs.String("ssh-key-pass", "", "passphrase for the SSH key")
+	sshAgent := fs.Bool("ssh-agent", false, "use ssh-agent for deploy")
+	sshPassword := fs.String("ssh-password", "", "SSH password for deploy (fallback)")
+	sshPort := fs.Int("ssh-port", 0, "SSH port for deploy (default 22)")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if *name == "" {
+		return fmt.Errorf("--name is required")
+	}
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	if sub == "remove" {
+		cfg, err = admin.RemoveRouter(cfg, *name)
+		if err != nil {
+			return err
+		}
+		if err := admin.SaveConfig(*configPath, cfg); err != nil {
+			return err
+		}
+		fmt.Printf("router removed config=%s name=%s\n", *configPath, *name)
+		return nil
+	}
+	// set: keep secrets when the flag is left blank on an existing router.
+	dep := config.Deploy{
+		Port: *sshPort, User: *sshUser, KeyPath: *sshKey,
+		KeyPass: *sshKeyPass, UseAgent: *sshAgent, Password: *sshPassword,
+	}
+	if existing, ok := cfg.Routers[*name]; ok {
+		if *address == "" {
+			*address = existing.Address
+		}
+		if dep.KeyPass == "" {
+			dep.KeyPass = existing.Deploy.KeyPass
+		}
+		if dep.Password == "" {
+			dep.Password = existing.Deploy.Password
+		}
+	}
+	cfg, err = admin.SetRouter(cfg, admin.RouterOptions{Name: *name, Address: *address, Deploy: dep})
+	if err != nil {
+		return err
+	}
+	if err := admin.SaveConfig(*configPath, cfg); err != nil {
+		return err
+	}
+	d := cfg.Routers[*name].Deploy
+	fmt.Printf("router set config=%s name=%s address=%s ssh_user=%s ssh_key=%s ssh_agent=%t ssh_port=%d\n",
+		*configPath, *name, *address, d.User, d.KeyPath, d.UseAgent, d.Port)
 	return nil
 }
 
@@ -408,13 +477,15 @@ func deployCmd(args []string) error {
 	fs := flag.NewFlagSet("deploy", flag.ContinueOnError)
 	configPath := fs.String("config", "mkpk.yaml", "config path")
 	routerName := fs.String("router", "", "router name; sole router when empty")
-	address := fs.String("address", "", "router address override; router address when empty")
-	user := fs.String("user", "admin", "SSH username")
-	port := fs.Int("port", 22, "SSH port")
-	keyPath := fs.String("key", "", "SSH private key path")
-	keyPass := fs.String("key-pass", "", "passphrase for the SSH key")
-	useAgent := fs.Bool("agent", true, "use ssh-agent if available")
-	password := fs.String("password", "", "SSH password (fallback)")
+	// Connection credentials live on the router (see `router set`). These flags
+	// are optional per-call overrides; empty means "use the router's".
+	address := fs.String("address", "", "override router address")
+	user := fs.String("user", "", "override SSH username")
+	port := fs.Int("port", 0, "override SSH port")
+	keyPath := fs.String("key", "", "override SSH private key path")
+	keyPass := fs.String("key-pass", "", "override SSH key passphrase")
+	useAgent := fs.Bool("agent", false, "also try ssh-agent")
+	password := fs.String("password", "", "override SSH password (fallback)")
 	force := fs.Bool("force", false, "deploy even if the router is already up to date")
 	dryRun := fs.Bool("dry-run", false, "report the action without changing the router")
 	if err := fs.Parse(args); err != nil {
@@ -506,6 +577,8 @@ func printSummary(path string, s admin.Summary) {
 	fmt.Printf("config=%s status=valid routers=%d\n", path, len(s.Routers))
 	for _, r := range s.Routers {
 		fmt.Printf("router name=%s address=%s hash=%s\n", r.Name, r.Address, r.Hash[:min(16, len(r.Hash))])
+		fmt.Printf("  deploy configured=%t ssh_user=%s ssh_key=%s ssh_agent=%t ssh_port=%d password_set=%t\n",
+			r.Deploy.Configured, r.Deploy.User, r.Deploy.KeyPath, r.Deploy.UseAgent, r.Deploy.Port, r.Deploy.PasswordSet)
 		fmt.Printf("  defaults bucket_seconds=%d stage_timeout=%s token_hit_timeout=%s allowed_timeout=%s used_timeout=%s\n",
 			r.Defaults.BucketSeconds, r.Defaults.StageTimeout, r.Defaults.TokenHitTimeout, r.Defaults.AllowedTimeout, r.Defaults.UsedTimeout)
 		for _, svc := range r.Services {

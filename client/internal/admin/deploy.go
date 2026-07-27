@@ -7,10 +7,13 @@ import (
 	"mikrotik-psk-knock/client/internal/deploy"
 )
 
-// DeployOptions carries the connection parameters for a deploy operation.
+// DeployOptions carries optional per-call overrides for a deploy operation. The
+// connection parameters normally live on the router (config.Deploy); an empty
+// DeployOptions uses them as-is. Non-empty fields here take precedence, letting
+// CLI power users override without editing the config.
 type DeployOptions struct {
 	Address string // override; router.Address when empty
-	Port    int    // 0 → 22
+	Port    int    // override; router deploy port (then 22) when 0
 	Auth    deploy.Auth
 }
 
@@ -130,11 +133,42 @@ func connect(r config.Router, o DeployOptions) (*deploy.Client, string, error) {
 	}
 	port := o.Port
 	if port == 0 {
+		port = r.Deploy.Port
+	}
+	if port == 0 {
 		port = 22
 	}
-	c, err := deploy.Connect(addr, port, o.Auth)
+	c, err := deploy.Connect(addr, port, mergeAuth(r.Deploy, o.Auth))
 	if err != nil {
 		return nil, addr, err
 	}
 	return c, addr, nil
+}
+
+// mergeAuth starts from the router's stored deploy credentials and lets any
+// non-empty override field win.
+func mergeAuth(d config.Deploy, o deploy.Auth) deploy.Auth {
+	a := deploy.Auth{
+		User:     d.User,
+		KeyPath:  d.KeyPath,
+		KeyPass:  d.KeyPass,
+		UseAgent: d.UseAgent,
+		Password: d.Password,
+	}
+	if o.User != "" {
+		a.User = o.User
+	}
+	if o.KeyPath != "" {
+		a.KeyPath = o.KeyPath
+	}
+	if o.KeyPass != "" {
+		a.KeyPass = o.KeyPass
+	}
+	if o.Password != "" {
+		a.Password = o.Password
+	}
+	if o.UseAgent {
+		a.UseAgent = true
+	}
+	return a
 }

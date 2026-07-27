@@ -23,12 +23,30 @@
   <span id="router-meta" class="muted mono small"></span>
   <span class="spacer"></span>
   <button type="button" id="add-router-btn" class="ghost">+ router</button>
+  <button type="button" id="edit-router-btn" class="ghost">edit router</button>
   <button type="button" id="del-router-btn" class="danger">remove router</button>
-  <form id="add-router-form" class="inlineform hidden">
-    <input name="name" placeholder="name" required>
-    <input name="address" placeholder="address" required>
-    <button type="submit">add</button>
-    <button type="button" id="add-router-cancel" class="ghost">cancel</button>
+  <form id="add-router-form" class="form hidden">
+    <div class="row">
+      <label>name <input name="name" required></label>
+      <label>address <input name="address" required></label>
+    </div>
+    <fieldset><legend>SSH deploy credentials (stored on the router)</legend>
+      <div class="row">
+        <label>ssh user <input name="user" placeholder="admin"></label>
+        <label>ssh port <input name="port" type="number" placeholder="22"></label>
+      </div>
+      <label>key path <input name="key_path" placeholder="~/.ssh/id_ed25519"></label>
+      <label class="inline"><input name="use_agent" type="checkbox"> use ssh-agent</label>
+      <div class="row">
+        <label>key pass <input name="key_pass" type="password" placeholder="unchanged"></label>
+        <label>password <input name="password" type="password" placeholder="unchanged"></label>
+      </div>
+      <p class="muted small">Key or ssh-agent is preferred; password is a fallback. On edit, leave secrets blank to keep them.</p>
+    </fieldset>
+    <div class="row nowrap">
+      <button type="submit">save</button>
+      <button type="button" id="add-router-cancel" class="ghost">cancel</button>
+    </div>
   </form>
 </div>
 
@@ -108,20 +126,8 @@
 
     <section class="card">
       <h2>Deploy (SSH)</h2>
+      <p id="deploy-creds" class="muted small">Credentials come from the router settings (edit router).</p>
       <form id="deploy-form" class="form">
-        <div class="row">
-          <label>address override <input name="address" placeholder="router address"></label>
-          <label>port <input name="port" type="number" value="22"></label>
-        </div>
-        <div class="row">
-          <label>user <input name="user" value="admin"></label>
-          <label>key path <input name="key_path" placeholder="~/.ssh/id_ed25519"></label>
-        </div>
-        <div class="row">
-          <label>key pass <input name="key_pass" type="password"></label>
-          <label>password <input name="password" type="password"></label>
-        </div>
-        <label class="inline"><input name="use_agent" type="checkbox" checked> use ssh-agent</label>
         <div class="row nowrap">
           <label class="inline"><input name="force" type="checkbox"> force</label>
           <label class="inline"><input name="dry_run" type="checkbox" checked> dry-run</label>
