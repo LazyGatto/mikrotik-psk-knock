@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"mikrotik-psk-knock/client/internal/config"
+	"mikrotik-psk-knock/client/internal/invite"
+	"mikrotik-psk-knock/client/internal/token"
 )
 
 const rn = "r1"
@@ -117,6 +119,46 @@ func TestAddClientGeneratesPSKAndServices(t *testing.T) {
 
 	if _, err := AddClient(cfg, rn, ClientOptions{Name: "x", Services: []string{"missing"}}); err == nil {
 		t.Fatal("AddClient with unknown service should error")
+	}
+}
+
+func TestExportUserBlobTokensMatchConfig(t *testing.T) {
+	cfg := initCfg(t)
+	cfg, _ = AddService(cfg, rn, ServiceOptions{Name: "web", Stage1Port: 42001, Stage2Port: 42002, TokenPort: 42003, NAT: config.NAT{DstPort: 3443, ToAddress: "192.0.2.20", ToPort: 443}})
+	res, _ := AddClient(cfg, rn, ClientOptions{Name: "phone", Services: []string{"svc", "web"}, PSK: "phone-psk-value"})
+	cfg = res.Config
+
+	blobStr, err := ExportUser(cfg, rn, "phone")
+	if err != nil {
+		t.Fatalf("ExportUser() error = %v", err)
+	}
+	b, err := invite.Decode(blobStr)
+	if err != nil {
+		t.Fatalf("Decode() error = %v", err)
+	}
+	if len(b.Services) != 2 || b.PSK != "phone-psk-value" {
+		t.Fatalf("blob wrong: %+v", b)
+	}
+
+	// The token computed from the blob must equal the token computed from the full
+	// config for the same (service, user, bucket) — otherwise the client can't open.
+	const bucket = 59504932
+	router := cfg.Routers[rn]
+	blobRouter := b.ToRouter()
+	for _, svc := range []string{"svc", "web"} {
+		full, err := router.Resolve(rn, "phone", svc)
+		if err != nil {
+			t.Fatalf("config Resolve %s error = %v", svc, err)
+		}
+		fromBlob, err := blobRouter.Resolve("invite", "phone", svc)
+		if err != nil {
+			t.Fatalf("blob Resolve %s error = %v", svc, err)
+		}
+		ct := token.Compute(full.Client.PSK, full.Service.ServiceName, full.Client.ClientID, bucket)
+		bt := token.Compute(fromBlob.Client.PSK, fromBlob.Service.ServiceName, fromBlob.Client.ClientID, bucket)
+		if ct != bt {
+			t.Fatalf("service %s: blob token != config token", svc)
+		}
 	}
 }
 

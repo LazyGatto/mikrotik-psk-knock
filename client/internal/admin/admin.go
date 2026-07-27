@@ -15,6 +15,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 	"mikrotik-psk-knock/client/internal/config"
+	"mikrotik-psk-knock/client/internal/invite"
 	"mikrotik-psk-knock/client/internal/routeros"
 )
 
@@ -312,6 +313,44 @@ func RemoveClient(cfg config.Config, routerName, name string) (config.Config, er
 	}
 	delete(r.Clients, name)
 	return putRouter(cfg, routerName, r), nil
+}
+
+// ExportUser builds a per-user invite blob for a user on a router: the router
+// address, bucket seconds, that user's client_id and PSK, and the ports of the
+// enabled services they are assigned. It never includes other users' secrets.
+func ExportUser(cfg config.Config, routerName, userName string) (string, error) {
+	r, err := getRouter(cfg, routerName)
+	if err != nil {
+		return "", err
+	}
+	c, ok := r.Clients[userName]
+	if !ok {
+		return "", fmt.Errorf("unknown user %q", userName)
+	}
+	b := invite.Blob{
+		Version:       invite.Version,
+		Router:        r.Address,
+		BucketSeconds: r.Defaults.BucketSeconds,
+		ClientID:      c.ClientID,
+		PSK:           c.PSK,
+	}
+	for _, sn := range c.Services {
+		s, ok := r.Services[sn]
+		if !ok || !s.Enabled() {
+			continue
+		}
+		b.Services = append(b.Services, invite.Service{
+			Name:      s.ServiceName,
+			Stage1:    s.Stage1Port,
+			Stage2:    s.Stage2Port,
+			Token:     s.TokenPort,
+			CheckPort: s.NAT.DstPort,
+		})
+	}
+	if len(b.Services) == 0 {
+		return "", fmt.Errorf("user %q has no enabled services to export", userName)
+	}
+	return invite.Encode(b)
 }
 
 // Render renders one router into RouterOS script.

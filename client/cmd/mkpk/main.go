@@ -5,9 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"mikrotik-psk-knock/client/internal/config"
+	"mikrotik-psk-knock/client/internal/invite"
 	"mikrotik-psk-knock/client/internal/knock"
 	"mikrotik-psk-knock/client/internal/servicecheck"
 	"mikrotik-psk-knock/client/internal/token"
@@ -55,8 +57,8 @@ func run(args []string) error {
 
 func usage() {
 	fmt.Fprintf(os.Stderr, `Usage:
-  mkpk check --config mkpk.yaml --client laptop [--router name] [--service name] [--host host] [--port port] [--json] [--debug]
-  mkpk knock --config mkpk.yaml --client laptop [--router name] [--service name] [--address host] [--check] [--debug]
+  mkpk knock (--invite @laptop.mkpk | --config mkpk.yaml --client laptop [--router name]) [--service name] [--check] [--debug]
+  mkpk check (--invite @laptop.mkpk | --config mkpk.yaml --client laptop [--router name]) [--service name] [--host host] [--port port] [--json] [--debug]
 `)
 }
 
@@ -67,6 +69,7 @@ func knockCmd(args []string) error {
 	routerName := fs.String("router", "", "router name; sole router when empty")
 	serviceName := fs.String("service", "", "service name; sole service when empty")
 	routerAddr := fs.String("address", "", "router address override")
+	inviteFlag := fs.String("invite", "", "invite blob (base64) or @path; overrides --config/--client")
 	timeout := fs.Duration("timeout", time.Second, "UDP write timeout")
 	interval := fs.Duration("interval", 250*time.Millisecond, "retry interval inside each phase")
 	stageDuration := fs.Duration("stage-duration", 2*time.Second, "stage1/stage2 retry duration")
@@ -83,7 +86,7 @@ func knockCmd(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	res, err := loadResolved(*configPath, *routerName, *clientName, *serviceName)
+	res, err := resolveTarget(*configPath, *inviteFlag, *routerName, *clientName, *serviceName)
 	if err != nil {
 		return err
 	}
@@ -149,6 +152,7 @@ func checkCmd(args []string) error {
 	routerName := fs.String("router", "", "router name; sole router when empty")
 	serviceName := fs.String("service", "", "service name; sole service when empty")
 	routerAddr := fs.String("address", "", "router address override")
+	inviteFlag := fs.String("invite", "", "invite blob (base64) or @path; overrides --config/--client")
 	hostFlag := fs.String("host", "", "target host override; router address when empty")
 	portFlag := fs.Int("port", 0, "target TCP port override; service nat.dst_port when empty")
 	timeout := fs.Duration("timeout", time.Second, "per-attempt TCP check timeout")
@@ -159,7 +163,7 @@ func checkCmd(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	res, err := loadResolved(*configPath, *routerName, *clientName, *serviceName)
+	res, err := resolveTarget(*configPath, *inviteFlag, *routerName, *clientName, *serviceName)
 	if err != nil {
 		return err
 	}
@@ -270,6 +274,29 @@ func printWindowDebug(window token.Window) {
 		window.Age.Truncate(time.Millisecond),
 		window.Remaining.Truncate(time.Millisecond),
 	)
+}
+
+func resolveTarget(configPath, inviteFlag, routerName, clientName, serviceName string) (config.Resolved, error) {
+	if inviteFlag != "" {
+		b, err := loadBlob(inviteFlag)
+		if err != nil {
+			return config.Resolved{}, err
+		}
+		return b.ToRouter().Resolve("invite", b.ClientID, serviceName)
+	}
+	return loadResolved(configPath, routerName, clientName, serviceName)
+}
+
+func loadBlob(v string) (invite.Blob, error) {
+	s := v
+	if strings.HasPrefix(v, "@") {
+		data, err := os.ReadFile(v[1:])
+		if err != nil {
+			return invite.Blob{}, err
+		}
+		s = strings.TrimSpace(string(data))
+	}
+	return invite.Decode(s)
 }
 
 func loadResolved(path, routerName, clientName, serviceName string) (config.Resolved, error) {

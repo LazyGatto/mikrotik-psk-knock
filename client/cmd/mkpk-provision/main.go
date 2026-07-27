@@ -44,6 +44,8 @@ func run(args []string) error {
 		return tokenCmd(args[1:])
 	case "routeros":
 		return routerosCmd(args[1:])
+	case "export":
+		return exportCmd(args[1:])
 	case "deploy":
 		return deployCmd(args[1:])
 	case "serve":
@@ -65,6 +67,7 @@ func usage() {
   mkpk-provision client add --config mkpk.yaml [--router r1] --name laptop --services ssh,web
   mkpk-provision token --config mkpk.yaml [--router r1] --client laptop [--service ssh] [--bucket N] [--debug]
   mkpk-provision routeros render --config mkpk.yaml [--router r1] [--out generated.rsc]
+  mkpk-provision export --config mkpk.yaml [--router r1] --user laptop [--out laptop.mkpk]
   mkpk-provision deploy [status|uninstall] --config mkpk.yaml [--router r1] --user admin [--key ~/.ssh/id_ed25519]
   mkpk-provision serve --config mkpk.yaml [--addr 127.0.0.1:8765]
 `)
@@ -359,6 +362,41 @@ func routerosCmd(args []string) error {
 		return nil
 	}
 	return os.WriteFile(*outPath, []byte(rendered), 0600)
+}
+
+func exportCmd(args []string) error {
+	fs := flag.NewFlagSet("export", flag.ContinueOnError)
+	configPath := fs.String("config", "mkpk.yaml", "config path")
+	router := fs.String("router", "", "router name; sole router when empty")
+	user := fs.String("user", "", "user name")
+	outPath := fs.String("out", "", "output file; stdout when empty")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *user == "" {
+		return fmt.Errorf("--user is required")
+	}
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	rn, err := pickRouter(cfg, *router)
+	if err != nil {
+		return err
+	}
+	blob, err := admin.ExportUser(cfg, rn, *user)
+	if err != nil {
+		return err
+	}
+	if *outPath == "" {
+		fmt.Println(blob)
+		return nil
+	}
+	if err := os.WriteFile(*outPath, []byte(blob+"\n"), 0600); err != nil {
+		return err
+	}
+	fmt.Printf("invite for user=%s router=%s written to %s\n", *user, rn, *outPath)
+	return nil
 }
 
 func deployCmd(args []string) error {
