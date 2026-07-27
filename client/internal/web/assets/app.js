@@ -92,21 +92,37 @@ const S = {
 const routerOf = (n) => S.routers.find((r) => r.name === n);
 const userOf = (n) => S.users.find((u) => u.name === n);
 
-// drift: needs a status/apply check this session to be known
-function driftState(r) {
-  const d = S.deploy[r.name];
-  if (!d || !d.checked) return "unknown";
+// Deploy state per router. `baseline` is the hash we believe is on the router:
+// seeded from the config at first sight (assume in sync until told otherwise),
+// then corrected by Status/Apply/Uninstall. A local edit changes r.hash, so it
+// stops matching the baseline → "needs" (deploy required) with no SSH needed.
+//   needs   — local config differs from what's on the router → нужен Deploy
+//   synced  — SSH-confirmed match
+//   clean   — assumed in sync (no local change since load, not SSH-checked)
+//   never   — SSH says nothing is installed (and there's something to deploy)
+//   empty   — nothing to deploy
+//   error   — last SSH attempt failed
+function routerState(r) {
+  const d = S.deploy[r.name] || {};
   if (d.err) return "error";
-  if (!d.installed) return "never";
-  return d.installedHash === r.hash ? "synced" : "drift";
+  if (d.installed === false) return r.services.length ? "never" : "empty";
+  if (d.baseline !== undefined && d.baseline !== r.hash) return "needs";
+  if (d.checked && d.installed) return "synced";
+  return "clean";
 }
-const isDrift = (r) => driftState(r) === "drift";
+const isDrift = (r) => routerState(r) === "needs" || routerState(r) === "never";
 
 async function applyConfig(data) {
   S.path = data.path;
   const sum = data.summary || { routers: [], users: [] };
   S.routers = (sum.routers || []).map((r) => ({ ...r, services: r.services || [], clients: r.clients || [] }));
   S.users = (sum.users || []).map((u) => ({ ...u, access: (u.access || []).map((a) => ({ ...a, services: a.services || [] })) }));
+  // Seed each router's deploy baseline at first sight (assume the loaded config
+  // is what's on the router until a Status/Apply corrects it).
+  for (const r of S.routers) {
+    const d = S.deploy[r.name] || (S.deploy[r.name] = {});
+    if (d.baseline === undefined) d.baseline = r.hash;
+  }
   // keep selection valid
   if (S.view.kind === "router" && !routerOf(S.view.id)) S.view = { kind: "dashboard" };
   if (S.view.kind === "user" && !userOf(S.view.id)) S.view = { kind: "dashboard" };
@@ -250,8 +266,11 @@ function stat(label, value, note, tone) {
     h("div", { class: "note" }, note));
 }
 function dashRouterRow(r) {
-  const st = driftState(r);
-  const stateText = { unknown: ["grey", "не проверялся"], never: ["grey", "ещё не деплоился"], synced: ["green", "✓ синхронизирован"], drift: ["amber", "● нужен Deploy"], error: ["grey", "ошибка подключения"] }[st];
+  const stateText = {
+    clean: ["grey", "локальный конфиг"], needs: ["amber", "● нужен Deploy"],
+    synced: ["green", "✓ синхронизирован"], never: ["amber", "● не установлен на роутере"],
+    empty: ["grey", "нечего деплоить"], error: ["grey", "ошибка подключения"],
+  }[routerState(r)];
   const svcOn = r.services.filter((s) => s.enabled).length;
   const usersWith = S.users.filter((u) => u.access.some((a) => a.router === r.name)).length;
   return h("div", { class: "list-row", onclick: () => go({ kind: "router", id: r.name }) },
@@ -271,12 +290,12 @@ async function checkAllStatuses() {
 
 // ---------- router view ----------
 function routerView(r) {
-  const st = driftState(r);
+  const st = routerState(r);
   let pill;
-  if (st === "drift") pill = h("button", { class: "pill amber amber-btn", onclick: () => go({ kind: "router", id: r.name, tab: "deploy" }) }, h("span", { class: "dot amber" }), "Не задеплоено — нужен Deploy");
+  if (st === "needs" || st === "never") pill = h("button", { class: "pill amber amber-btn", onclick: () => go({ kind: "router", id: r.name, tab: "deploy" }) }, h("span", { class: "dot amber" }), "Не задеплоено — нужен Deploy");
   else if (st === "synced") pill = h("span", { class: "pill green" }, "✓ Синхронизировано");
-  else if (st === "never") pill = h("span", { class: "pill grey" }, "Ещё не деплоился");
-  else pill = h("button", { class: "pill grey", onclick: () => go({ kind: "router", id: r.name, tab: "deploy" }) }, "Статус не проверялся");
+  else if (st === "empty") pill = h("span", { class: "pill grey" }, "Нечего деплоить");
+  else pill = h("button", { class: "pill grey", onclick: () => go({ kind: "router", id: r.name, tab: "deploy" }) }, "Локальный конфиг — Deploy");
 
   const tabs = [["services", "Services"], ["access", "Access"], ["render", "Render"], ["deploy", "Deploy"]];
   const tabbar = h("div", { class: "tabs" }, ...tabs.map(([id, label]) =>
@@ -403,9 +422,15 @@ function routerDeploy(r) {
   return wrap;
 }
 function deployStateLine(r) {
-  const st = driftState(r);
-  const map = { unknown: ["grey", "не проверялся — нажмите Status"], never: ["grey", "ещё не деплоился"], synced: ["ok", "✓ синхронизировано"], drift: ["warn", "● drift — нужен Apply"], error: ["grey", "ошибка подключения"] };
-  const [tone, text] = map[st];
+  const map = {
+    clean: ["muted", "локальный конфиг (не проверялся по SSH)"],
+    needs: ["warn", "● есть локальные изменения — нужен Apply"],
+    synced: ["ok", "✓ синхронизировано"],
+    never: ["warn", "● на роутере ничего не установлено"],
+    empty: ["muted", "нечего деплоить"],
+    error: ["muted", "ошибка подключения"],
+  };
+  const [tone, text] = map[routerState(r)];
   return h("div", { class: "foot-note", style: "margin-top:3px;color:var(--" + tone + ")" }, text);
 }
 async function runDeploy(r, action, dry, force, out, runningLabel) {
@@ -424,28 +449,28 @@ async function runDeploy(r, action, dry, force, out, runningLabel) {
 // deployAction records installed state and returns the raw result
 async function deployAction(routerName, action, opts) {
   const body = { router: routerName, force: !!opts.force, dry_run: opts.dry_run !== undefined ? opts.dry_run : action !== "apply" };
+  const rec = S.deploy[routerName] || (S.deploy[routerName] = {});
   let res;
   try {
     res = await api("POST", "/api/deploy/" + action, body);
   } catch (e) {
-    S.deploy[routerName] = { checked: true, installed: false, err: e.message, result: { _kind: "err", msg: e.message, action } };
+    rec.checked = true; rec.err = e.message; rec.result = { _kind: "err", msg: e.message, action };
     throw e;
   }
-  const rec = S.deploy[routerName] || {};
   rec.checked = true; rec.err = null;
   if (action === "status") {
-    rec.installed = res.installed; rec.installedHash = res.installed_hash;
+    rec.installed = res.installed;
+    rec.baseline = res.installed ? res.installed_hash : "";   // "" = nothing on router
     res._kind = res.installed ? (res.up_to_date ? "synced" : "drift") : "never";
   } else if (action === "apply") {
-    if (res.applied) { rec.installed = true; rec.installedHash = res.hash; res._kind = "applied"; }
-    else if (res.action === "skip") { rec.installed = true; rec.installedHash = res.hash; res._kind = "synced"; }
-    else { res._kind = "dry"; }   // dry-run
+    if (res.applied) { rec.installed = true; rec.baseline = res.hash; res._kind = "applied"; }
+    else if (res.action === "skip") { rec.installed = true; rec.baseline = res.hash; res._kind = "synced"; }
+    else { res._kind = "dry"; }   // dry-run: nothing changed on the router
   } else if (action === "uninstall") {
-    if (res.applied) { rec.installed = false; rec.installedHash = null; res._kind = "uninstalled"; }
+    if (res.applied) { rec.installed = false; rec.baseline = ""; res._kind = "uninstalled"; }
     else res._kind = "dry";
   }
   rec.result = res;
-  S.deploy[routerName] = rec;
   return res;
 }
 function deployResult(r, res, dry, force, out, runningLabel) {
@@ -478,8 +503,11 @@ function userView(u) {
     const a = u.access.find((x) => x.router === r.name);
     const has = !!a;
     const card = h("div", { class: "card pad stack" });
+    const needs = isDrift(r);
     card.append(h("div", { class: "row" }, icon("router"), h("span", { style: "font-weight:600" }, r.name),
-      h("span", { class: "mono foot-note" }, r.address), h("span", { class: "spacer" }),
+      h("span", { class: "mono foot-note" }, r.address),
+      needs && h("button", { class: "badge amber", title: "Локальные изменения не задеплоены", onclick: () => go({ kind: "router", id: r.name, tab: "deploy" }) }, "нужен Deploy"),
+      h("span", { class: "spacer" }),
       h("span", { class: "foot-note" }, has ? a.services.length + " из " + r.services.length + " сервисов" : "нет доступа")));
     if (has) card.append(h("div", { class: "row", style: "background:var(--surface-2);border-radius:6px;padding:6px 9px" },
       h("span", { class: "lbl" }, "PSK"), h("span", { class: "mono", style: "letter-spacing:1px" }, "••••••••••••"),
