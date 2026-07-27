@@ -7,9 +7,11 @@ package web
 import (
 	"embed"
 	"encoding/json"
+	"log"
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"mikrotik-psk-knock/client/internal/admin"
 	"mikrotik-psk-knock/client/internal/config"
@@ -41,6 +43,36 @@ func Handler(configPath, token string) http.Handler {
 	mux.HandleFunc("/api/deploy/apply", s.auth(s.handleDeployApply))
 	mux.HandleFunc("/api/deploy/uninstall", s.auth(s.handleDeployUninstall))
 	return loopbackOnly(mux)
+}
+
+// LogRequests wraps h to log each request (method, path, status, duration). API
+// endpoints only — static asset noise is skipped.
+func LogRequests(h http.Handler, l *log.Logger) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		h.ServeHTTP(rec, r)
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			l.Printf("%s %s%s -> %d (%s)", r.Method, r.URL.Path, querySuffix(r), rec.status, time.Since(start).Truncate(time.Millisecond))
+		}
+	})
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func querySuffix(r *http.Request) string {
+	if r.URL.RawQuery == "" {
+		return ""
+	}
+	return "?" + r.URL.RawQuery
 }
 
 // loopbackOnly rejects requests whose Host is not localhost, which blocks

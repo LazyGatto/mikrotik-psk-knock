@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -403,7 +404,9 @@ func serveCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	srv := &http.Server{Addr: *addr, Handler: web.Handler(*configPath, token)}
+	logger := log.New(os.Stdout, "", log.LstdFlags)
+	handler := web.LogRequests(web.Handler(*configPath, token), logger)
+	srv := &http.Server{Addr: *addr, Handler: handler}
 	fmt.Printf("mkpk provision UI: http://%s/\n", *addr)
 	fmt.Printf("config: %s (loopback only, Ctrl-C to stop)\n", *configPath)
 	return srv.ListenAndServe()
