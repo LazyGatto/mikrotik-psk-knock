@@ -190,6 +190,36 @@ func TestRouterHashStableAndSensitive(t *testing.T) {
 	}
 }
 
+func TestValidateLocalTargetRejectsForwardFields(t *testing.T) {
+	r := validRouter()
+	svc := r.Services["demo-service"]
+	svc.Target = Target{Type: TargetLocal, Protocol: "tcp", Port: 8291, ToAddress: "192.0.2.10"}
+	r.Services["demo-service"] = svc
+	if err := r.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want local-target-with-to_address error")
+	}
+}
+
+func TestValidateAcceptsLocalTarget(t *testing.T) {
+	r := validRouter()
+	svc := r.Services["demo-service"]
+	svc.Target = Target{Type: TargetLocal, Protocol: "tcp", Port: 8291}
+	r.Services["demo-service"] = svc
+	if err := r.Validate(); err != nil {
+		t.Fatalf("Validate() error = %v, want a valid local target", err)
+	}
+}
+
+func TestValidateRejectsUnknownTargetType(t *testing.T) {
+	r := validRouter()
+	svc := r.Services["demo-service"]
+	svc.Target = Target{Type: "banana", Protocol: "tcp", Port: 1}
+	r.Services["demo-service"] = svc
+	if err := r.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want unknown target type error")
+	}
+}
+
 func TestRouterHashIgnoresDeployCredentials(t *testing.T) {
 	base := validRouter().Hash()
 	r := validRouter()
@@ -209,7 +239,7 @@ func TestValidateRejectsBadDeployPort(t *testing.T) {
 
 func TestResolveMultiService(t *testing.T) {
 	r := validRouter()
-	r.Services["web"] = Service{ServiceName: "web", Stage1Port: 42001, Stage2Port: 42002, TokenPort: 42003, AllowedList: "mkpk-tt-allowed-web", NAT: NAT{DstPort: 3443, ToAddress: "192.0.2.20", ToPort: 443}}
+	r.Services["web"] = Service{ServiceName: "web", Stage1Port: 42001, Stage2Port: 42002, TokenPort: 42003, AllowedList: "mkpk-tt-allowed-web", Target: Target{Type: TargetForward, Protocol: "tcp", Port: 3443, ToAddress: "192.0.2.20", ToPort: 443}}
 	c := r.Clients["demo-client"]
 	c.Services = []string{"demo-service", "web"}
 	r.Clients["demo-client"] = c
@@ -242,7 +272,7 @@ func validRouter() Router {
 				ServiceName: "demo-service",
 				Stage1Port:  41001, Stage2Port: 41002, TokenPort: 41003,
 				AllowedList: "mkpk-tt-allowed-demo-service",
-				NAT:         NAT{DstPort: 2222, ToAddress: "192.0.2.10", ToPort: 22},
+				Target:      Target{Type: TargetForward, Protocol: "tcp", Port: 2222, ToAddress: "192.0.2.10", ToPort: 22},
 			},
 		},
 		Clients: map[string]Client{

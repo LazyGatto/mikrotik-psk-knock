@@ -265,7 +265,7 @@ type serviceReq struct {
 	Stage2Port  int           `json:"stage2_port"`
 	TokenPort   int           `json:"token_port"`
 	AllowedList string        `json:"allowed_list"`
-	NAT         config.NAT    `json:"nat"`
+	Target      config.Target `json:"target"`
 	Notify      config.Notify `json:"notify"`
 	Force       bool          `json:"force"`
 }
@@ -286,7 +286,7 @@ func (s *Server) handleService(w http.ResponseWriter, r *http.Request) {
 		cfg, err = admin.AddService(cfg, req.Router, admin.ServiceOptions{
 			Name: req.Name, ServiceName: req.ServiceName, Disabled: req.Disabled,
 			Stage1Port: req.Stage1Port, Stage2Port: req.Stage2Port, TokenPort: req.TokenPort,
-			AllowedList: req.AllowedList, NAT: req.NAT, Notify: req.Notify, Force: true,
+			AllowedList: req.AllowedList, Target: req.Target, Notify: req.Notify, Force: true,
 		})
 	case http.MethodDelete:
 		q := r.URL.Query()

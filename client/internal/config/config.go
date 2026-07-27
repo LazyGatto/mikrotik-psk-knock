@@ -54,16 +54,26 @@ type Service struct {
 	Stage2Port  int    `yaml:"stage2_port" json:"stage2_port"`
 	TokenPort   int    `yaml:"token_port" json:"token_port"`
 	AllowedList string `yaml:"allowed_list" json:"allowed_list"`
-	NAT         NAT    `yaml:"nat" json:"nat"`
+	Target      Target `yaml:"target" json:"target"`
 	Notify      Notify `yaml:"notify" json:"notify"`
 }
 
-type NAT struct {
-	Enabled   bool   `yaml:"enabled" json:"enabled"`
-	Comment   string `yaml:"comment" json:"comment"`
-	DstPort   int    `yaml:"dst_port" json:"dst_port"`
-	ToAddress string `yaml:"to_address" json:"to_address"`
-	ToPort    int    `yaml:"to_port" json:"to_port"`
+// Target types.
+const (
+	TargetForward = "forward" // dst-nat to an internal host:port
+	TargetLocal   = "local"   // input accept to a port on the router itself
+)
+
+// Target is what a service gates: knock adds the client to the service's
+// allowed-list, and the target is the single rule that consumes that list. It is
+// always present — a service without a target would gate nothing.
+type Target struct {
+	Type      string `yaml:"type" json:"type"`         // "forward" | "local"
+	Protocol  string `yaml:"protocol" json:"protocol"` // "tcp" | "udp"
+	Port      int    `yaml:"port" json:"port"`         // dst-port on the router the client reaches
+	ToAddress string `yaml:"to_address,omitempty" json:"to_address"` // forward only: internal host
+	ToPort    int    `yaml:"to_port,omitempty" json:"to_port"`       // forward only: internal port
+	Comment   string `yaml:"comment,omitempty" json:"comment"`       // stable RouterOS rule comment
 }
 
 type Notify struct {
@@ -157,8 +167,14 @@ func (r *Router) applyDefaults() {
 		if svc.AllowedList == "" {
 			svc.AllowedList = "mkpk-tt-allowed-" + name
 		}
-		if svc.NAT.Comment == "" {
-			svc.NAT.Comment = "mkpk-tt dst-nat " + name
+		if svc.Target.Type == "" {
+			svc.Target.Type = TargetForward
+		}
+		if svc.Target.Protocol == "" {
+			svc.Target.Protocol = "tcp"
+		}
+		if svc.Target.Comment == "" {
+			svc.Target.Comment = "mkpk-tt target " + name
 		}
 		if svc.Notify.Channel == "" {
 			svc.Notify.Channel = "webhook"
@@ -241,14 +257,8 @@ func (r Router) Validate() error {
 		if svc.Stage1Port == svc.Stage2Port || svc.Stage1Port == svc.TokenPort || svc.Stage2Port == svc.TokenPort {
 			return fmt.Errorf("service %q stage1_port, stage2_port and token_port must be distinct", name)
 		}
-		if err := validatePort("nat.dst_port", svc.NAT.DstPort); err != nil {
+		if err := validateTarget(svc.Target); err != nil {
 			return fmt.Errorf("service %q %w", name, err)
-		}
-		if err := validatePort("nat.to_port", svc.NAT.ToPort); err != nil {
-			return fmt.Errorf("service %q %w", name, err)
-		}
-		if svc.NAT.ToAddress == "" {
-			return fmt.Errorf("service %q nat.to_address is required", name)
 		}
 		if err := validateNotify(svc.Notify); err != nil {
 			return fmt.Errorf("service %q %w", name, err)
@@ -327,6 +337,33 @@ func (r Router) Resolve(routerName, clientName, serviceName string) (Resolved, e
 
 func clientHasService(c Client, name string) bool {
 	return slices.Contains(c.Services, name)
+}
+
+func validateTarget(t Target) error {
+	switch t.Protocol {
+	case "tcp", "udp":
+	default:
+		return fmt.Errorf("target.protocol %q must be tcp or udp", t.Protocol)
+	}
+	if err := validatePort("target.port", t.Port); err != nil {
+		return err
+	}
+	switch t.Type {
+	case TargetForward:
+		if t.ToAddress == "" {
+			return fmt.Errorf("target.to_address is required for a forward target")
+		}
+		if err := validatePort("target.to_port", t.ToPort); err != nil {
+			return err
+		}
+	case TargetLocal:
+		if t.ToAddress != "" || t.ToPort != 0 {
+			return fmt.Errorf("target.to_address/to_port must be empty for a local target")
+		}
+	default:
+		return fmt.Errorf("target.type %q must be %q or %q", t.Type, TargetForward, TargetLocal)
+	}
+	return nil
 }
 
 func validateNotify(n Notify) error {

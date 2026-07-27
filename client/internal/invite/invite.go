@@ -75,7 +75,7 @@ func (b Blob) ToRouter() config.Router {
 			Stage1Port:  s.Stage1,
 			Stage2Port:  s.Stage2,
 			TokenPort:   s.Token,
-			NAT:         config.NAT{DstPort: s.CheckPort},
+			Target:      config.Target{Port: s.CheckPort},
 		}
 		names = append(names, s.Name)
 	}

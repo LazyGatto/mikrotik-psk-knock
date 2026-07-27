@@ -14,10 +14,11 @@ routers:
         stage2_port: 41002
         token_port: 41003
         allowed_list: mkpk-tt-allowed-demo-service
-        nat:
-          enabled: false
-          comment: mkpk-tt dst-nat demo-service
-          dst_port: 2222
+        target:
+          type: forward
+          protocol: tcp
+          comment: mkpk-tt target demo-service
+          port: 2222
           to_address: 192.0.2.10
           to_port: 22
         notify:

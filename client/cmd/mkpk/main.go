@@ -235,7 +235,7 @@ func resolveCheckTarget(res config.Resolved, router, hostOverride string, portOv
 	}
 	port := portOverride
 	if port == 0 {
-		port = res.Service.NAT.DstPort
+		port = res.Service.Target.Port
 	}
 	return host, port
 }

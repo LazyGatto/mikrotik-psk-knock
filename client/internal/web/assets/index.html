@@ -54,7 +54,7 @@
   <section class="card">
     <h2>Services</h2>
     <table id="services"><thead><tr>
-      <th>on</th><th>name</th><th>ports (s1/s2/token)</th><th>allowed-list</th><th>nat</th><th>notify</th><th></th>
+      <th>on</th><th>name</th><th>ports (s1/s2/token)</th><th>allowed-list</th><th>target</th><th>notify</th><th></th>
     </tr></thead><tbody></tbody></table>
     <details class="addbox"><summary>Add service</summary>
       <form id="svc-form" class="form">
@@ -64,12 +64,25 @@
           <label>stage2 <input name="stage2_port" type="number" required></label>
           <label>token <input name="token_port" type="number" required></label>
         </div>
-        <fieldset><legend>NAT</legend>
-          <label class="inline"><input name="nat_enabled" type="checkbox"> enabled</label>
+        <fieldset><legend>Target</legend>
           <div class="row">
-            <label>dst_port <input name="nat_dst_port" type="number" required></label>
-            <label>to_address <input name="nat_to_address" required></label>
-            <label>to_port <input name="nat_to_port" type="number" required></label>
+            <label>type
+              <select name="target_type" id="target-type">
+                <option value="forward">forward (dst-nat)</option>
+                <option value="local">local (router input)</option>
+              </select>
+            </label>
+            <label>protocol
+              <select name="target_protocol">
+                <option value="tcp">tcp</option>
+                <option value="udp">udp</option>
+              </select>
+            </label>
+            <label>port <input name="target_port" type="number" required></label>
+          </div>
+          <div class="row target-forward">
+            <label>to_address <input name="target_to_address"></label>
+            <label>to_port <input name="target_to_port" type="number"></label>
           </div>
         </fieldset>
         <fieldset><legend>Notify</legend>

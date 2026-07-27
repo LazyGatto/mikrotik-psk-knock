@@ -67,7 +67,8 @@ func usage() {
   mkpk-provision profile init --out mkpk.yaml --router-name r1 --router-address host
   mkpk-provision router set --config mkpk.yaml --name r1 --address host [--ssh-user admin] [--ssh-key ~/.ssh/id_ed25519] [--ssh-agent] [--ssh-port 22]
   mkpk-provision router remove --config mkpk.yaml --name r1
-  mkpk-provision service add --config mkpk.yaml [--router r1] --name ssh --stage1-port 41011 --stage2-port 41012 --token-port 41013 --nat-dst-port 2022 --nat-to-address 192.0.2.10 --nat-to-port 22
+  mkpk-provision service add --config mkpk.yaml [--router r1] --name ssh --stage1-port 41011 --stage2-port 41012 --token-port 41013 --target-type forward --target-port 2022 --target-to-address 192.0.2.10 --target-to-port 22
+  mkpk-provision service add ... --target-type local --target-port 8291   # gate a port on the router itself
   mkpk-provision client add --config mkpk.yaml [--router r1] --name laptop --services ssh,web
   mkpk-provision token --config mkpk.yaml [--router r1] --client laptop [--service ssh] [--bucket N] [--debug]
   mkpk-provision routeros render --config mkpk.yaml [--router r1] [--out generated.rsc]
@@ -226,11 +227,12 @@ func serviceCmd(args []string) error {
 	stage2Port := fs.Int("stage2-port", 0, "stage2 UDP port")
 	tokenPort := fs.Int("token-port", 0, "token UDP port")
 	allowedList := fs.String("allowed-list", "", "RouterOS allowed address-list; mkpk-tt-allowed-<name> when empty")
-	natEnabled := fs.Bool("nat-enabled", false, "enable generated dst-nat rule")
-	natComment := fs.String("nat-comment", "", "stable RouterOS NAT rule comment")
-	natDstPort := fs.Int("nat-dst-port", 0, "external TCP dst-nat port")
-	natToAddress := fs.String("nat-to-address", "", "internal service address")
-	natToPort := fs.Int("nat-to-port", 0, "internal service port")
+	targetType := fs.String("target-type", "forward", "target type: forward (dst-nat) or local (router input)")
+	targetProto := fs.String("target-protocol", "tcp", "target protocol: tcp or udp")
+	targetPort := fs.Int("target-port", 0, "dst-port on the router the client reaches")
+	targetComment := fs.String("target-comment", "", "stable RouterOS rule comment")
+	targetToAddress := fs.String("target-to-address", "", "internal service address (forward only)")
+	targetToPort := fs.Int("target-to-port", 0, "internal service port (forward only)")
 	notifyEnabled := fs.Bool("notify-enabled", false, "enable notification")
 	notifyChannel := fs.String("notify-channel", "webhook", "notification channel: webhook, telegram or email")
 	notifyURL := fs.String("notify-url", "", "webhook notification URL")
@@ -262,12 +264,13 @@ func serviceCmd(args []string) error {
 		Stage2Port:  *stage2Port,
 		TokenPort:   *tokenPort,
 		AllowedList: *allowedList,
-		NAT: config.NAT{
-			Enabled:   *natEnabled,
-			Comment:   *natComment,
-			DstPort:   *natDstPort,
-			ToAddress: *natToAddress,
-			ToPort:    *natToPort,
+		Target: config.Target{
+			Type:      *targetType,
+			Protocol:  *targetProto,
+			Port:      *targetPort,
+			Comment:   *targetComment,
+			ToAddress: *targetToAddress,
+			ToPort:    *targetToPort,
 		},
 		Notify: config.Notify{
 			Enabled:  *notifyEnabled,
@@ -293,8 +296,9 @@ func serviceCmd(args []string) error {
 		return err
 	}
 	svc := cfg.Routers[rn].Services[*name]
-	fmt.Printf("service added config=%s router=%s name=%s service_name=%s stage1=%d stage2=%d token=%d nat_enabled=%t nat_dst_port=%d nat_to=%s:%d\n",
-		*configPath, rn, *name, svc.ServiceName, svc.Stage1Port, svc.Stage2Port, svc.TokenPort, svc.NAT.Enabled, svc.NAT.DstPort, svc.NAT.ToAddress, svc.NAT.ToPort)
+	fmt.Printf("service added config=%s router=%s name=%s service_name=%s stage1=%d stage2=%d token=%d target=%s/%s port=%d to=%s:%d\n",
+		*configPath, rn, *name, svc.ServiceName, svc.Stage1Port, svc.Stage2Port, svc.TokenPort,
+		svc.Target.Type, svc.Target.Protocol, svc.Target.Port, svc.Target.ToAddress, svc.Target.ToPort)
 	return nil
 }
 
@@ -586,9 +590,9 @@ func printSummary(path string, s admin.Summary) {
 			if !svc.Enabled {
 				state = "disabled"
 			}
-			fmt.Printf("  service name=%s [%s] service_name=%s stage1=%d stage2=%d token=%d allowed_list=%s nat_enabled=%t nat_dst_port=%d nat_to=%s:%d notify_enabled=%t notify_channel=%s\n",
+			fmt.Printf("  service name=%s [%s] service_name=%s stage1=%d stage2=%d token=%d allowed_list=%s target=%s/%s port=%d to=%s:%d notify_enabled=%t notify_channel=%s\n",
 				svc.Name, state, svc.ServiceName, svc.Stage1Port, svc.Stage2Port, svc.TokenPort, svc.AllowedList,
-				svc.NATEnabled, svc.NATDstPort, svc.NATToAddress, svc.NATToPort, svc.NotifyEnabled, svc.NotifyChannel)
+				svc.TargetType, svc.TargetProtocol, svc.TargetPort, svc.TargetToAddress, svc.TargetToPort, svc.NotifyEnabled, svc.NotifyChannel)
 		}
 		for _, cl := range r.Clients {
 			fmt.Printf("  user name=%s client_id=%s services=%s psk=set\n", cl.Name, cl.ClientID, strings.Join(cl.Services, ","))

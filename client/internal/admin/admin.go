@@ -101,7 +101,7 @@ func InitConfig(o InitOptions) (config.Config, error) {
 				ServiceName: o.ServiceName,
 				Stage1Port:  41001, Stage2Port: 41002, TokenPort: 41003,
 				AllowedList: "mkpk-tt-allowed-" + o.ServiceName,
-				NAT:         config.NAT{Comment: "mkpk-tt dst-nat " + o.ServiceName, DstPort: 2222, ToAddress: "192.0.2.10", ToPort: 22},
+				Target:      config.Target{Type: config.TargetForward, Protocol: "tcp", Comment: "mkpk-tt target " + o.ServiceName, Port: 2222, ToAddress: "192.0.2.10", ToPort: 22},
 				Notify:      config.Notify{Channel: "webhook"},
 			},
 		},
@@ -154,8 +154,8 @@ func RemoveRouter(cfg config.Config, name string) (config.Config, error) {
 	return cfg, nil
 }
 
-// ServiceOptions describes a service to add. Zero AllowedList / NAT.Comment and
-// email port/tls get sensible per-name defaults.
+// ServiceOptions describes a service to add. Zero AllowedList / Target.Comment /
+// Target.Protocol and email port/tls get sensible defaults.
 type ServiceOptions struct {
 	Name        string
 	ServiceName string
@@ -164,7 +164,7 @@ type ServiceOptions struct {
 	Stage2Port  int
 	TokenPort   int
 	AllowedList string
-	NAT         config.NAT
+	Target      config.Target
 	Notify      config.Notify
 	Force       bool
 }
@@ -181,9 +181,6 @@ func AddService(cfg config.Config, routerName string, o ServiceOptions) (config.
 	if o.Stage1Port == 0 || o.Stage2Port == 0 || o.TokenPort == 0 {
 		return cfg, fmt.Errorf("stage1, stage2 and token ports are required")
 	}
-	if o.NAT.DstPort == 0 || o.NAT.ToPort == 0 || o.NAT.ToAddress == "" {
-		return cfg, fmt.Errorf("nat dst_port, to_address and to_port are required")
-	}
 	if r.Services == nil {
 		r.Services = map[string]config.Service{}
 	}
@@ -194,9 +191,18 @@ func AddService(cfg config.Config, routerName string, o ServiceOptions) (config.
 	if id == "" {
 		id = o.Name
 	}
-	nat := o.NAT
-	if nat.Comment == "" {
-		nat.Comment = "mkpk-tt dst-nat " + o.Name
+	target := o.Target
+	if target.Type == "" {
+		target.Type = config.TargetForward
+	}
+	if target.Protocol == "" {
+		target.Protocol = "tcp"
+	}
+	if target.Comment == "" {
+		target.Comment = "mkpk-tt target " + o.Name
+	}
+	if target.Type == config.TargetLocal {
+		target.ToAddress, target.ToPort = "", 0
 	}
 	allowed := o.AllowedList
 	if allowed == "" {
@@ -214,17 +220,39 @@ func AddService(cfg config.Config, routerName string, o ServiceOptions) (config.
 			notify.Email.TLS = "starttls"
 		}
 	}
-	r.Services[o.Name] = config.Service{
+	svc := config.Service{
 		ServiceName: id,
 		Disabled:    o.Disabled,
 		Stage1Port:  o.Stage1Port,
 		Stage2Port:  o.Stage2Port,
 		TokenPort:   o.TokenPort,
 		AllowedList: allowed,
-		NAT:         nat,
+		Target:      target,
 		Notify:      notify,
 	}
+	if err := validateService(o.Name, svc); err != nil {
+		return cfg, err
+	}
+	r.Services[o.Name] = svc
 	return putRouter(cfg, routerName, r), nil
+}
+
+// validateService checks a single service in isolation (target coherence).
+// Full config validation, including cross-service checks, runs in SaveConfig.
+func validateService(name string, svc config.Service) error {
+	switch svc.Target.Type {
+	case config.TargetForward:
+		if svc.Target.Port == 0 || svc.Target.ToPort == 0 || svc.Target.ToAddress == "" {
+			return fmt.Errorf("service %q forward target needs port, to_address and to_port", name)
+		}
+	case config.TargetLocal:
+		if svc.Target.Port == 0 {
+			return fmt.Errorf("service %q local target needs a port", name)
+		}
+	default:
+		return fmt.Errorf("service %q target.type must be %q or %q", name, config.TargetForward, config.TargetLocal)
+	}
+	return nil
 }
 
 // SetServiceEnabled toggles a service on the router.
@@ -361,7 +389,7 @@ func ExportUser(cfg config.Config, routerName, userName string) (string, error) 
 			Stage1:    s.Stage1Port,
 			Stage2:    s.Stage2Port,
 			Token:     s.TokenPort,
-			CheckPort: s.NAT.DstPort,
+			CheckPort: s.Target.Port,
 		})
 	}
 	if len(b.Services) == 0 {
@@ -408,19 +436,20 @@ type DeploySummary struct {
 }
 
 type ServiceSummary struct {
-	Name          string `json:"name"`
-	ServiceName   string `json:"service_name"`
-	Enabled       bool   `json:"enabled"`
-	Stage1Port    int    `json:"stage1_port"`
-	Stage2Port    int    `json:"stage2_port"`
-	TokenPort     int    `json:"token_port"`
-	AllowedList   string `json:"allowed_list"`
-	NATEnabled    bool   `json:"nat_enabled"`
-	NATDstPort    int    `json:"nat_dst_port"`
-	NATToAddress  string `json:"nat_to_address"`
-	NATToPort     int    `json:"nat_to_port"`
-	NotifyEnabled bool   `json:"notify_enabled"`
-	NotifyChannel string `json:"notify_channel"`
+	Name            string `json:"name"`
+	ServiceName     string `json:"service_name"`
+	Enabled         bool   `json:"enabled"`
+	Stage1Port      int    `json:"stage1_port"`
+	Stage2Port      int    `json:"stage2_port"`
+	TokenPort       int    `json:"token_port"`
+	AllowedList     string `json:"allowed_list"`
+	TargetType      string `json:"target_type"`
+	TargetProtocol  string `json:"target_protocol"`
+	TargetPort      int    `json:"target_port"`
+	TargetToAddress string `json:"target_to_address"`
+	TargetToPort    int    `json:"target_to_port"`
+	NotifyEnabled   bool   `json:"notify_enabled"`
+	NotifyChannel   string `json:"notify_channel"`
 }
 
 type ClientSummary struct {
@@ -439,19 +468,20 @@ func Summarize(cfg config.Config) Summary {
 		for _, name := range sortedKeys(r.Services) {
 			svc := r.Services[name]
 			rs.Services = append(rs.Services, ServiceSummary{
-				Name:          name,
-				ServiceName:   svc.ServiceName,
-				Enabled:       svc.Enabled(),
-				Stage1Port:    svc.Stage1Port,
-				Stage2Port:    svc.Stage2Port,
-				TokenPort:     svc.TokenPort,
-				AllowedList:   svc.AllowedList,
-				NATEnabled:    svc.NAT.Enabled,
-				NATDstPort:    svc.NAT.DstPort,
-				NATToAddress:  svc.NAT.ToAddress,
-				NATToPort:     svc.NAT.ToPort,
-				NotifyEnabled: svc.Notify.Enabled,
-				NotifyChannel: svc.Notify.Channel,
+				Name:            name,
+				ServiceName:     svc.ServiceName,
+				Enabled:         svc.Enabled(),
+				Stage1Port:      svc.Stage1Port,
+				Stage2Port:      svc.Stage2Port,
+				TokenPort:       svc.TokenPort,
+				AllowedList:     svc.AllowedList,
+				TargetType:      svc.Target.Type,
+				TargetProtocol:  svc.Target.Protocol,
+				TargetPort:      svc.Target.Port,
+				TargetToAddress: svc.Target.ToAddress,
+				TargetToPort:    svc.Target.ToPort,
+				NotifyEnabled:   svc.Notify.Enabled,
+				NotifyChannel:   svc.Notify.Channel,
 			})
 		}
 		for _, name := range sortedKeys(r.Clients) {

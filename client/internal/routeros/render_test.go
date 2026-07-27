@@ -179,7 +179,7 @@ func TestRenderNotifyTelegramChannel(t *testing.T) {
 			"tg": {
 				ServiceName: "tg", Stage1Port: 41001, Stage2Port: 41002, TokenPort: 41003,
 				AllowedList: "mkpk-tt-allowed-tg",
-				NAT:         config.NAT{Comment: "mkpk-tt dst-nat tg", DstPort: 2222, ToAddress: "192.0.2.10", ToPort: 22},
+				Target:      config.Target{Type: config.TargetForward, Protocol: "tcp", Comment: "mkpk-tt target tg", Port: 2222, ToAddress: "192.0.2.10", ToPort: 22},
 				Notify: config.Notify{
 					Enabled: true, Channel: "telegram",
 					Telegram: config.NotifyTelegram{BotToken: "123456:AA-bb_CC", ChatID: "-100200300"},
@@ -214,7 +214,7 @@ func TestRenderNotifyEmailChannel(t *testing.T) {
 			"mail": {
 				ServiceName: "mail", Stage1Port: 41001, Stage2Port: 41002, TokenPort: 41003,
 				AllowedList: "mkpk-tt-allowed-mail",
-				NAT:         config.NAT{Comment: "mkpk-tt dst-nat mail", DstPort: 2222, ToAddress: "192.0.2.10", ToPort: 22},
+				Target:      config.Target{Type: config.TargetForward, Protocol: "tcp", Comment: "mkpk-tt target mail", Port: 2222, ToAddress: "192.0.2.10", ToPort: 22},
 				Notify: config.Notify{
 					Enabled: true, Channel: "email",
 					Email: config.NotifyEmail{To: "alerts@example.com", From: "mkpk@example.com", Server: "smtp.example.com", Port: 587, TLS: "starttls", User: "u", Password: "p"},
@@ -242,6 +242,41 @@ func TestRenderNotifyEmailChannel(t *testing.T) {
 	}
 }
 
+func TestRenderForwardTargetEmitsNatAndForwardAccept(t *testing.T) {
+	rendered, err := RenderConfig(multiRouter()) // svc-a/svc-b are forward targets
+	if err != nil {
+		t.Fatalf("RenderConfig() error = %v", err)
+	}
+	for _, want := range []string{
+		`/ip firewall nat add chain=dstnat action=dst-nat protocol=tcp dst-port=2222`,
+		`to-addresses="192.0.2.10" to-ports=22`,
+		`/ip firewall filter add chain=forward action=accept protocol=tcp dst-address="192.0.2.10" dst-port=22`,
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("forward target missing %q:\n%s", want, rendered)
+		}
+	}
+}
+
+func TestRenderLocalTargetEmitsInputAccept(t *testing.T) {
+	r := multiRouter()
+	svc := r.Services["svc-a"]
+	svc.Target = config.Target{Type: config.TargetLocal, Protocol: "tcp", Port: 8291, Comment: "mkpk-tt target svc-a"}
+	r.Services["svc-a"] = svc
+
+	rendered, err := RenderConfig(r)
+	if err != nil {
+		t.Fatalf("RenderConfig() error = %v", err)
+	}
+	if !strings.Contains(rendered, `/ip firewall filter add chain=input action=accept protocol=tcp dst-port=8291`) {
+		t.Fatalf("local target missing input accept:\n%s", rendered)
+	}
+	// A local target must not produce a dst-nat rule for its port.
+	if strings.Contains(rendered, `dst-nat protocol=tcp dst-port=8291`) {
+		t.Fatalf("local target should not produce a dst-nat rule:\n%s", rendered)
+	}
+}
+
 func singleRouter(bucketSeconds int64) config.Router {
 	return config.Router{
 		Address:  "router.example",
@@ -250,7 +285,7 @@ func singleRouter(bucketSeconds int64) config.Router {
 			"demo-service": {
 				ServiceName: "demo-service", Stage1Port: 41001, Stage2Port: 41002, TokenPort: 41003,
 				AllowedList: "mkpk-tt-allowed-demo-service",
-				NAT:         config.NAT{Comment: "mkpk-tt dst-nat demo-service", DstPort: 2222, ToAddress: "192.0.2.10", ToPort: 22},
+				Target:      config.Target{Type: config.TargetForward, Protocol: "tcp", Comment: "mkpk-tt target demo-service", Port: 2222, ToAddress: "192.0.2.10", ToPort: 22},
 			},
 		},
 		Clients: map[string]config.Client{
@@ -267,12 +302,12 @@ func multiRouter() config.Router {
 			"svc-a": {
 				ServiceName: "svc-a", Stage1Port: 41001, Stage2Port: 41002, TokenPort: 41003,
 				AllowedList: "mkpk-tt-allowed-svc-a",
-				NAT:         config.NAT{Comment: "mkpk-tt dst-nat svc-a", DstPort: 2222, ToAddress: "192.0.2.10", ToPort: 22},
+				Target:      config.Target{Type: config.TargetForward, Protocol: "tcp", Comment: "mkpk-tt target svc-a", Port: 2222, ToAddress: "192.0.2.10", ToPort: 22},
 			},
 			"svc-b": {
 				ServiceName: "svc-b", Stage1Port: 42001, Stage2Port: 42002, TokenPort: 42003,
 				AllowedList: "mkpk-tt-allowed-svc-b",
-				NAT:         config.NAT{Comment: "mkpk-tt dst-nat svc-b", DstPort: 3333, ToAddress: "192.0.2.20", ToPort: 443},
+				Target:      config.Target{Type: config.TargetForward, Protocol: "tcp", Comment: "mkpk-tt target svc-b", Port: 3333, ToAddress: "192.0.2.20", ToPort: 443},
 			},
 		},
 		Clients: map[string]config.Client{

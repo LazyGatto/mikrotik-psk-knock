@@ -11,16 +11,17 @@ import (
 )
 
 type svcData struct {
-	Key          string
-	Stage1Port   int
-	Stage2Port   int
-	TokenPort    int
-	AllowedList  string // plain, validated safe name
-	NATDisabled  string // "yes" / "no"
-	NATComment   string // ros-quoted
-	NATDstPort   int
-	NATToAddress string // ros-quoted
-	NATToPort    int
+	Key         string
+	Stage1Port  int
+	Stage2Port  int
+	TokenPort   int
+	AllowedList string // plain, validated safe name
+	TargetType  string // "forward" / "local"
+	Protocol    string // plain, validated tcp/udp
+	Port        int    // dst-port on the router
+	ToAddress   string // ros-quoted (forward only)
+	ToPort      int    // forward only
+	Comment     string // ros-quoted
 }
 
 type cliData struct {
@@ -76,16 +77,17 @@ func RenderConfig(r config.Router) (string, error) {
 			continue
 		}
 		data.Services = append(data.Services, svcData{
-			Key:          k,
-			Stage1Port:   s.Stage1Port,
-			Stage2Port:   s.Stage2Port,
-			TokenPort:    s.TokenPort,
-			AllowedList:  s.AllowedList,
-			NATDisabled:  rosDisabled(s.NAT.Enabled),
-			NATComment:   rosString(s.NAT.Comment),
-			NATDstPort:   s.NAT.DstPort,
-			NATToAddress: rosString(s.NAT.ToAddress),
-			NATToPort:    s.NAT.ToPort,
+			Key:         k,
+			Stage1Port:  s.Stage1Port,
+			Stage2Port:  s.Stage2Port,
+			TokenPort:   s.TokenPort,
+			AllowedList: s.AllowedList,
+			TargetType:  s.Target.Type,
+			Protocol:    s.Target.Protocol,
+			Port:        s.Target.Port,
+			ToAddress:   rosString(s.Target.ToAddress),
+			ToPort:      s.Target.ToPort,
+			Comment:     rosString(s.Target.Comment),
 		})
 	}
 
@@ -183,13 +185,6 @@ func rosBool(v bool) string {
 	return "false"
 }
 
-func rosDisabled(enabled bool) string {
-	if enabled {
-		return "no"
-	}
-	return "yes"
-}
-
 func rosString(v string) string {
 	var out bytes.Buffer
 	out.WriteByte('"')
@@ -239,17 +234,46 @@ add chain=input action=add-src-to-address-list protocol=udp dst-port={{.TokenPor
 /system script
 add name="mkpk-tt-meta" policy=read source="# mkpk-version=1\n# mkpk-config-hash={{.MetaHash}}"
 add name="mkpk-tt-apply-service" policy=read,write,test source={
-{{range .Services}}    :if ([:len [/ip firewall nat find where comment={{.NATComment}}]] = 0) do={
-        /ip firewall nat add chain=dstnat action=dst-nat protocol=tcp dst-port={{.NATDstPort}} \
-            src-address-list={{.AllowedList}} to-addresses={{.NATToAddress}} to-ports={{.NATToPort}} \
-            disabled={{.NATDisabled}} comment={{.NATComment}}
-        :log info ("mkpk-tt service nat created comment=" . {{.NATComment}})
+{{range .Services}}{{if eq .TargetType "forward"}}    # forward target: dst-nat translates the destination, and a forward-chain
+    # accept lets the translated (gated) packet reach the internal host.
+    :if ([:len [/ip firewall nat find where comment={{.Comment}}]] = 0) do={
+        /ip firewall nat add chain=dstnat action=dst-nat protocol={{.Protocol}} dst-port={{.Port}} \
+            src-address-list={{.AllowedList}} to-addresses={{.ToAddress}} to-ports={{.ToPort}} \
+            comment={{.Comment}}
     } else={
-        /ip firewall nat set [/ip firewall nat find where comment={{.NATComment}}] chain=dstnat action=dst-nat protocol=tcp dst-port={{.NATDstPort}} \
-            src-address-list={{.AllowedList}} to-addresses={{.NATToAddress}} to-ports={{.NATToPort}} disabled={{.NATDisabled}}
-        :log info ("mkpk-tt service nat updated comment=" . {{.NATComment}})
+        /ip firewall nat set [/ip firewall nat find where comment={{.Comment}}] chain=dstnat action=dst-nat protocol={{.Protocol}} dst-port={{.Port}} \
+            src-address-list={{.AllowedList}} to-addresses={{.ToAddress}} to-ports={{.ToPort}}
     }
-{{end}}}
+    :if ([:len [/ip firewall filter find where comment={{.Comment}}]] = 0) do={
+        :local mkpkDrop [/ip firewall filter find where chain=forward action=drop]
+        :if ([:len $mkpkDrop] > 0) do={
+            /ip firewall filter add chain=forward action=accept protocol={{.Protocol}} dst-address={{.ToAddress}} dst-port={{.ToPort}} \
+                src-address-list={{.AllowedList}} comment={{.Comment}} place-before=[:pick $mkpkDrop 0]
+        } else={
+            /ip firewall filter add chain=forward action=accept protocol={{.Protocol}} dst-address={{.ToAddress}} dst-port={{.ToPort}} \
+                src-address-list={{.AllowedList}} comment={{.Comment}}
+        }
+    } else={
+        /ip firewall filter set [/ip firewall filter find where comment={{.Comment}}] chain=forward action=accept protocol={{.Protocol}} dst-address={{.ToAddress}} dst-port={{.ToPort}} \
+            src-address-list={{.AllowedList}}
+    }
+    :log info ("mkpk-tt target forward applied comment=" . {{.Comment}})
+{{else}}    # local target: accept in the input chain for gated sources reaching the router.
+    :if ([:len [/ip firewall filter find where comment={{.Comment}}]] = 0) do={
+        :local mkpkDrop [/ip firewall filter find where chain=input action=drop]
+        :if ([:len $mkpkDrop] > 0) do={
+            /ip firewall filter add chain=input action=accept protocol={{.Protocol}} dst-port={{.Port}} \
+                src-address-list={{.AllowedList}} comment={{.Comment}} place-before=[:pick $mkpkDrop 0]
+        } else={
+            /ip firewall filter add chain=input action=accept protocol={{.Protocol}} dst-port={{.Port}} \
+                src-address-list={{.AllowedList}} comment={{.Comment}}
+        }
+    } else={
+        /ip firewall filter set [/ip firewall filter find where comment={{.Comment}}] chain=input action=accept protocol={{.Protocol}} dst-port={{.Port}} \
+            src-address-list={{.AllowedList}}
+    }
+    :log info ("mkpk-tt target local applied comment=" . {{.Comment}})
+{{end}}{{end}}}
 
 add name="mkpk-tt-notify" policy=read,write,test source={
     :global mkpkTtNotifyEnabled

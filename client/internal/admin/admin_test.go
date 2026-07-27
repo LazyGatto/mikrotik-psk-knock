@@ -53,7 +53,7 @@ func TestSetRouterCreatesUpdatesAndKeepsChildren(t *testing.T) {
 	// Add a service, then edit the router: address/creds change, service stays.
 	cfg, err = AddService(cfg, "r2", ServiceOptions{
 		Name: "svc2", Stage1Port: 51001, Stage2Port: 51002, TokenPort: 51003,
-		NAT: config.NAT{DstPort: 2223, ToAddress: "192.0.2.30", ToPort: 22},
+		Target: config.Target{Type: config.TargetForward, Protocol: "tcp", Port: 2223, ToAddress: "192.0.2.30", ToPort: 22},
 	})
 	if err != nil {
 		t.Fatalf("AddService() error = %v", err)
@@ -99,7 +99,7 @@ func TestAddServiceDefaultsAndValidation(t *testing.T) {
 
 	cfg, err := AddService(cfg, rn, ServiceOptions{
 		Name: "email-svc", Stage1Port: 43001, Stage2Port: 43002, TokenPort: 43003,
-		NAT:    config.NAT{DstPort: 2022, ToAddress: "192.0.2.10", ToPort: 22},
+		Target: config.Target{Type: config.TargetForward, Protocol: "tcp", Port: 2022, ToAddress: "192.0.2.10", ToPort: 22},
 		Notify: config.Notify{Enabled: true, Channel: "email", Email: config.NotifyEmail{To: "a@b.co", From: "m@b.co", Server: "smtp.b.co"}},
 	})
 	if err != nil {
@@ -109,8 +109,8 @@ func TestAddServiceDefaultsAndValidation(t *testing.T) {
 	if svc.AllowedList != "mkpk-tt-allowed-email-svc" {
 		t.Fatalf("allowed_list default = %q", svc.AllowedList)
 	}
-	if svc.NAT.Comment != "mkpk-tt dst-nat email-svc" {
-		t.Fatalf("nat comment default = %q", svc.NAT.Comment)
+	if svc.Target.Comment != "mkpk-tt target email-svc" {
+		t.Fatalf("target comment default = %q", svc.Target.Comment)
 	}
 	if svc.Notify.Email.Port != 587 || svc.Notify.Email.TLS != "starttls" {
 		t.Fatalf("email defaults = %d/%q", svc.Notify.Email.Port, svc.Notify.Email.TLS)
@@ -119,10 +119,10 @@ func TestAddServiceDefaultsAndValidation(t *testing.T) {
 	if _, err := AddService(cfg, rn, ServiceOptions{Name: "bad"}); err == nil {
 		t.Fatal("AddService without ports should error")
 	}
-	if _, err := AddService(cfg, rn, ServiceOptions{Name: "email-svc", Stage1Port: 1, Stage2Port: 2, TokenPort: 3, NAT: config.NAT{DstPort: 1, ToPort: 1, ToAddress: "x"}}); err == nil {
+	if _, err := AddService(cfg, rn, ServiceOptions{Name: "email-svc", Stage1Port: 1, Stage2Port: 2, TokenPort: 3, Target: config.Target{Type: config.TargetForward, Protocol: "tcp", Port: 1, ToPort: 1, ToAddress: "x"}}); err == nil {
 		t.Fatal("AddService on existing name without force should error")
 	}
-	if _, err := AddService(cfg, "nope", ServiceOptions{Name: "x", Stage1Port: 1, Stage2Port: 2, TokenPort: 3, NAT: config.NAT{DstPort: 1, ToPort: 1, ToAddress: "x"}}); err == nil {
+	if _, err := AddService(cfg, "nope", ServiceOptions{Name: "x", Stage1Port: 1, Stage2Port: 2, TokenPort: 3, Target: config.Target{Type: config.TargetForward, Protocol: "tcp", Port: 1, ToPort: 1, ToAddress: "x"}}); err == nil {
 		t.Fatal("AddService on unknown router should error")
 	}
 }
@@ -155,7 +155,7 @@ func TestRemoveServiceRefusesReferenced(t *testing.T) {
 
 func TestAddClientGeneratesPSKAndServices(t *testing.T) {
 	cfg := initCfg(t)
-	cfg, _ = AddService(cfg, rn, ServiceOptions{Name: "web", Stage1Port: 42001, Stage2Port: 42002, TokenPort: 42003, NAT: config.NAT{DstPort: 3443, ToAddress: "192.0.2.20", ToPort: 443}})
+	cfg, _ = AddService(cfg, rn, ServiceOptions{Name: "web", Stage1Port: 42001, Stage2Port: 42002, TokenPort: 42003, Target: config.Target{Type: config.TargetForward, Protocol: "tcp", Port: 3443, ToAddress: "192.0.2.20", ToPort: 443}})
 
 	res, err := AddClient(cfg, rn, ClientOptions{Name: "phone", Services: []string{"svc", "web"}})
 	if err != nil {
@@ -183,7 +183,7 @@ func TestAddClientGeneratesPSKAndServices(t *testing.T) {
 
 func TestExportUserBlobTokensMatchConfig(t *testing.T) {
 	cfg := initCfg(t)
-	cfg, _ = AddService(cfg, rn, ServiceOptions{Name: "web", Stage1Port: 42001, Stage2Port: 42002, TokenPort: 42003, NAT: config.NAT{DstPort: 3443, ToAddress: "192.0.2.20", ToPort: 443}})
+	cfg, _ = AddService(cfg, rn, ServiceOptions{Name: "web", Stage1Port: 42001, Stage2Port: 42002, TokenPort: 42003, Target: config.Target{Type: config.TargetForward, Protocol: "tcp", Port: 3443, ToAddress: "192.0.2.20", ToPort: 443}})
 	res, _ := AddClient(cfg, rn, ClientOptions{Name: "phone", Services: []string{"svc", "web"}, PSK: "phone-psk-value"})
 	cfg = res.Config
 

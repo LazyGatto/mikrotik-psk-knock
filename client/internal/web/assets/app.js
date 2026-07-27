@@ -41,6 +41,14 @@ function routerObj() {
   return summary.routers.find((r) => r.name === current);
 }
 
+function targetDesc(svc) {
+  const proto = svc.target_protocol || "tcp";
+  if (svc.target_type === "local") {
+    return `local ${proto}/${svc.target_port} (router)`;
+  }
+  return `forward ${proto}/${svc.target_port} → ${svc.target_to_address}:${svc.target_to_port}`;
+}
+
 function applyConfig(data) {
   el("cfg-path").textContent = data.path;
   summary = data.summary || { routers: [] };
@@ -87,7 +95,7 @@ function renderServices(r) {
       td(`<span class="mono">${svc.name}</span>`),
       td(`<span class="mono">${svc.stage1_port}/${svc.stage2_port}/${svc.token_port}</span>`),
       td(`<span class="mono">${svc.allowed_list}</span>`),
-      td(`${svc.nat_enabled ? "on" : "off"} ${svc.nat_dst_port}→${svc.nat_to_address}:${svc.nat_to_port}`),
+      td(targetDesc(svc)),
       td(svc.notify_enabled ? svc.notify_channel : "off"),
     );
     const rm = document.createElement("button");
@@ -228,6 +236,11 @@ function syncNotify() {
   document.querySelectorAll(".notify-fields").forEach((f) => f.classList.toggle("hidden", f.dataset.channel !== ch));
 }
 el("notify-channel").addEventListener("change", syncNotify);
+function syncTarget() {
+  const local = el("target-type").value === "local";
+  document.querySelectorAll(".target-forward").forEach((f) => f.classList.toggle("hidden", local));
+}
+el("target-type").addEventListener("change", syncTarget);
 el("svc-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const g = (n) => e.target.elements[n];
@@ -237,7 +250,13 @@ el("svc-form").addEventListener("submit", async (e) => {
     stage1_port: +g("stage1_port").value,
     stage2_port: +g("stage2_port").value,
     token_port: +g("token_port").value,
-    nat: { enabled: g("nat_enabled").checked, dst_port: +g("nat_dst_port").value, to_address: g("nat_to_address").value.trim(), to_port: +g("nat_to_port").value },
+    target: {
+      type: g("target_type").value,
+      protocol: g("target_protocol").value,
+      port: +g("target_port").value,
+      to_address: g("target_type").value === "forward" ? g("target_to_address").value.trim() : "",
+      to_port: g("target_type").value === "forward" ? +g("target_to_port").value : 0,
+    },
     notify: {
       enabled: g("notify_enabled").checked,
       channel: g("notify_channel").value,
@@ -360,4 +379,5 @@ document.querySelectorAll("#deploy-form button[data-action]").forEach((btn) => {
 });
 
 syncNotify();
+syncTarget();
 load();

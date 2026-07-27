@@ -56,7 +56,7 @@ func TestAddServicePersists(t *testing.T) {
 	path := testConfigPath(t)
 	h := Handler(path, "tok")
 
-	body := `{"router":"r1","name":"web","stage1_port":42001,"stage2_port":42002,"token_port":42003,"nat":{"dst_port":3443,"to_address":"192.0.2.20","to_port":443}}`
+	body := `{"router":"r1","name":"web","stage1_port":42001,"stage2_port":42002,"token_port":42003,"target":{"type":"forward","protocol":"tcp","port":3443,"to_address":"192.0.2.20","to_port":443}}`
 	req := httptest.NewRequest("POST", "/api/service", strings.NewReader(body))
 	req.Host = "127.0.0.1:8765"
 	req.Header.Set("X-MKPK-Token", "tok")
