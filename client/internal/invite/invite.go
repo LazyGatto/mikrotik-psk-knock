@@ -1,6 +1,7 @@
 // Package invite defines the per-user invite blob: a compact, base64url-encoded
-// JSON slice of one user's state (router address, their PSK and the services they
-// may open). The admin exports it; the client decodes it and knocks. It carries
+// JSON slice of one user's state. It can carry several routers (the user's
+// common client_id plus, per router, that router's address, PSK and openable
+// services). The admin exports it; the client decodes it and knocks. It carries
 // exactly what the runtime needs — no other users' secrets.
 package invite
 
@@ -13,14 +14,20 @@ import (
 )
 
 // Version is the current blob format version.
-const Version = 1
+const Version = 2
 
-// Blob is one user's runtime configuration.
+// Blob is one user's runtime configuration across one or more routers.
 type Blob struct {
-	Version       int       `json:"v"`
+	Version  int      `json:"v"`
+	ClientID string   `json:"client_id"` // common identity across routers
+	Routers  []Router `json:"routers"`
+}
+
+// Router is one router the user can reach: its address, bucket seconds, the PSK
+// for this router and the services openable on it.
+type Router struct {
 	Router        string    `json:"router"` // address
 	BucketSeconds int64     `json:"bucket_seconds"`
-	ClientID      string    `json:"client_id"`
 	PSK           string    `json:"psk"`
 	Services      []Service `json:"services"`
 }
@@ -31,7 +38,7 @@ type Service struct {
 	Stage1    int    `json:"stage1"`
 	Stage2    int    `json:"stage2"`
 	Token     int    `json:"token"`
-	CheckPort int    `json:"check_port"` // external dst-nat port for post-knock TCP check
+	CheckPort int    `json:"check_port"` // external port for post-knock TCP check
 }
 
 // Encode marshals the blob to a base64url string.
@@ -56,35 +63,56 @@ func Decode(s string) (Blob, error) {
 	if b.Version != Version {
 		return Blob{}, fmt.Errorf("invite: unsupported version %d (want %d)", b.Version, Version)
 	}
-	if b.Router == "" || b.ClientID == "" || b.PSK == "" || len(b.Services) == 0 {
+	if b.ClientID == "" || len(b.Routers) == 0 {
 		return Blob{}, fmt.Errorf("invite: incomplete blob")
+	}
+	for _, r := range b.Routers {
+		if r.Router == "" || r.PSK == "" || len(r.Services) == 0 {
+			return Blob{}, fmt.Errorf("invite: incomplete router entry")
+		}
 	}
 	return b, nil
 }
 
-// ToRouter converts the blob into a minimal config.Router the runtime can resolve
-// against (address, bucket seconds, the user and its services with just the ports
-// the client needs). The returned router is not meant to pass config.Validate —
-// it is a runtime-only projection.
-func (b Blob) ToRouter() config.Router {
-	services := map[string]config.Service{}
-	names := make([]string, 0, len(b.Services))
-	for _, s := range b.Services {
-		services[s.Name] = config.Service{
-			ServiceName: s.Name,
-			Stage1Port:  s.Stage1,
-			Stage2Port:  s.Stage2,
-			TokenPort:   s.Token,
-			Target:      config.Target{Port: s.CheckPort},
+// ToConfig converts the blob into a minimal config.Config the runtime can
+// resolve against: each blob router becomes a config router (keyed by its
+// address) and the user's access to it, with just the ports the client needs.
+// The returned config is a runtime-only projection, not meant to pass
+// config.Validate.
+func (b Blob) ToConfig() config.Config {
+	routers := map[string]config.Router{}
+	access := map[string]config.UserAccess{}
+	for _, rb := range b.Routers {
+		services := map[string]config.Service{}
+		names := make([]string, 0, len(rb.Services))
+		for _, s := range rb.Services {
+			services[s.Name] = config.Service{
+				ServiceName: s.Name,
+				Stage1Port:  s.Stage1,
+				Stage2Port:  s.Stage2,
+				TokenPort:   s.Token,
+				Target:      config.Target{Port: s.CheckPort},
+			}
+			names = append(names, s.Name)
 		}
-		names = append(names, s.Name)
+		routers[rb.Router] = config.Router{
+			Address:  rb.Router,
+			Defaults: config.Defaults{BucketSeconds: rb.BucketSeconds},
+			Services: services,
+		}
+		access[rb.Router] = config.UserAccess{Services: names, PSK: rb.PSK}
 	}
-	return config.Router{
-		Address:  b.Router,
-		Defaults: config.Defaults{BucketSeconds: b.BucketSeconds},
-		Services: services,
-		Clients: map[string]config.Client{
-			b.ClientID: {ClientID: b.ClientID, Services: names, PSK: b.PSK},
-		},
+	return config.Config{
+		Routers: routers,
+		Users:   map[string]config.User{b.ClientID: {ClientID: b.ClientID, Access: access}},
 	}
+}
+
+// RouterNames returns the blob's router addresses (keys) in slice order.
+func (b Blob) RouterNames() []string {
+	names := make([]string, 0, len(b.Routers))
+	for _, r := range b.Routers {
+		names = append(names, r.Router)
+	}
+	return names
 }

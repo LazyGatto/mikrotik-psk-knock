@@ -24,9 +24,11 @@ routers:
         notify:
           enabled: false
           channel: webhook
-    clients:
-      demo-client:
-        client_id: demo-client
+users:
+  demo-client:
+    client_id: demo-client
+    access:
+      router-a:
         services:
           - demo-service
         psk: mkpk-prototype-psk

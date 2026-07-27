@@ -12,19 +12,38 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config is the top-level admin config: a set of routers, each with its own
-// defaults, services and users (clients).
+// Config is the top-level admin config. Routers and users are both top-level:
+// a user is a person (one client_id) who can be granted access on several
+// routers. A router owns its services; who may reach them is expressed by the
+// users' per-router access.
 type Config struct {
 	Routers map[string]Router `yaml:"routers" json:"routers"`
+	Users   map[string]User   `yaml:"users" json:"users"`
 }
 
-// Router holds everything provisioned onto one MikroTik.
+// Router holds everything provisioned onto one MikroTik. It owns its services;
+// the users allowed to reach them live at the top level and reference it.
 type Router struct {
 	Address  string             `yaml:"address" json:"address"`
 	Deploy   Deploy             `yaml:"deploy,omitempty" json:"deploy"`
 	Defaults Defaults           `yaml:"defaults" json:"defaults"`
 	Services map[string]Service `yaml:"services" json:"services"`
-	Clients  map[string]Client  `yaml:"clients" json:"clients"`
+}
+
+// User is a person: one client_id (a stable identity across all routers) plus
+// per-router access. The PSK is per (user, router) — the router's rendered
+// config contains the raw PSK, so a distinct secret per router keeps a
+// single-router compromise from cascading.
+type User struct {
+	ClientID string                `yaml:"client_id" json:"client_id"`
+	Access   map[string]UserAccess `yaml:"access" json:"access"` // router name → access
+}
+
+// UserAccess is a user's grant on one router: the services they may open and
+// the PSK used to derive tokens on that router.
+type UserAccess struct {
+	Services []string `yaml:"services" json:"services"`
+	PSK      string   `yaml:"psk" json:"psk"`
 }
 
 // Deploy holds the SSH connection parameters used to provision this router.
@@ -69,9 +88,9 @@ const (
 // allowed-list, and the target is the single rule that consumes that list. It is
 // always present — a service without a target would gate nothing.
 type Target struct {
-	Type      string `yaml:"type" json:"type"`         // "forward" | "local"
-	Protocol  string `yaml:"protocol" json:"protocol"` // "tcp" | "udp"
-	Port      int    `yaml:"port" json:"port"`         // dst-port on the router the client reaches
+	Type      string `yaml:"type" json:"type"`                       // "forward" | "local"
+	Protocol  string `yaml:"protocol" json:"protocol"`               // "tcp" | "udp"
+	Port      int    `yaml:"port" json:"port"`                       // dst-port on the router the client reaches
 	ToAddress string `yaml:"to_address,omitempty" json:"to_address"` // forward only: internal host
 	ToPort    int    `yaml:"to_port,omitempty" json:"to_port"`       // forward only: internal port
 	Comment   string `yaml:"comment,omitempty" json:"comment"`       // stable RouterOS rule comment
@@ -100,21 +119,23 @@ type NotifyEmail struct {
 	Password string `yaml:"password" json:"password"`
 }
 
-// Client is a user: an identity with one PSK, allowed a set of services on the
-// router. The service name is part of the token, so one PSK yields distinct
-// per-service tokens.
-type Client struct {
-	ClientID string   `yaml:"client_id" json:"client_id"`
-	Services []string `yaml:"services" json:"services"`
-	PSK      string   `yaml:"psk" json:"psk"`
+// RenderClient is the per-router projection of a user used by the renderer and
+// the router hash: the identity, the PSK for this router, and the services the
+// user may open on it.
+type RenderClient struct {
+	Name     string   `yaml:"name"`      // user map key, used for RouterOS object names
+	ClientID string   `yaml:"client_id"` // stable identity in the token
+	PSK      string   `yaml:"psk"`
+	Services []string `yaml:"services"` // service names on this router
 }
 
-// Resolved is a single (router, client, service) triple used by token/knock.
+// Resolved is a single (router, user, service) triple used by token/knock.
 type Resolved struct {
 	RouterName  string
 	Router      Router
-	ClientName  string
-	Client      Client
+	UserName    string
+	ClientID    string
+	PSK         string
 	ServiceName string
 	Service     Service
 }
@@ -143,6 +164,7 @@ func (c *Config) applyDefaults() {
 		r.applyDefaults()
 		c.Routers[name] = r
 	}
+	c.applyUserDefaults()
 }
 
 func (r *Router) applyDefaults() {
@@ -190,11 +212,14 @@ func (r *Router) applyDefaults() {
 		}
 		r.Services[name] = svc
 	}
-	for name, client := range r.Clients {
-		if client.ClientID == "" {
-			client.ClientID = name
+}
+
+func (c *Config) applyUserDefaults() {
+	for name, u := range c.Users {
+		if u.ClientID == "" {
+			u.ClientID = name
 		}
-		r.Clients[name] = client
+		c.Users[name] = u
 	}
 }
 
@@ -210,7 +235,7 @@ func (c Config) Validate() error {
 			return fmt.Errorf("router %q %w", name, err)
 		}
 	}
-	return nil
+	return c.validateUsers()
 }
 
 func (r Router) Validate() error {
@@ -268,38 +293,82 @@ func (r Router) Validate() error {
 	if err := r.checkPortCollisions(); err != nil {
 		return err
 	}
-	for name, client := range r.Clients {
+	return nil
+}
+
+// validateUsers checks the top-level users and their per-router access against
+// the routers and services they reference.
+func (c Config) validateUsers() error {
+	for name, u := range c.Users {
 		if !isSafeName(name) {
-			return fmt.Errorf("client key %q must match ^[A-Za-z0-9][A-Za-z0-9_-]*$", name)
+			return fmt.Errorf("user key %q must match ^[A-Za-z0-9][A-Za-z0-9_-]*$", name)
 		}
-		if client.PSK == "" {
-			return fmt.Errorf("client %q psk is required", name)
+		if !isSafeName(u.ClientID) {
+			return fmt.Errorf("user %q client_id %q must match ^[A-Za-z0-9][A-Za-z0-9_-]*$", name, u.ClientID)
 		}
-		if !isSafePSK(client.PSK) {
-			return fmt.Errorf("client %q psk must use only base64url-safe characters: A-Z, a-z, 0-9, - and _", name)
-		}
-		for _, svc := range client.Services {
-			if _, ok := r.Services[svc]; !ok {
-				return fmt.Errorf("client %q references unknown service %q", name, svc)
+		for rn, access := range u.Access {
+			router, ok := c.Routers[rn]
+			if !ok {
+				return fmt.Errorf("user %q references unknown router %q", name, rn)
+			}
+			if access.PSK == "" {
+				return fmt.Errorf("user %q access to router %q requires a psk", name, rn)
+			}
+			if !isSafePSK(access.PSK) {
+				return fmt.Errorf("user %q psk for router %q must use only base64url-safe characters", name, rn)
+			}
+			for _, svc := range access.Services {
+				if _, ok := router.Services[svc]; !ok {
+					return fmt.Errorf("user %q references unknown service %q on router %q", name, svc, rn)
+				}
 			}
 		}
 	}
 	return nil
 }
 
-// Hash returns a stable per-router fingerprint used to detect whether that
-// router is up to date. The rendered .rsc is a deterministic function of the
-// router config, so hashing the marshaled router detects any drift. Deploy
-// (SSH connection) parameters are excluded: they do not affect the rendered
-// layer, so changing them must not read as drift.
-func (r Router) Hash() string {
+// RenderClients returns, for a router, the per-router projection of every user
+// with access to it: one RenderClient per (user × router) grant. Deterministic
+// order by user name.
+func (c Config) RenderClients(routerName string) []RenderClient {
+	var out []RenderClient
+	for _, name := range sortedStringKeys(c.Users) {
+		u := c.Users[name]
+		access, ok := u.Access[routerName]
+		if !ok || len(access.Services) == 0 {
+			continue
+		}
+		out = append(out, RenderClient{
+			Name:     name,
+			ClientID: u.ClientID,
+			PSK:      access.PSK,
+			Services: append([]string(nil), access.Services...),
+		})
+	}
+	return out
+}
+
+// RenderHash fingerprints exactly what a router's .rsc depends on: the router
+// (minus SSH deploy creds) and the per-router user projection. Both the renderer
+// and drift detection use it, so a change to a user's access or PSK on this
+// router is detected as drift.
+func RenderHash(r Router, clients []RenderClient) string {
 	r.Deploy = Deploy{}
-	data, err := yaml.Marshal(r)
+	payload := struct {
+		Router  Router
+		Clients []RenderClient
+	}{r, clients}
+	data, err := yaml.Marshal(payload)
 	if err != nil {
 		return ""
 	}
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
+}
+
+// RouterHash is the RenderHash of a router within this config.
+func (c Config) RouterHash(routerName string) string {
+	return RenderHash(c.Routers[routerName], c.RenderClients(routerName))
 }
 
 // Router returns the named router.
@@ -308,39 +377,52 @@ func (c Config) Router(name string) (Router, bool) {
 	return r, ok
 }
 
-// Resolve locates a (client, service) pair on the router. serviceName may be
-// empty when the client has exactly one service.
-func (r Router) Resolve(routerName, clientName, serviceName string) (Resolved, error) {
-	client, ok := r.Clients[clientName]
+// Resolve locates a (user, router, service) triple. serviceName may be empty
+// when the user has exactly one service on that router.
+func (c Config) Resolve(userName, routerName, serviceName string) (Resolved, error) {
+	u, ok := c.Users[userName]
 	if !ok {
-		return Resolved{}, fmt.Errorf("unknown client %q", clientName)
+		return Resolved{}, fmt.Errorf("unknown user %q", userName)
+	}
+	router, ok := c.Routers[routerName]
+	if !ok {
+		return Resolved{}, fmt.Errorf("unknown router %q", routerName)
+	}
+	access, ok := u.Access[routerName]
+	if !ok {
+		return Resolved{}, fmt.Errorf("user %q has no access to router %q", userName, routerName)
 	}
 	if serviceName == "" {
-		switch len(client.Services) {
+		switch len(access.Services) {
 		case 1:
-			serviceName = client.Services[0]
+			serviceName = access.Services[0]
 		case 0:
-			return Resolved{}, fmt.Errorf("client %q has no services", clientName)
+			return Resolved{}, fmt.Errorf("user %q has no services on router %q", userName, routerName)
 		default:
-			return Resolved{}, fmt.Errorf("client %q has multiple services; specify one of %v", clientName, client.Services)
+			return Resolved{}, fmt.Errorf("user %q has multiple services on router %q; specify one of %v", userName, routerName, access.Services)
 		}
 	}
-	if !clientHasService(client, serviceName) {
-		return Resolved{}, fmt.Errorf("client %q is not assigned service %q", clientName, serviceName)
+	if !slices.Contains(access.Services, serviceName) {
+		return Resolved{}, fmt.Errorf("user %q is not assigned service %q on router %q", userName, serviceName, routerName)
 	}
-	svc, ok := r.Services[serviceName]
+	svc, ok := router.Services[serviceName]
 	if !ok {
-		return Resolved{}, fmt.Errorf("unknown service %q", serviceName)
+		return Resolved{}, fmt.Errorf("unknown service %q on router %q", serviceName, routerName)
 	}
 	return Resolved{
-		RouterName: routerName, Router: r,
-		ClientName: clientName, Client: client,
+		RouterName: routerName, Router: router,
+		UserName: userName, ClientID: u.ClientID, PSK: access.PSK,
 		ServiceName: serviceName, Service: svc,
 	}, nil
 }
 
-func clientHasService(c Client, name string) bool {
-	return slices.Contains(c.Services, name)
+func sortedStringKeys[T any](m map[string]T) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // ports returns every dst-port a service occupies: its three knock ports and

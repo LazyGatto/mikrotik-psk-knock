@@ -38,7 +38,7 @@ func run(args []string) error {
 		return profileCmd(args[1:])
 	case "router":
 		return routerCmd(args[1:])
-	case "client":
+	case "client", "user":
 		return clientCmd(args[1:])
 	case "service":
 		return serviceCmd(args[1:])
@@ -69,10 +69,11 @@ func usage() {
   mkpk-provision router remove --config mkpk.yaml --name r1
   mkpk-provision service add --config mkpk.yaml [--router r1] --name ssh --stage1-port 41011 --stage2-port 41012 --token-port 41013 --target-type forward --target-port 2022 --target-to-address 192.0.2.10 --target-to-port 22
   mkpk-provision service add ... --target-type local --target-port 8291   # gate a port on the router itself
-  mkpk-provision client add --config mkpk.yaml [--router r1] --name laptop --services ssh,web
+  mkpk-provision user add --config mkpk.yaml [--router r1] --name laptop --services ssh,web   # grants access on the router
+  mkpk-provision user remove --config mkpk.yaml [--router r1] --name laptop [--all-routers]
   mkpk-provision token --config mkpk.yaml [--router r1] --client laptop [--service ssh] [--bucket N] [--debug]
   mkpk-provision routeros render --config mkpk.yaml [--router r1] [--out generated.rsc]
-  mkpk-provision export --config mkpk.yaml [--router r1] --user laptop [--out laptop.mkpk]
+  mkpk-provision export --config mkpk.yaml --user laptop [--router r1] [--out laptop.mkpk]   # all routers when --router omitted
   mkpk-provision deploy [status|uninstall] --config mkpk.yaml [--router r1]   # creds come from the router
   mkpk-provision serve --config mkpk.yaml [--addr 127.0.0.1:8765]
 `)
@@ -319,29 +320,56 @@ func serviceCmd(args []string) error {
 }
 
 func clientCmd(args []string) error {
-	if len(args) == 0 || args[0] != "add" {
-		return fmt.Errorf("usage: mkpk-provision client add --config mkpk.yaml --name laptop --service service")
+	sub := "add"
+	if len(args) > 0 && (args[0] == "add" || args[0] == "remove") {
+		sub = args[0]
+		args = args[1:]
+	} else if len(args) > 0 {
+		return fmt.Errorf("usage: mkpk-provision user [add|remove] --config mkpk.yaml --name laptop [--router r1] [--services a,b]")
 	}
-	fs := flag.NewFlagSet("client add", flag.ContinueOnError)
+	fs := flag.NewFlagSet("user "+sub, flag.ContinueOnError)
 	configPath := fs.String("config", "mkpk.yaml", "config path")
 	router := fs.String("router", "", "router name; sole router when empty")
 	name := fs.String("name", "", "user map key")
 	clientID := fs.String("client-id", "", "client_id; --name when empty")
-	services := fs.String("services", "", "comma-separated service names")
-	pskFlag := fs.String("psk", "", "user PSK; generated when empty")
-	force := fs.Bool("force", false, "replace existing user")
-	if err := fs.Parse(args[1:]); err != nil {
+	services := fs.String("services", "", "comma-separated service names on the router")
+	pskFlag := fs.String("psk", "", "per-router PSK; generated when empty for a new grant")
+	allRouters := fs.Bool("all-routers", false, "remove: drop the user from all routers")
+	force := fs.Bool("force", false, "replace an existing grant on the router")
+	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return err
 	}
+	if sub == "remove" {
+		if *name == "" {
+			return fmt.Errorf("--name is required")
+		}
+		if *allRouters {
+			cfg, err = admin.RemoveUser(cfg, *name)
+		} else {
+			rn, e := pickRouter(cfg, *router)
+			if e != nil {
+				return e
+			}
+			cfg, err = admin.RemoveUserAccess(cfg, rn, *name)
+		}
+		if err != nil {
+			return err
+		}
+		if err := admin.SaveConfig(*configPath, cfg); err != nil {
+			return err
+		}
+		fmt.Printf("user removed config=%s name=%s all_routers=%t\n", *configPath, *name, *allRouters)
+		return nil
+	}
 	rn, err := pickRouter(cfg, *router)
 	if err != nil {
 		return err
 	}
-	res, err := admin.AddClient(cfg, rn, admin.ClientOptions{
+	res, err := admin.AddUser(cfg, rn, admin.UserOptions{
 		Name:     *name,
 		ClientID: *clientID,
 		Services: splitList(*services),
@@ -354,9 +382,9 @@ func clientCmd(args []string) error {
 	if err := admin.SaveConfig(*configPath, res.Config); err != nil {
 		return err
 	}
-	cl := res.Config.Routers[rn].Clients[*name]
-	fmt.Printf("user added config=%s router=%s name=%s client_id=%s services=%s psk=%s\n",
-		*configPath, rn, *name, cl.ClientID, strings.Join(cl.Services, ","), res.PSKSource)
+	access := res.Config.Users[*name].Access[rn]
+	fmt.Printf("user granted config=%s router=%s name=%s client_id=%s services=%s psk=%s\n",
+		*configPath, rn, *name, res.Config.Users[*name].ClientID, strings.Join(access.Services, ","), res.PSKSource)
 	return nil
 }
 
@@ -413,9 +441,9 @@ func tokenCmd(args []string) error {
 			return fmt.Errorf("--bucket: %w", err)
 		}
 	}
-	value := token.Compute(res.Client.PSK, res.Service.ServiceName, res.Client.ClientID, bucket)
+	value := token.Compute(res.PSK, res.Service.ServiceName, res.ClientID, bucket)
 	if *debug {
-		fmt.Printf("service=%s client_id=%s bucket=%d token=%s\n", res.Service.ServiceName, res.Client.ClientID, bucket, value)
+		fmt.Printf("service=%s client_id=%s bucket=%d token=%s\n", res.Service.ServiceName, res.ClientID, bucket, value)
 		printWindowDebug(window)
 		return nil
 	}
@@ -456,7 +484,7 @@ func routerosCmd(args []string) error {
 func exportCmd(args []string) error {
 	fs := flag.NewFlagSet("export", flag.ContinueOnError)
 	configPath := fs.String("config", "mkpk.yaml", "config path")
-	router := fs.String("router", "", "router name; sole router when empty")
+	router := fs.String("router", "", "single router to export; all the user's routers when empty")
 	user := fs.String("user", "", "user name")
 	outPath := fs.String("out", "", "output file; stdout when empty")
 	if err := fs.Parse(args); err != nil {
@@ -469,11 +497,7 @@ func exportCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	rn, err := pickRouter(cfg, *router)
-	if err != nil {
-		return err
-	}
-	blob, err := admin.ExportUser(cfg, rn, *user)
+	blob, err := admin.ExportUser(cfg, *user, *router)
 	if err != nil {
 		return err
 	}
@@ -484,7 +508,11 @@ func exportCmd(args []string) error {
 	if err := os.WriteFile(*outPath, []byte(blob+"\n"), 0600); err != nil {
 		return err
 	}
-	fmt.Printf("invite for user=%s router=%s written to %s\n", *user, rn, *outPath)
+	scope := *router
+	if scope == "" {
+		scope = "all-routers"
+	}
+	fmt.Printf("invite for user=%s scope=%s written to %s\n", *user, scope, *outPath)
 	return nil
 }
 
@@ -611,7 +639,14 @@ func printSummary(path string, s admin.Summary) {
 				svc.TargetType, svc.TargetProtocol, svc.TargetPort, svc.TargetToAddress, svc.TargetToPort, svc.NotifyEnabled, svc.NotifyChannel)
 		}
 		for _, cl := range r.Clients {
-			fmt.Printf("  user name=%s client_id=%s services=%s psk=set\n", cl.Name, cl.ClientID, strings.Join(cl.Services, ","))
+			fmt.Printf("  access user=%s client_id=%s services=%s psk=set\n", cl.Name, cl.ClientID, strings.Join(cl.Services, ","))
+		}
+	}
+	fmt.Printf("users=%d\n", len(s.Users))
+	for _, u := range s.Users {
+		fmt.Printf("user name=%s client_id=%s\n", u.Name, u.ClientID)
+		for _, a := range u.Access {
+			fmt.Printf("  access router=%s services=%s psk=set\n", a.Router, strings.Join(a.Services, ","))
 		}
 	}
 }
@@ -643,6 +678,5 @@ func loadResolved(path, routerName, clientName, serviceName string) (config.Reso
 	if err != nil {
 		return config.Resolved{}, err
 	}
-	r, _ := cfg.Router(rn)
-	return r.Resolve(rn, clientName, serviceName)
+	return cfg.Resolve(clientName, rn, serviceName)
 }

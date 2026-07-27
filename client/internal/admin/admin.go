@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 
@@ -106,11 +107,18 @@ func InitConfig(o InitOptions) (config.Config, error) {
 				Notify:      config.Notify{Channel: "webhook"},
 			},
 		},
-		Clients: map[string]config.Client{
-			o.ClientName: {ClientID: o.ClientName, Services: []string{o.ServiceName}, PSK: psk},
-		},
 	}
-	return config.Config{Routers: map[string]config.Router{o.RouterName: router}}, nil
+	return config.Config{
+		Routers: map[string]config.Router{o.RouterName: router},
+		Users: map[string]config.User{
+			o.ClientName: {
+				ClientID: o.ClientName,
+				Access: map[string]config.UserAccess{
+					o.RouterName: {Services: []string{o.ServiceName}, PSK: psk},
+				},
+			},
+		},
+	}, nil
 }
 
 // RouterOptions describes a router to create or update: its address plus the
@@ -138,7 +146,6 @@ func SetRouter(cfg config.Config, o RouterOptions) (config.Config, error) {
 		r = config.Router{
 			Defaults: defaultDefaults(),
 			Services: map[string]config.Service{},
-			Clients:  map[string]config.Client{},
 		}
 	}
 	r.Address = o.Address
@@ -146,12 +153,19 @@ func SetRouter(cfg config.Config, o RouterOptions) (config.Config, error) {
 	return putRouter(cfg, o.Name, r), nil
 }
 
-// RemoveRouter removes a router entirely.
+// RemoveRouter removes a router entirely, along with every user's access to it
+// (access to a deleted router would otherwise dangle).
 func RemoveRouter(cfg config.Config, name string) (config.Config, error) {
 	if _, ok := cfg.Routers[name]; !ok {
 		return cfg, fmt.Errorf("router %q not found", name)
 	}
 	delete(cfg.Routers, name)
+	for un, u := range cfg.Users {
+		if _, ok := u.Access[name]; ok {
+			delete(u.Access, name)
+			cfg.Users[un] = u
+		}
+	}
 	return cfg, nil
 }
 
@@ -321,11 +335,13 @@ func RemoveService(cfg config.Config, routerName, name string) (config.Config, e
 		return cfg, fmt.Errorf("service %q not found", name)
 	}
 	var refs []string
-	for cn, c := range r.Clients {
-		for _, s := range c.Services {
-			if s == name {
-				refs = append(refs, cn)
-			}
+	for un, u := range cfg.Users {
+		access, ok := u.Access[routerName]
+		if !ok {
+			continue
+		}
+		if slices.Contains(access.Services, name) {
+			refs = append(refs, un)
 		}
 	}
 	if len(refs) > 0 {
@@ -336,8 +352,10 @@ func RemoveService(cfg config.Config, routerName, name string) (config.Config, e
 	return putRouter(cfg, routerName, r), nil
 }
 
-// ClientOptions describes a user to add. Empty PSK is generated.
-type ClientOptions struct {
+// UserOptions describes granting a user access on one router: the user identity
+// (common client_id) plus the services and per-router PSK for that router. Empty
+// PSK is generated for a new grant, or kept for an existing one.
+type UserOptions struct {
 	Name     string
 	ClientID string
 	Services []string
@@ -345,112 +363,168 @@ type ClientOptions struct {
 	Force    bool
 }
 
-// AddClientResult carries the updated config and where the PSK came from.
-type AddClientResult struct {
+// AddUserResult carries the updated config and where the PSK came from.
+type AddUserResult struct {
 	Config    config.Config
-	PSKSource string // "provided" or "generated"
+	PSKSource string // "provided", "generated" or "kept"
 }
 
-// AddClient adds or replaces a user on the router.
-func AddClient(cfg config.Config, routerName string, o ClientOptions) (AddClientResult, error) {
+// AddUser creates the user if needed and grants (or updates) its access on the
+// router: the services it may open there and the PSK used on that router. Other
+// routers' access is preserved.
+func AddUser(cfg config.Config, routerName string, o UserOptions) (AddUserResult, error) {
 	r, err := getRouter(cfg, routerName)
 	if err != nil {
-		return AddClientResult{}, err
+		return AddUserResult{}, err
 	}
 	if o.Name == "" {
-		return AddClientResult{}, fmt.Errorf("user name is required")
+		return AddUserResult{}, fmt.Errorf("user name is required")
 	}
 	for _, s := range o.Services {
 		if _, ok := r.Services[s]; !ok {
-			return AddClientResult{}, fmt.Errorf("unknown service %q", s)
+			return AddUserResult{}, fmt.Errorf("unknown service %q", s)
 		}
 	}
-	if r.Clients == nil {
-		r.Clients = map[string]config.Client{}
+	if cfg.Users == nil {
+		cfg.Users = map[string]config.User{}
 	}
-	if _, ok := r.Clients[o.Name]; ok && !o.Force {
-		return AddClientResult{}, fmt.Errorf("user %q already exists; use force to replace", o.Name)
+	u, existed := cfg.Users[o.Name]
+	if u.Access == nil {
+		u.Access = map[string]config.UserAccess{}
 	}
-	id := o.ClientID
-	if id == "" {
-		id = o.Name
+	if _, granted := u.Access[routerName]; existed && granted && !o.Force {
+		return AddUserResult{}, fmt.Errorf("user %q already has access to router %q; use force to replace", o.Name, routerName)
+	}
+	if o.ClientID != "" {
+		u.ClientID = o.ClientID
+	} else if u.ClientID == "" {
+		u.ClientID = o.Name
 	}
 	psk := o.PSK
 	source := "provided"
 	if psk == "" {
-		psk, err = GenerateSecret(32)
-		if err != nil {
-			return AddClientResult{}, err
+		if prev, granted := u.Access[routerName]; granted && prev.PSK != "" {
+			psk, source = prev.PSK, "kept"
+		} else {
+			if psk, err = GenerateSecret(32); err != nil {
+				return AddUserResult{}, err
+			}
+			source = "generated"
 		}
-		source = "generated"
 	}
-	r.Clients[o.Name] = config.Client{ClientID: id, Services: o.Services, PSK: psk}
-	return AddClientResult{Config: putRouter(cfg, routerName, r), PSKSource: source}, nil
+	u.Access[routerName] = config.UserAccess{Services: o.Services, PSK: psk}
+	cfg.Users[o.Name] = u
+	return AddUserResult{Config: cfg, PSKSource: source}, nil
 }
 
-// RemoveClient removes a user from the router.
-func RemoveClient(cfg config.Config, routerName, name string) (config.Config, error) {
-	r, err := getRouter(cfg, routerName)
-	if err != nil {
-		return cfg, err
-	}
-	if _, ok := r.Clients[name]; !ok {
+// RemoveUserAccess revokes a user's access on one router. If that leaves the
+// user with no access anywhere, the user is removed entirely.
+func RemoveUserAccess(cfg config.Config, routerName, name string) (config.Config, error) {
+	u, ok := cfg.Users[name]
+	if !ok {
 		return cfg, fmt.Errorf("user %q not found", name)
 	}
-	delete(r.Clients, name)
-	return putRouter(cfg, routerName, r), nil
+	if _, ok := u.Access[routerName]; !ok {
+		return cfg, fmt.Errorf("user %q has no access to router %q", name, routerName)
+	}
+	delete(u.Access, routerName)
+	if len(u.Access) == 0 {
+		delete(cfg.Users, name)
+	} else {
+		cfg.Users[name] = u
+	}
+	return cfg, nil
 }
 
-// ExportUser builds a per-user invite blob for a user on a router: the router
-// address, bucket seconds, that user's client_id and PSK, and the ports of the
-// enabled services they are assigned. It never includes other users' secrets.
-func ExportUser(cfg config.Config, routerName, userName string) (string, error) {
-	r, err := getRouter(cfg, routerName)
-	if err != nil {
-		return "", err
+// RemoveUser removes a user entirely, across all routers.
+func RemoveUser(cfg config.Config, name string) (config.Config, error) {
+	if _, ok := cfg.Users[name]; !ok {
+		return cfg, fmt.Errorf("user %q not found", name)
 	}
-	c, ok := r.Clients[userName]
+	delete(cfg.Users, name)
+	return cfg, nil
+}
+
+// ExportUser builds an invite blob for a user. When routerName is empty the blob
+// bundles every router the user can reach; otherwise it carries just that one.
+// Each router entry has its own address, bucket seconds, PSK and enabled
+// services. The common client_id is shared. It never includes other users'
+// secrets.
+func ExportUser(cfg config.Config, userName, routerName string) (string, error) {
+	u, ok := cfg.Users[userName]
 	if !ok {
 		return "", fmt.Errorf("unknown user %q", userName)
 	}
-	b := invite.Blob{
-		Version:       invite.Version,
-		Router:        r.Address,
-		BucketSeconds: r.Defaults.BucketSeconds,
-		ClientID:      c.ClientID,
-		PSK:           c.PSK,
+	b := invite.Blob{Version: invite.Version, ClientID: u.ClientID}
+	routerNames := sortedKeys(u.Access)
+	if routerName != "" {
+		if _, ok := u.Access[routerName]; !ok {
+			return "", fmt.Errorf("user %q has no access to router %q", userName, routerName)
+		}
+		routerNames = []string{routerName}
 	}
-	for _, sn := range c.Services {
-		s, ok := r.Services[sn]
-		if !ok || !s.Enabled() {
+	for _, rn := range routerNames {
+		r, ok := cfg.Routers[rn]
+		if !ok {
 			continue
 		}
-		b.Services = append(b.Services, invite.Service{
-			Name:      s.ServiceName,
-			Stage1:    s.Stage1Port,
-			Stage2:    s.Stage2Port,
-			Token:     s.TokenPort,
-			CheckPort: s.Target.Port,
-		})
+		access := u.Access[rn]
+		rb := invite.Router{
+			Router:        r.Address,
+			BucketSeconds: r.Defaults.BucketSeconds,
+			PSK:           access.PSK,
+		}
+		for _, sn := range access.Services {
+			s, ok := r.Services[sn]
+			if !ok || !s.Enabled() {
+				continue
+			}
+			rb.Services = append(rb.Services, invite.Service{
+				Name:      s.ServiceName,
+				Stage1:    s.Stage1Port,
+				Stage2:    s.Stage2Port,
+				Token:     s.TokenPort,
+				CheckPort: s.Target.Port,
+			})
+		}
+		if len(rb.Services) > 0 {
+			b.Routers = append(b.Routers, rb)
+		}
 	}
-	if len(b.Services) == 0 {
+	if len(b.Routers) == 0 {
 		return "", fmt.Errorf("user %q has no enabled services to export", userName)
 	}
 	return invite.Encode(b)
 }
 
-// Render renders one router into RouterOS script.
+// Render renders one router (its services and the users granted access) into
+// RouterOS script.
 func Render(cfg config.Config, routerName string) (string, error) {
 	r, err := getRouter(cfg, routerName)
 	if err != nil {
 		return "", err
 	}
-	return routeros.RenderConfig(r)
+	return routeros.RenderConfig(r, cfg.RenderClients(routerName))
 }
 
 // Summary is a structured, secret-free view of the config for CLI/JSON output.
 type Summary struct {
 	Routers []RouterSummary `json:"routers"`
+	Users   []UserSummary   `json:"users"`
+}
+
+// UserSummary is the top-level, secret-free view of a user and its per-router
+// access.
+type UserSummary struct {
+	Name     string          `json:"name"`
+	ClientID string          `json:"client_id"`
+	Access   []AccessSummary `json:"access"`
+}
+
+type AccessSummary struct {
+	Router   string   `json:"router"`
+	Services []string `json:"services"`
+	PSKSet   bool     `json:"psk_set"`
 }
 
 type RouterSummary struct {
@@ -505,7 +579,7 @@ func Summarize(cfg config.Config) Summary {
 	var s Summary
 	for _, rn := range sortedKeys(cfg.Routers) {
 		r := cfg.Routers[rn]
-		rs := RouterSummary{Name: rn, Address: r.Address, Hash: r.Hash(), Deploy: deploySummary(r), Defaults: r.Defaults}
+		rs := RouterSummary{Name: rn, Address: r.Address, Hash: cfg.RouterHash(rn), Deploy: deploySummary(r), Defaults: r.Defaults}
 		for _, name := range sortedKeys(r.Services) {
 			svc := r.Services[name]
 			rs.Services = append(rs.Services, ServiceSummary{
@@ -525,13 +599,26 @@ func Summarize(cfg config.Config) Summary {
 				NotifyChannel:   svc.Notify.Channel,
 			})
 		}
-		for _, name := range sortedKeys(r.Clients) {
-			c := r.Clients[name]
+		for _, un := range sortedKeys(cfg.Users) {
+			u := cfg.Users[un]
+			access, ok := u.Access[rn]
+			if !ok {
+				continue
+			}
 			rs.Clients = append(rs.Clients, ClientSummary{
-				Name: name, ClientID: c.ClientID, Services: c.Services, PSKSet: c.PSK != "",
+				Name: un, ClientID: u.ClientID, Services: access.Services, PSKSet: access.PSK != "",
 			})
 		}
 		s.Routers = append(s.Routers, rs)
+	}
+	for _, un := range sortedKeys(cfg.Users) {
+		u := cfg.Users[un]
+		us := UserSummary{Name: un, ClientID: u.ClientID}
+		for _, rn := range sortedKeys(u.Access) {
+			access := u.Access[rn]
+			us.Access = append(us.Access, AccessSummary{Router: rn, Services: access.Services, PSKSet: access.PSK != ""})
+		}
+		s.Users = append(s.Users, us)
 	}
 	return s
 }

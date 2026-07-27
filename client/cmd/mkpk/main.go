@@ -100,10 +100,10 @@ func knockCmd(args []string) error {
 	}
 	window := token.InspectWindow(now, res.Router.Defaults.BucketSeconds)
 	bucket := window.Bucket
-	value := token.Compute(res.Client.PSK, res.Service.ServiceName, res.Client.ClientID, bucket)
+	value := token.Compute(res.PSK, res.Service.ServiceName, res.ClientID, bucket)
 	if *debug {
 		fmt.Printf("router=%s service=%s client_id=%s bucket=%d stage1=%d stage2=%d token_port=%d interval=%s stage_duration=%s token_duration=%s noise=%d min_bucket_age=%s check=%t\n",
-			router, res.Service.ServiceName, res.Client.ClientID, bucket, res.Service.Stage1Port, res.Service.Stage2Port, res.Service.TokenPort, *interval, *stageDuration, *tokenDuration, *noisePackets, *minBucketAge, *check)
+			router, res.Service.ServiceName, res.ClientID, bucket, res.Service.Stage1Port, res.Service.Stage2Port, res.Service.TokenPort, *interval, *stageDuration, *tokenDuration, *noisePackets, *minBucketAge, *check)
 		printWindowDebug(window)
 	}
 	var logf func(string, ...any)
@@ -282,9 +282,40 @@ func resolveTarget(configPath, inviteFlag, routerName, clientName, serviceName s
 		if err != nil {
 			return config.Resolved{}, err
 		}
-		return b.ToRouter().Resolve("invite", b.ClientID, serviceName)
+		cfg := b.ToConfig()
+		rn, err := pickRouterKey(cfg, routerName)
+		if err != nil {
+			return config.Resolved{}, err
+		}
+		return cfg.Resolve(b.ClientID, rn, serviceName)
 	}
 	return loadResolved(configPath, routerName, clientName, serviceName)
+}
+
+// pickRouterKey resolves the router selector against a config's router keys.
+// An empty selector is allowed only when there is exactly one router.
+func pickRouterKey(cfg config.Config, routerName string) (string, error) {
+	if routerName != "" {
+		if _, ok := cfg.Routers[routerName]; !ok {
+			return "", fmt.Errorf("unknown router %q (have %v)", routerName, routerKeys(cfg))
+		}
+		return routerName, nil
+	}
+	if len(cfg.Routers) != 1 {
+		return "", fmt.Errorf("--router is required (invite has %d routers: %v)", len(cfg.Routers), routerKeys(cfg))
+	}
+	for name := range cfg.Routers {
+		return name, nil
+	}
+	return "", fmt.Errorf("no routers")
+}
+
+func routerKeys(cfg config.Config) []string {
+	keys := make([]string, 0, len(cfg.Routers))
+	for k := range cfg.Routers {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 func loadBlob(v string) (invite.Blob, error) {
@@ -307,17 +338,9 @@ func loadResolved(path, routerName, clientName, serviceName string) (config.Reso
 	if err != nil {
 		return config.Resolved{}, err
 	}
-	if routerName == "" {
-		if len(cfg.Routers) != 1 {
-			return config.Resolved{}, fmt.Errorf("--router is required (config has %d routers)", len(cfg.Routers))
-		}
-		for name := range cfg.Routers {
-			routerName = name
-		}
+	rn, err := pickRouterKey(cfg, routerName)
+	if err != nil {
+		return config.Resolved{}, err
 	}
-	r, ok := cfg.Router(routerName)
-	if !ok {
-		return config.Resolved{}, fmt.Errorf("unknown router %q", routerName)
-	}
-	return r.Resolve(routerName, clientName, serviceName)
+	return cfg.Resolve(clientName, rn, serviceName)
 }

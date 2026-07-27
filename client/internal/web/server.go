@@ -272,7 +272,8 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	blob, err := admin.ExportUser(cfg, q.Get("router"), q.Get("user"))
+	// router empty → bundle all of the user's routers into one blob.
+	blob, err := admin.ExportUser(cfg, q.Get("user"), q.Get("router"))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -351,14 +352,14 @@ func (s *Server) handleClient(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "invalid json: "+err.Error())
 			return
 		}
-		var res admin.AddClientResult
-		res, err = admin.AddClient(cfg, req.Router, admin.ClientOptions{
+		var res admin.AddUserResult
+		res, err = admin.AddUser(cfg, req.Router, admin.UserOptions{
 			Name: req.Name, ClientID: req.ClientID, Services: req.Services, PSK: req.PSK, Force: true,
 		})
 		cfg = res.Config
 	case http.MethodDelete:
 		q := r.URL.Query()
-		cfg, err = admin.RemoveClient(cfg, q.Get("router"), q.Get("name"))
+		cfg, err = admin.RemoveUserAccess(cfg, q.Get("router"), q.Get("name"))
 	default:
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return

@@ -24,11 +24,14 @@ func TestInitConfigValidAndRequiresAddress(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("InitConfig produced invalid config: %v", err)
 	}
-	if cfg.Routers[rn].Clients["cli"].PSK == "" {
+	if cfg.Users["cli"].Access[rn].PSK == "" {
 		t.Fatal("InitConfig did not generate a PSK")
 	}
-	if cfg.Routers[rn].Clients["cli"].Services[0] != "svc" {
-		t.Fatal("InitConfig client not assigned the service")
+	if cfg.Users["cli"].Access[rn].Services[0] != "svc" {
+		t.Fatal("InitConfig user not granted the service")
+	}
+	if cfg.Users["cli"].ClientID != "cli" {
+		t.Fatal("InitConfig user client_id wrong")
 	}
 	if _, err := InitConfig(InitOptions{RouterName: rn, ServiceName: "svc", ClientName: "cli"}); err == nil {
 		t.Fatal("InitConfig without address should error")
@@ -184,47 +187,78 @@ func TestRemoveServiceRefusesReferenced(t *testing.T) {
 	if _, err := RemoveService(cfg, rn, "svc"); err == nil {
 		t.Fatal("RemoveService should refuse a referenced service")
 	}
-	cfg, _ = RemoveClient(cfg, rn, "cli")
+	cfg, _ = RemoveUserAccess(cfg, rn, "cli")
 	if _, err := RemoveService(cfg, rn, "svc"); err != nil {
 		t.Fatalf("RemoveService after unref error = %v", err)
 	}
 }
 
-func TestAddClientGeneratesPSKAndServices(t *testing.T) {
+func TestAddUserGeneratesPSKAndGrants(t *testing.T) {
 	cfg := initCfg(t)
 	cfg, _ = AddService(cfg, rn, ServiceOptions{Name: "web", Stage1Port: 42001, Stage2Port: 42002, TokenPort: 42003, Target: config.Target{Type: config.TargetForward, Protocol: "tcp", Port: 3443, ToAddress: "192.0.2.20", ToPort: 443}})
 
-	res, err := AddClient(cfg, rn, ClientOptions{Name: "phone", Services: []string{"svc", "web"}})
+	res, err := AddUser(cfg, rn, UserOptions{Name: "phone", Services: []string{"svc", "web"}})
 	if err != nil {
-		t.Fatalf("AddClient() error = %v", err)
+		t.Fatalf("AddUser() error = %v", err)
 	}
-	if res.PSKSource != "generated" || res.Config.Routers[rn].Clients["phone"].PSK == "" {
-		t.Fatalf("AddClient did not generate PSK: source=%s", res.PSKSource)
+	if res.PSKSource != "generated" || res.Config.Users["phone"].Access[rn].PSK == "" {
+		t.Fatalf("AddUser did not generate PSK: source=%s", res.PSKSource)
 	}
-	if len(res.Config.Routers[rn].Clients["phone"].Services) != 2 {
-		t.Fatal("AddClient did not assign both services")
+	if len(res.Config.Users["phone"].Access[rn].Services) != 2 {
+		t.Fatal("AddUser did not grant both services")
 	}
 
-	res, err = AddClient(res.Config, rn, ClientOptions{Name: "laptop", Services: []string{"svc"}, PSK: "provided-psk"})
+	res, err = AddUser(res.Config, rn, UserOptions{Name: "laptop", Services: []string{"svc"}, PSK: "provided-psk"})
 	if err != nil {
-		t.Fatalf("AddClient() error = %v", err)
+		t.Fatalf("AddUser() error = %v", err)
 	}
 	if res.PSKSource != "provided" {
-		t.Fatalf("AddClient psk source = %s, want provided", res.PSKSource)
+		t.Fatalf("AddUser psk source = %s, want provided", res.PSKSource)
 	}
 
-	if _, err := AddClient(cfg, rn, ClientOptions{Name: "x", Services: []string{"missing"}}); err == nil {
-		t.Fatal("AddClient with unknown service should error")
+	if _, err := AddUser(cfg, rn, UserOptions{Name: "x", Services: []string{"missing"}}); err == nil {
+		t.Fatal("AddUser with unknown service should error")
+	}
+}
+
+func TestAddUserSpansRoutersAndKeepsPSK(t *testing.T) {
+	cfg := initCfg(t) // router rn with service svc, user cli granted on rn
+	cfg, err := SetRouter(cfg, RouterOptions{Name: "r2", Address: "10.0.0.2"})
+	if err != nil {
+		t.Fatalf("SetRouter() error = %v", err)
+	}
+	cfg, _ = AddService(cfg, "r2", ServiceOptions{Name: "s2", Stage1Port: 51001, Stage2Port: 51002, TokenPort: 51003, Target: config.Target{Type: config.TargetLocal, Protocol: "tcp", Port: 8291}})
+
+	// Grant the same user access on r2 — access on rn must be preserved.
+	res, err := AddUser(cfg, "r2", UserOptions{Name: "cli", Services: []string{"s2"}, PSK: "r2-psk"})
+	if err != nil {
+		t.Fatalf("AddUser(r2) error = %v", err)
+	}
+	u := res.Config.Users["cli"]
+	if len(u.Access) != 2 {
+		t.Fatalf("user should have access on 2 routers, got %d", len(u.Access))
+	}
+	if u.Access[rn].PSK == u.Access["r2"].PSK {
+		t.Fatal("per-router PSKs must differ")
+	}
+
+	// Editing r2 services with a blank PSK must keep the r2 PSK.
+	res2, err := AddUser(res.Config, "r2", UserOptions{Name: "cli", Services: []string{"s2"}, Force: true})
+	if err != nil {
+		t.Fatalf("AddUser(edit) error = %v", err)
+	}
+	if res2.PSKSource != "kept" || res2.Config.Users["cli"].Access["r2"].PSK != "r2-psk" {
+		t.Fatalf("edit did not keep the r2 PSK: source=%s", res2.PSKSource)
 	}
 }
 
 func TestExportUserBlobTokensMatchConfig(t *testing.T) {
 	cfg := initCfg(t)
 	cfg, _ = AddService(cfg, rn, ServiceOptions{Name: "web", Stage1Port: 42001, Stage2Port: 42002, TokenPort: 42003, Target: config.Target{Type: config.TargetForward, Protocol: "tcp", Port: 3443, ToAddress: "192.0.2.20", ToPort: 443}})
-	res, _ := AddClient(cfg, rn, ClientOptions{Name: "phone", Services: []string{"svc", "web"}, PSK: "phone-psk-value"})
+	res, _ := AddUser(cfg, rn, UserOptions{Name: "phone", Services: []string{"svc", "web"}, PSK: "phone-psk-value", Force: true})
 	cfg = res.Config
 
-	blobStr, err := ExportUser(cfg, rn, "phone")
+	blobStr, err := ExportUser(cfg, "phone", "")
 	if err != nil {
 		t.Fatalf("ExportUser() error = %v", err)
 	}
@@ -232,26 +266,25 @@ func TestExportUserBlobTokensMatchConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Decode() error = %v", err)
 	}
-	if len(b.Services) != 2 || b.PSK != "phone-psk-value" {
+	if len(b.Routers) != 1 || len(b.Routers[0].Services) != 2 || b.Routers[0].PSK != "phone-psk-value" {
 		t.Fatalf("blob wrong: %+v", b)
 	}
 
 	// The token computed from the blob must equal the token computed from the full
 	// config for the same (service, user, bucket) — otherwise the client can't open.
 	const bucket = 59504932
-	router := cfg.Routers[rn]
-	blobRouter := b.ToRouter()
+	blobCfg := b.ToConfig()
 	for _, svc := range []string{"svc", "web"} {
-		full, err := router.Resolve(rn, "phone", svc)
+		full, err := cfg.Resolve("phone", rn, svc)
 		if err != nil {
 			t.Fatalf("config Resolve %s error = %v", svc, err)
 		}
-		fromBlob, err := blobRouter.Resolve("invite", "phone", svc)
+		fromBlob, err := blobCfg.Resolve("phone", "r.example", svc)
 		if err != nil {
 			t.Fatalf("blob Resolve %s error = %v", svc, err)
 		}
-		ct := token.Compute(full.Client.PSK, full.Service.ServiceName, full.Client.ClientID, bucket)
-		bt := token.Compute(fromBlob.Client.PSK, fromBlob.Service.ServiceName, fromBlob.Client.ClientID, bucket)
+		ct := token.Compute(full.PSK, full.Service.ServiceName, full.ClientID, bucket)
+		bt := token.Compute(fromBlob.PSK, fromBlob.Service.ServiceName, fromBlob.ClientID, bucket)
 		if ct != bt {
 			t.Fatalf("service %s: blob token != config token", svc)
 		}
@@ -273,5 +306,8 @@ func TestSummarizeIsSecretFreeAndOrdered(t *testing.T) {
 	}
 	if !r.Services[0].Enabled {
 		t.Fatal("summary service should be enabled")
+	}
+	if len(s.Users) != 1 || s.Users[0].Name != "cli" || len(s.Users[0].Access) != 1 || !s.Users[0].Access[0].PSKSet {
+		t.Fatalf("top-level users summary wrong: %+v", s.Users)
 	}
 }

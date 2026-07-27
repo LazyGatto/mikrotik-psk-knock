@@ -59,12 +59,14 @@ type renderConfigData struct {
 	MetaHash        string // config fingerprint stamped into the persistent mkpk-tt-meta marker
 }
 
-// RenderConfig renders one router's enabled services and its users into RouterOS
-// objects. The render unit is a (user × service) pair: a user assigned N services
-// yields N token rules / hit lists, each gated on its service's stage2 list. r is
-// expected to be already validated (config.Load validates it). Disabled services
-// (and their user pairs) are skipped.
-func RenderConfig(r config.Router) (string, error) {
+// RenderConfig renders one router's enabled services and the users granted
+// access to it into RouterOS objects. The render unit is a (user × service)
+// pair: a user assigned N services yields N token rules / hit lists, each gated
+// on its service's stage2 list. r and clients are expected to be already
+// validated (config.Load validates them). clients is the per-router user
+// projection (config.Config.RenderClients). Disabled services (and their user
+// pairs) are skipped.
+func RenderConfig(r config.Router, clients []config.RenderClient) (string, error) {
 	data := renderConfigData{
 		BucketSeconds:   r.Defaults.BucketSeconds,
 		StageTimeout:    r.Defaults.StageTimeout,
@@ -91,19 +93,18 @@ func RenderConfig(r config.Router) (string, error) {
 		})
 	}
 
-	seen := map[string]string{} // pairKey → "client/service" for collision detection
-	for _, ck := range sortedKeys(r.Clients) {
-		c := r.Clients[ck]
+	seen := map[string]string{} // pairKey → "user/service" for collision detection
+	for _, c := range clients {
 		for _, sk := range sortedStrings(c.Services) {
 			s, ok := r.Services[sk]
 			if !ok || !s.Enabled() {
 				continue
 			}
-			pairKey := ck + "-" + sk
+			pairKey := c.Name + "-" + sk
 			if prev, dup := seen[pairKey]; dup {
-				return "", fmt.Errorf("object name collision %q from client/service %q and %q; rename one", pairKey, prev, ck+"/"+sk)
+				return "", fmt.Errorf("object name collision %q from user/service %q and %q; rename one", pairKey, prev, c.Name+"/"+sk)
 			}
-			seen[pairKey] = ck + "/" + sk
+			seen[pairKey] = c.Name + "/" + sk
 			data.Clients = append(data.Clients, cliData{
 				Key:                 pairKey,
 				ServiceKey:          sk,
@@ -131,7 +132,7 @@ func RenderConfig(r config.Router) (string, error) {
 		}
 	}
 	data.ClientsArray = buildClientsArray(data.Clients)
-	data.MetaHash = r.Hash()
+	data.MetaHash = config.RenderHash(r, clients)
 
 	var out bytes.Buffer
 	if err := configTemplate.Execute(&out, data); err != nil {

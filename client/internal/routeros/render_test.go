@@ -8,7 +8,7 @@ import (
 )
 
 func TestRenderUsesConfiguredBucketSeconds(t *testing.T) {
-	rendered, err := RenderConfig(singleRouter(60))
+	rendered, err := RenderConfig(singleRouter(60), singleClients())
 	if err != nil {
 		t.Fatalf("RenderConfig() error = %v", err)
 	}
@@ -21,7 +21,7 @@ func TestRenderUsesConfiguredBucketSeconds(t *testing.T) {
 }
 
 func TestRenderIncludesSafePSKLiteral(t *testing.T) {
-	rendered, err := RenderConfig(singleRouter(30))
+	rendered, err := RenderConfig(singleRouter(30), singleClients())
 	if err != nil {
 		t.Fatalf("RenderConfig() error = %v", err)
 	}
@@ -31,12 +31,11 @@ func TestRenderIncludesSafePSKLiteral(t *testing.T) {
 }
 
 func TestRenderConfigMultiProfile(t *testing.T) {
-	rendered, err := RenderConfig(multiRouter())
+	rendered, err := RenderConfig(multiRouter(), multiClients())
 	if err != nil {
 		t.Fatalf("RenderConfig() error = %v", err)
 	}
 
-	// Per-service stage lists.
 	for _, want := range []string{
 		"address-list=mkpk-tt-stage1-svc-a",
 		"address-list=mkpk-tt-stage2-svc-a",
@@ -48,8 +47,6 @@ func TestRenderConfigMultiProfile(t *testing.T) {
 		}
 	}
 
-	// Per (user×service) token rules, hit lists and poller entries. Pair key is
-	// <client>-<service>.
 	for _, want := range []string{
 		`comment="mkpk-tt token now alice-svc-a"`,
 		`comment="mkpk-tt token prev bob-svc-b"`,
@@ -63,7 +60,6 @@ func TestRenderConfigMultiProfile(t *testing.T) {
 		}
 	}
 
-	// Exactly one poller script and one poller scheduler.
 	if strings.Contains(rendered, `add name="mkpk-tt-poller-`) {
 		t.Fatalf("rendered script still uses per-client poller scripts:\n%s", rendered)
 	}
@@ -71,7 +67,6 @@ func TestRenderConfigMultiProfile(t *testing.T) {
 		t.Fatalf("expected exactly one mkpk-tt-poller script, got %d:\n%s", got, rendered)
 	}
 
-	// alice on svc-a gated on svc-a's stage2; per-service allowed-list isolation.
 	if !strings.Contains(rendered, "src-address-list=mkpk-tt-stage2-svc-a content=\"mkpk-tt-token-not-initialized\" \\\n    address-list=mkpk-tt-hit-now-alice-svc-a") {
 		t.Fatalf("alice token rule not gated on svc-a stage2:\n%s", rendered)
 	}
@@ -88,13 +83,11 @@ func TestRenderConfigMultiProfile(t *testing.T) {
 }
 
 func TestRenderUserOnMultipleServices(t *testing.T) {
-	r := multiRouter()
+	clients := multiClients()
 	// alice gets both services.
-	a := r.Clients["alice"]
-	a.Services = []string{"svc-a", "svc-b"}
-	r.Clients["alice"] = a
+	clients[0].Services = []string{"svc-a", "svc-b"}
 
-	rendered, err := RenderConfig(r)
+	rendered, err := RenderConfig(multiRouter(), clients)
 	if err != nil {
 		t.Fatalf("RenderConfig() error = %v", err)
 	}
@@ -116,7 +109,7 @@ func TestRenderSkipsDisabledService(t *testing.T) {
 	svc.Disabled = true
 	r.Services["svc-b"] = svc
 
-	rendered, err := RenderConfig(r)
+	rendered, err := RenderConfig(r, multiClients())
 	if err != nil {
 		t.Fatalf("RenderConfig() error = %v", err)
 	}
@@ -130,24 +123,25 @@ func TestRenderSkipsDisabledService(t *testing.T) {
 
 func TestRenderStampsConfigHash(t *testing.T) {
 	r := multiRouter()
-	rendered, err := RenderConfig(r)
+	clients := multiClients()
+	rendered, err := RenderConfig(r, clients)
 	if err != nil {
 		t.Fatalf("RenderConfig() error = %v", err)
 	}
 	if !strings.Contains(rendered, `add name="mkpk-tt-meta"`) {
 		t.Fatalf("rendered script missing mkpk-tt-meta marker:\n%s", rendered)
 	}
-	if !strings.Contains(rendered, "mkpk-config-hash="+r.Hash()) {
-		t.Fatalf("rendered script does not stamp config hash %s:\n%s", r.Hash(), rendered)
+	if !strings.Contains(rendered, "mkpk-config-hash="+config.RenderHash(r, clients)) {
+		t.Fatalf("rendered script does not stamp the render hash:\n%s", rendered)
 	}
 }
 
 func TestRenderConfigDeterministicOrdering(t *testing.T) {
-	a, err := RenderConfig(multiRouter())
+	a, err := RenderConfig(multiRouter(), multiClients())
 	if err != nil {
 		t.Fatalf("RenderConfig() error = %v", err)
 	}
-	b, err := RenderConfig(multiRouter())
+	b, err := RenderConfig(multiRouter(), multiClients())
 	if err != nil {
 		t.Fatalf("RenderConfig() error = %v", err)
 	}
@@ -157,7 +151,7 @@ func TestRenderConfigDeterministicOrdering(t *testing.T) {
 }
 
 func TestRenderNotifyUsesJSONPayload(t *testing.T) {
-	rendered, err := RenderConfig(multiRouter())
+	rendered, err := RenderConfig(multiRouter(), multiClients())
 	if err != nil {
 		t.Fatalf("RenderConfig() error = %v", err)
 	}
@@ -186,11 +180,9 @@ func TestRenderNotifyTelegramChannel(t *testing.T) {
 				},
 			},
 		},
-		Clients: map[string]config.Client{
-			"phone": {ClientID: "phone", Services: []string{"tg"}, PSK: "phone-psk"},
-		},
 	}
-	rendered, err := RenderConfig(r)
+	clients := []config.RenderClient{{Name: "phone", ClientID: "phone", PSK: "phone-psk", Services: []string{"tg"}}}
+	rendered, err := RenderConfig(r, clients)
 	if err != nil {
 		t.Fatalf("RenderConfig() error = %v", err)
 	}
@@ -221,11 +213,9 @@ func TestRenderNotifyEmailChannel(t *testing.T) {
 				},
 			},
 		},
-		Clients: map[string]config.Client{
-			"phone": {ClientID: "phone", Services: []string{"mail"}, PSK: "phone-psk"},
-		},
 	}
-	rendered, err := RenderConfig(r)
+	clients := []config.RenderClient{{Name: "phone", ClientID: "phone", PSK: "phone-psk", Services: []string{"mail"}}}
+	rendered, err := RenderConfig(r, clients)
 	if err != nil {
 		t.Fatalf("RenderConfig() error = %v", err)
 	}
@@ -243,7 +233,7 @@ func TestRenderNotifyEmailChannel(t *testing.T) {
 }
 
 func TestRenderForwardTargetEmitsNatAndForwardAccept(t *testing.T) {
-	rendered, err := RenderConfig(multiRouter()) // svc-a/svc-b are forward targets
+	rendered, err := RenderConfig(multiRouter(), multiClients())
 	if err != nil {
 		t.Fatalf("RenderConfig() error = %v", err)
 	}
@@ -264,14 +254,13 @@ func TestRenderLocalTargetEmitsInputAccept(t *testing.T) {
 	svc.Target = config.Target{Type: config.TargetLocal, Protocol: "tcp", Port: 8291, Comment: "mkpk-tt target svc-a"}
 	r.Services["svc-a"] = svc
 
-	rendered, err := RenderConfig(r)
+	rendered, err := RenderConfig(r, multiClients())
 	if err != nil {
 		t.Fatalf("RenderConfig() error = %v", err)
 	}
 	if !strings.Contains(rendered, `/ip firewall filter add chain=input action=accept protocol=tcp dst-port=8291`) {
 		t.Fatalf("local target missing input accept:\n%s", rendered)
 	}
-	// A local target must not produce a dst-nat rule for its port.
 	if strings.Contains(rendered, `dst-nat protocol=tcp dst-port=8291`) {
 		t.Fatalf("local target should not produce a dst-nat rule:\n%s", rendered)
 	}
@@ -288,10 +277,11 @@ func singleRouter(bucketSeconds int64) config.Router {
 				Target:      config.Target{Type: config.TargetForward, Protocol: "tcp", Comment: "mkpk-tt target demo-service", Port: 2222, ToAddress: "192.0.2.10", ToPort: 22},
 			},
 		},
-		Clients: map[string]config.Client{
-			"demo-client": {ClientID: "demo-client", Services: []string{"demo-service"}, PSK: "mkpk-prototype-psk"},
-		},
 	}
+}
+
+func singleClients() []config.RenderClient {
+	return []config.RenderClient{{Name: "demo-client", ClientID: "demo-client", PSK: "mkpk-prototype-psk", Services: []string{"demo-service"}}}
 }
 
 func multiRouter() config.Router {
@@ -310,9 +300,12 @@ func multiRouter() config.Router {
 				Target:      config.Target{Type: config.TargetForward, Protocol: "tcp", Comment: "mkpk-tt target svc-b", Port: 3333, ToAddress: "192.0.2.20", ToPort: 443},
 			},
 		},
-		Clients: map[string]config.Client{
-			"alice": {ClientID: "alice", Services: []string{"svc-a"}, PSK: "alice-psk"},
-			"bob":   {ClientID: "bob", Services: []string{"svc-b"}, PSK: "bob-psk"},
-		},
+	}
+}
+
+func multiClients() []config.RenderClient {
+	return []config.RenderClient{
+		{Name: "alice", ClientID: "alice", PSK: "alice-psk", Services: []string{"svc-a"}},
+		{Name: "bob", ClientID: "bob", PSK: "bob-psk", Services: []string{"svc-b"}},
 	}
 }

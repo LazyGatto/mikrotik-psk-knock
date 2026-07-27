@@ -2,18 +2,19 @@ package config
 
 import "testing"
 
-func TestValidateAcceptsSafePSK(t *testing.T) {
-	if err := validRouter().Validate(); err != nil {
+func TestValidateAcceptsSafeConfig(t *testing.T) {
+	if err := validConfig().Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)
 	}
 }
 
 func TestValidateRejectsUnsafePSK(t *testing.T) {
-	r := validRouter()
-	c := r.Clients["demo-client"]
-	c.PSK = "bad$psk"
-	r.Clients["demo-client"] = c
-	if err := r.Validate(); err == nil {
+	cfg := validConfig()
+	u := cfg.Users["u1"]
+	a := u.Access["r1"]
+	a.PSK = "bad$psk"
+	u.Access["r1"] = a
+	if err := cfg.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want unsafe PSK error")
 	}
 }
@@ -50,21 +51,28 @@ func TestValidateRejectsUnsafeServiceName(t *testing.T) {
 	svc := r.Services["demo-service"]
 	delete(r.Services, "demo-service")
 	r.Services["bad name"] = svc
-	c := r.Clients["demo-client"]
-	c.Services = []string{"bad name"}
-	r.Clients["demo-client"] = c
 	if err := r.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want unsafe service name error")
 	}
 }
 
-func TestValidateRejectsClientUnknownService(t *testing.T) {
-	r := validRouter()
-	c := r.Clients["demo-client"]
-	c.Services = []string{"nope"}
-	r.Clients["demo-client"] = c
-	if err := r.Validate(); err == nil {
+func TestValidateRejectsUserUnknownService(t *testing.T) {
+	cfg := validConfig()
+	u := cfg.Users["u1"]
+	u.Access["r1"] = UserAccess{Services: []string{"nope"}, PSK: "ok"}
+	cfg.Users["u1"] = u
+	if err := cfg.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want unknown service error")
+	}
+}
+
+func TestValidateRejectsUserUnknownRouter(t *testing.T) {
+	cfg := validConfig()
+	u := cfg.Users["u1"]
+	u.Access["ghost"] = UserAccess{Services: nil, PSK: "ok"}
+	cfg.Users["u1"] = u
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want unknown router error")
 	}
 }
 
@@ -81,6 +89,14 @@ func TestApplyDefaultsPerServiceAllowedList(t *testing.T) {
 	cfg.applyDefaults()
 	if got := cfg.Routers["r1"].Services["ssh-home"].AllowedList; got != "mkpk-tt-allowed-ssh-home" {
 		t.Fatalf("allowed_list = %q, want mkpk-tt-allowed-ssh-home", got)
+	}
+}
+
+func TestApplyDefaultsUserClientID(t *testing.T) {
+	cfg := Config{Users: map[string]User{"phone": {Access: map[string]UserAccess{}}}}
+	cfg.applyDefaults()
+	if got := cfg.Users["phone"].ClientID; got != "phone" {
+		t.Fatalf("client_id default = %q, want phone", got)
 	}
 }
 
@@ -176,20 +192,6 @@ func TestValidateRejectsEmailBadTLS(t *testing.T) {
 	}
 }
 
-func TestRouterHashStableAndSensitive(t *testing.T) {
-	h1 := validRouter().Hash()
-	if h1 == "" || h1 != validRouter().Hash() {
-		t.Fatal("Hash() empty or not stable")
-	}
-	r := validRouter()
-	c := r.Clients["demo-client"]
-	c.PSK = "different-psk-value"
-	r.Clients["demo-client"] = c
-	if r.Hash() == h1 {
-		t.Fatal("Hash() did not change after config change")
-	}
-}
-
 func TestValidateRejectsPortCollisionAcrossServices(t *testing.T) {
 	r := validRouter()
 	// second service reuses the first service's stage1 port
@@ -198,9 +200,6 @@ func TestValidateRejectsPortCollisionAcrossServices(t *testing.T) {
 		AllowedList: "mkpk-tt-allowed-web",
 		Target:      Target{Type: TargetForward, Protocol: "tcp", Port: 3443, ToAddress: "192.0.2.20", ToPort: 443},
 	}
-	c := r.Clients["demo-client"]
-	c.Services = []string{"demo-service", "web"}
-	r.Clients["demo-client"] = c
 	if err := r.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want cross-service port collision error")
 	}
@@ -246,15 +245,6 @@ func TestValidateRejectsUnknownTargetType(t *testing.T) {
 	}
 }
 
-func TestRouterHashIgnoresDeployCredentials(t *testing.T) {
-	base := validRouter().Hash()
-	r := validRouter()
-	r.Deploy = Deploy{Port: 2222, User: "admin", KeyPath: "~/.ssh/id_ed25519", UseAgent: true, Password: "secret"}
-	if r.Hash() != base {
-		t.Fatal("Hash() changed after setting deploy credentials; creds must not affect the fingerprint")
-	}
-}
-
 func TestValidateRejectsBadDeployPort(t *testing.T) {
 	r := validRouter()
 	r.Deploy.Port = 70000
@@ -263,29 +253,64 @@ func TestValidateRejectsBadDeployPort(t *testing.T) {
 	}
 }
 
+func TestRouterHashIgnoresDeployCredentials(t *testing.T) {
+	cfg := validConfig()
+	base := cfg.RouterHash("r1")
+	r := cfg.Routers["r1"]
+	r.Deploy = Deploy{Port: 2222, User: "admin", KeyPath: "~/.ssh/id_ed25519", UseAgent: true, Password: "secret"}
+	cfg.Routers["r1"] = r
+	if cfg.RouterHash("r1") != base {
+		t.Fatal("RouterHash changed after setting deploy credentials; creds must not affect the fingerprint")
+	}
+}
+
+func TestRouterHashSensitiveToUserPSK(t *testing.T) {
+	cfg := validConfig()
+	base := cfg.RouterHash("r1")
+	u := cfg.Users["u1"]
+	a := u.Access["r1"]
+	a.PSK = "different-psk-value"
+	u.Access["r1"] = a
+	if cfg.RouterHash("r1") == base {
+		t.Fatal("RouterHash did not change after a user's PSK on the router changed")
+	}
+}
+
 func TestResolveMultiService(t *testing.T) {
-	r := validRouter()
+	cfg := validConfig()
+	r := cfg.Routers["r1"]
 	r.Services["web"] = Service{ServiceName: "web", Stage1Port: 42001, Stage2Port: 42002, TokenPort: 42003, AllowedList: "mkpk-tt-allowed-web", Target: Target{Type: TargetForward, Protocol: "tcp", Port: 3443, ToAddress: "192.0.2.20", ToPort: 443}}
-	c := r.Clients["demo-client"]
-	c.Services = []string{"demo-service", "web"}
-	r.Clients["demo-client"] = c
+	cfg.Routers["r1"] = r
+	u := cfg.Users["u1"]
+	u.Access["r1"] = UserAccess{Services: []string{"demo-service", "web"}, PSK: "mkpk-prototype-psk"}
+	cfg.Users["u1"] = u
 
 	// ambiguous without a service name
-	if _, err := r.Resolve("r1", "demo-client", ""); err == nil {
-		t.Fatal("Resolve without service on multi-service client should error")
+	if _, err := cfg.Resolve("u1", "r1", ""); err == nil {
+		t.Fatal("Resolve without service on a multi-service grant should error")
 	}
 	// explicit service works
-	res, err := r.Resolve("r1", "demo-client", "web")
+	res, err := cfg.Resolve("u1", "r1", "web")
 	if err != nil {
 		t.Fatalf("Resolve() error = %v", err)
 	}
-	if res.Service.TokenPort != 42003 {
-		t.Fatalf("resolved wrong service: token port %d", res.Service.TokenPort)
+	if res.Service.TokenPort != 42003 || res.ClientID != "demo-client" {
+		t.Fatalf("resolved wrong: %+v", res)
 	}
 	// unassigned service rejected
-	r.Services["other"] = r.Services["demo-service"]
-	if _, err := r.Resolve("r1", "demo-client", "other"); err == nil {
+	if _, err := cfg.Resolve("u1", "r1", "demo-service-x"); err == nil {
 		t.Fatal("Resolve of unassigned service should error")
+	}
+}
+
+func TestRenderClientsProjectsPerRouter(t *testing.T) {
+	cfg := validConfig()
+	rc := cfg.RenderClients("r1")
+	if len(rc) != 1 || rc[0].Name != "u1" || rc[0].ClientID != "demo-client" || rc[0].PSK != "mkpk-prototype-psk" {
+		t.Fatalf("RenderClients wrong: %+v", rc)
+	}
+	if len(cfg.RenderClients("ghost")) != 0 {
+		t.Fatal("RenderClients for an unknown router should be empty")
 	}
 }
 
@@ -301,8 +326,19 @@ func validRouter() Router {
 				Target:      Target{Type: TargetForward, Protocol: "tcp", Port: 2222, ToAddress: "192.0.2.10", ToPort: 22},
 			},
 		},
-		Clients: map[string]Client{
-			"demo-client": {ClientID: "demo-client", Services: []string{"demo-service"}, PSK: "mkpk-prototype-psk"},
+	}
+}
+
+func validConfig() Config {
+	return Config{
+		Routers: map[string]Router{"r1": validRouter()},
+		Users: map[string]User{
+			"u1": {
+				ClientID: "demo-client",
+				Access: map[string]UserAccess{
+					"r1": {Services: []string{"demo-service"}, PSK: "mkpk-prototype-psk"},
+				},
+			},
 		},
 	}
 }

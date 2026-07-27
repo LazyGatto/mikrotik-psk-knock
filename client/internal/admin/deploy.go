@@ -52,7 +52,7 @@ func Status(cfg config.Config, routerName string, o DeployOptions) (StatusResult
 	if err != nil {
 		return StatusResult{}, err
 	}
-	desired := r.Hash()
+	desired := cfg.RouterHash(routerName)
 	return StatusResult{
 		Router:        routerName,
 		Address:       addr,
@@ -83,7 +83,7 @@ func Apply(cfg config.Config, routerName string, o DeployOptions, force, dryRun 
 	if err != nil {
 		return ApplyResult{}, err
 	}
-	desired := r.Hash()
+	desired := cfg.RouterHash(routerName)
 	res := ApplyResult{Router: routerName, Address: addr, Hash: desired, InstalledHash: state.Hash}
 	if state.Installed && state.Hash == desired && !force {
 		res.Action = "skip"
