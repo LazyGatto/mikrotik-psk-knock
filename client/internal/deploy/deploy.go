@@ -144,7 +144,8 @@ func (c *Client) Uninstall() error {
 		`/ip firewall filter remove [find where comment~"^mkpk-tt"]`,
 		`/ip firewall nat remove [find where comment~"^mkpk-tt "]`,
 		`/ip firewall address-list remove [find where list~"^mkpk-tt-"]`,
-		`/system script environment remove [find where name~"^mkpkTt"]`,
+		// Reclaim the whole mkpk global namespace (poller caches plus any probe leftovers).
+		`/system script environment remove [find where name~"^mkpk"]`,
 	}, "; "))
 	if err != nil {
 		return fmt.Errorf("uninstall: %w (%s)", err, strings.TrimSpace(out))
