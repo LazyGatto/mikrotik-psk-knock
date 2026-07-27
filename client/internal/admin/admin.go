@@ -654,7 +654,8 @@ func Summarize(cfg config.Config) Summary {
 	var s Summary
 	for _, rn := range sortedKeys(cfg.Routers) {
 		r := cfg.Routers[rn]
-		rs := RouterSummary{Name: rn, Address: r.Address, Hash: cfg.RouterHash(rn), Deploy: deploySummary(r), Notify: notifySummary(r.Notify), Defaults: r.Defaults}
+		// Non-nil slices so the JSON always carries [] (never null) for the frontend.
+		rs := RouterSummary{Name: rn, Address: r.Address, Hash: cfg.RouterHash(rn), Deploy: deploySummary(r), Notify: notifySummary(r.Notify), Defaults: r.Defaults, Services: []ServiceSummary{}, Clients: []ClientSummary{}}
 		for _, name := range sortedKeys(r.Services) {
 			svc := r.Services[name]
 			rs.Services = append(rs.Services, ServiceSummary{
@@ -686,10 +687,14 @@ func Summarize(cfg config.Config) Summary {
 	}
 	for _, un := range sortedKeys(cfg.Users) {
 		u := cfg.Users[un]
-		us := UserSummary{Name: un, ClientID: u.ClientID}
+		us := UserSummary{Name: un, ClientID: u.ClientID, Access: []AccessSummary{}}
 		for _, rn := range sortedKeys(u.Access) {
 			access := u.Access[rn]
-			us.Access = append(us.Access, AccessSummary{Router: rn, Services: access.Services, PSKSet: access.PSK != ""})
+			svcs := access.Services
+			if svcs == nil {
+				svcs = []string{}
+			}
+			us.Access = append(us.Access, AccessSummary{Router: rn, Services: svcs, PSKSet: access.PSK != ""})
 		}
 		s.Users = append(s.Users, us)
 	}

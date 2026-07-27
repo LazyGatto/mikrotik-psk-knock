@@ -161,6 +161,22 @@ func TestPortsSuggestReturnsFreePorts(t *testing.T) {
 	}
 }
 
+func TestNewUserAccessIsEmptyArrayNotNull(t *testing.T) {
+	h := Handler(testConfigPath(t), "tok")
+	if rr := do(t, h, "POST", "/api/user", `{"name":"phone"}`); rr.Code != 200 {
+		t.Fatalf("create user: %d %s", rr.Code, rr.Body.String())
+	}
+	rr := do(t, h, "GET", "/api/config", "")
+	body := rr.Body.String()
+	// The frontend does u.access.length; a JSON null would crash it.
+	if strings.Contains(body, `"access":null`) {
+		t.Fatalf("access serialized as null (would blank the UI): %s", body)
+	}
+	if !strings.Contains(body, `"name":"phone","client_id":"phone","access":[]`) {
+		t.Fatalf("new user access not an empty array: %s", body)
+	}
+}
+
 func TestIndexInjectsToken(t *testing.T) {
 	h := Handler(testConfigPath(t), "sekret-token")
 	req := httptest.NewRequest("GET", "/", nil)

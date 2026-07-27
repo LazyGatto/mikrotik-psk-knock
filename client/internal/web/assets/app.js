@@ -105,8 +105,8 @@ const isDrift = (r) => driftState(r) === "drift";
 async function applyConfig(data) {
   S.path = data.path;
   const sum = data.summary || { routers: [], users: [] };
-  S.routers = sum.routers || [];
-  S.users = sum.users || [];
+  S.routers = (sum.routers || []).map((r) => ({ ...r, services: r.services || [], clients: r.clients || [] }));
+  S.users = (sum.users || []).map((u) => ({ ...u, access: (u.access || []).map((a) => ({ ...a, services: a.services || [] })) }));
   // keep selection valid
   if (S.view.kind === "router" && !routerOf(S.view.id)) S.view = { kind: "dashboard" };
   if (S.view.kind === "user" && !userOf(S.view.id)) S.view = { kind: "dashboard" };
