@@ -94,6 +94,43 @@ func TestSummarizeReportsDeployWithoutSecrets(t *testing.T) {
 	}
 }
 
+func TestSuggestPortsAvoidsUsedAndCollisions(t *testing.T) {
+	cfg := initCfg(t) // demo service uses 41001/41002/41003 + target 2222
+	ports, err := SuggestPorts(cfg, rn, 3)
+	if err != nil {
+		t.Fatalf("SuggestPorts() error = %v", err)
+	}
+	if len(ports) != 3 {
+		t.Fatalf("want 3 ports, got %d", len(ports))
+	}
+	used := cfg.Routers[rn].UsedPorts()
+	seen := map[int]bool{}
+	for _, p := range ports {
+		if used[p] {
+			t.Fatalf("suggested port %d is already used", p)
+		}
+		if seen[p] {
+			t.Fatalf("suggested duplicate port %d", p)
+		}
+		if p < 40000 || p >= 60000 {
+			t.Fatalf("suggested port %d out of range", p)
+		}
+		seen[p] = true
+	}
+
+	// A service built from the suggestion must save without a collision.
+	cfg2, err := AddService(cfg, rn, ServiceOptions{
+		Name: "extra", Stage1Port: ports[0], Stage2Port: ports[1], TokenPort: ports[2],
+		Target: config.Target{Type: config.TargetLocal, Protocol: "tcp", Port: 8291},
+	})
+	if err != nil {
+		t.Fatalf("AddService() error = %v", err)
+	}
+	if err := cfg2.Validate(); err != nil {
+		t.Fatalf("config with suggested ports should validate: %v", err)
+	}
+}
+
 func TestAddServiceDefaultsAndValidation(t *testing.T) {
 	cfg := initCfg(t)
 

@@ -150,6 +150,17 @@ func TestRouterCredsPersistAndSecretKeptOnEdit(t *testing.T) {
 	}
 }
 
+func TestPortsSuggestReturnsFreePorts(t *testing.T) {
+	h := Handler(testConfigPath(t), "tok")
+	rr := do(t, h, "GET", "/api/ports/suggest?router=r1&count=3", "")
+	if rr.Code != 200 {
+		t.Fatalf("suggest: %d %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"ports":[`) {
+		t.Fatalf("suggest response missing ports: %s", rr.Body.String())
+	}
+}
+
 func TestIndexInjectsToken(t *testing.T) {
 	h := Handler(testConfigPath(t), "sekret-token")
 	req := httptest.NewRequest("GET", "/", nil)

@@ -226,6 +226,7 @@ func serviceCmd(args []string) error {
 	stage1Port := fs.Int("stage1-port", 0, "stage1 UDP port")
 	stage2Port := fs.Int("stage2-port", 0, "stage2 UDP port")
 	tokenPort := fs.Int("token-port", 0, "token UDP port")
+	randomPorts := fs.Bool("random-ports", false, "fill unset knock ports with free random ones")
 	allowedList := fs.String("allowed-list", "", "RouterOS allowed address-list; mkpk-tt-allowed-<name> when empty")
 	targetType := fs.String("target-type", "forward", "target type: forward (dst-nat) or local (router input)")
 	targetProto := fs.String("target-protocol", "tcp", "target protocol: tcp or udp")
@@ -256,6 +257,21 @@ func serviceCmd(args []string) error {
 	rn, err := pickRouter(cfg, *router)
 	if err != nil {
 		return err
+	}
+	if *randomPorts {
+		free, err := admin.SuggestPorts(cfg, rn, 3)
+		if err != nil {
+			return err
+		}
+		if *stage1Port == 0 {
+			*stage1Port = free[0]
+		}
+		if *stage2Port == 0 {
+			*stage2Port = free[1]
+		}
+		if *tokenPort == 0 {
+			*tokenPort = free[2]
+		}
 	}
 	cfg, err = admin.AddService(cfg, rn, admin.ServiceOptions{
 		Name:        *name,

@@ -190,6 +190,32 @@ func TestRouterHashStableAndSensitive(t *testing.T) {
 	}
 }
 
+func TestValidateRejectsPortCollisionAcrossServices(t *testing.T) {
+	r := validRouter()
+	// second service reuses the first service's stage1 port
+	r.Services["web"] = Service{
+		ServiceName: "web", Stage1Port: 41001, Stage2Port: 52002, TokenPort: 52003,
+		AllowedList: "mkpk-tt-allowed-web",
+		Target:      Target{Type: TargetForward, Protocol: "tcp", Port: 3443, ToAddress: "192.0.2.20", ToPort: 443},
+	}
+	c := r.Clients["demo-client"]
+	c.Services = []string{"demo-service", "web"}
+	r.Clients["demo-client"] = c
+	if err := r.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want cross-service port collision error")
+	}
+}
+
+func TestUsedPortsCollectsAll(t *testing.T) {
+	r := validRouter()
+	used := r.UsedPorts()
+	for _, p := range []int{41001, 41002, 41003, 2222} { // stage1/2/token + target port
+		if !used[p] {
+			t.Fatalf("UsedPorts missing %d: %v", p, used)
+		}
+	}
+}
+
 func TestValidateLocalTargetRejectsForwardFields(t *testing.T) {
 	r := validRouter()
 	svc := r.Services["demo-service"]

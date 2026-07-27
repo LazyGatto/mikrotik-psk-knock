@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"math/big"
 	"os"
 	"sort"
 	"strings"
@@ -167,6 +168,46 @@ type ServiceOptions struct {
 	Target      config.Target
 	Notify      config.Notify
 	Force       bool
+}
+
+// SuggestPorts returns n distinct free ports for a router — not used by any of
+// its services' knock or target ports — drawn from the 40000-59999 range. It
+// backs the UI "randomize knock ports" button and the CLI --random-ports flag.
+func SuggestPorts(cfg config.Config, routerName string, n int) ([]int, error) {
+	r, err := getRouter(cfg, routerName)
+	if err != nil {
+		return nil, err
+	}
+	if n <= 0 || n > 16 {
+		return nil, fmt.Errorf("count must be between 1 and 16")
+	}
+	used := r.UsedPorts()
+	const lo, hi = 40000, 60000
+	out := make([]int, 0, n)
+	picked := map[int]bool{}
+	for attempts := 0; len(out) < n && attempts < 100000; attempts++ {
+		p, err := randPort(lo, hi)
+		if err != nil {
+			return nil, err
+		}
+		if used[p] || picked[p] {
+			continue
+		}
+		picked[p] = true
+		out = append(out, p)
+	}
+	if len(out) < n {
+		return nil, fmt.Errorf("could not find %d free ports in %d-%d", n, lo, hi)
+	}
+	return out, nil
+}
+
+func randPort(lo, hi int) (int, error) {
+	nBig, err := rand.Int(rand.Reader, big.NewInt(int64(hi-lo)))
+	if err != nil {
+		return 0, err
+	}
+	return lo + int(nBig.Int64()), nil
 }
 
 // AddService adds or replaces a service on the router.

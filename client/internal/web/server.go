@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -35,6 +36,7 @@ func Handler(configPath, token string) http.Handler {
 	mux.HandleFunc("/style.css", s.static("assets/style.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("/api/config", s.auth(s.handleConfig))
 	mux.HandleFunc("/api/secret", s.auth(s.handleSecret))
+	mux.HandleFunc("/api/ports/suggest", s.auth(s.handlePortsSuggest))
 	mux.HandleFunc("/api/router", s.auth(s.handleRouter))
 	mux.HandleFunc("/api/service", s.auth(s.handleService))
 	mux.HandleFunc("/api/service/enable", s.auth(s.handleServiceEnable))
@@ -150,6 +152,28 @@ func (s *Server) handleSecret(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"secret": secret})
+}
+
+// handlePortsSuggest returns free knock ports for the router so the UI can
+// random-fill stage1/stage2/token without colliding with existing services.
+func (s *Server) handlePortsSuggest(w http.ResponseWriter, r *http.Request) {
+	cfg, err := config.Load(s.configPath)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	count := 3
+	if c := r.URL.Query().Get("count"); c != "" {
+		if n, err := strconv.Atoi(c); err == nil {
+			count = n
+		}
+	}
+	ports, err := admin.SuggestPorts(cfg, r.URL.Query().Get("router"), count)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ports": ports})
 }
 
 type routerReq struct {

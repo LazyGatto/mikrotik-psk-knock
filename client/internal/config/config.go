@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"sort"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -264,6 +265,9 @@ func (r Router) Validate() error {
 			return fmt.Errorf("service %q %w", name, err)
 		}
 	}
+	if err := r.checkPortCollisions(); err != nil {
+		return err
+	}
 	for name, client := range r.Clients {
 		if !isSafeName(name) {
 			return fmt.Errorf("client key %q must match ^[A-Za-z0-9][A-Za-z0-9_-]*$", name)
@@ -337,6 +341,60 @@ func (r Router) Resolve(routerName, clientName, serviceName string) (Resolved, e
 
 func clientHasService(c Client, name string) bool {
 	return slices.Contains(c.Services, name)
+}
+
+// ports returns every dst-port a service occupies: its three knock ports and
+// its target port. Zero values (unset) are included and filtered by callers.
+func (s Service) ports() []int {
+	return []int{s.Stage1Port, s.Stage2Port, s.TokenPort, s.Target.Port}
+}
+
+// UsedPorts is the set of all non-zero ports occupied by the router's services.
+// It is the basis for suggesting free knock ports.
+func (r Router) UsedPorts() map[int]bool {
+	used := map[int]bool{}
+	for _, svc := range r.Services {
+		for _, p := range svc.ports() {
+			if p != 0 {
+				used[p] = true
+			}
+		}
+	}
+	return used
+}
+
+// checkPortCollisions rejects any port shared by two services: knock ports and
+// target ports must all be distinct within a router.
+func (r Router) checkPortCollisions() error {
+	type owner struct{ svc, field string }
+	seen := map[int]owner{}
+	names := make([]string, 0, len(r.Services))
+	for name := range r.Services {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		svc := r.Services[name]
+		fields := []struct {
+			field string
+			port  int
+		}{
+			{"stage1_port", svc.Stage1Port},
+			{"stage2_port", svc.Stage2Port},
+			{"token_port", svc.TokenPort},
+			{"target.port", svc.Target.Port},
+		}
+		for _, f := range fields {
+			if f.port == 0 {
+				continue
+			}
+			if prev, dup := seen[f.port]; dup {
+				return fmt.Errorf("port %d is used by both service %q (%s) and service %q (%s)", f.port, prev.svc, prev.field, name, f.field)
+			}
+			seen[f.port] = owner{name, f.field}
+		}
+	}
+	return nil
 }
 
 func validateTarget(t Target) error {

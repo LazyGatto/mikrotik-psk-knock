@@ -236,6 +236,16 @@ function syncNotify() {
   document.querySelectorAll(".notify-fields").forEach((f) => f.classList.toggle("hidden", f.dataset.channel !== ch));
 }
 el("notify-channel").addEventListener("change", syncNotify);
+el("random-ports").onclick = async () => {
+  if (!current) return;
+  try {
+    const d = await api("GET", "/api/ports/suggest?count=3&router=" + encodeURIComponent(current));
+    const f = el("svc-form").elements;
+    [f["stage1_port"].value, f["stage2_port"].value, f["token_port"].value] = d.ports;
+  } catch (e) {
+    toast(e.message, true);
+  }
+};
 function syncTarget() {
   const local = el("target-type").value === "local";
   document.querySelectorAll(".target-forward").forEach((f) => f.classList.toggle("hidden", local));
