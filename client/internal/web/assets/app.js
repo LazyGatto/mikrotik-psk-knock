@@ -87,7 +87,9 @@ const S = {
   routers: [],
   users: [],
   view: { kind: "dashboard", id: null, tab: "services" },
-  deploy: {},   // routerName -> {installed, installedHash, at, err, checked}
+  deploy: {},   // routerName -> {baseline, installed, checked, err, result}
+  deployOpts: { dry: true, force: false }, // persisted across re-renders
+  deployRunning: null,                     // "<router>:<action>" while an SSH op is in flight
 };
 const routerOf = (n) => S.routers.find((r) => r.name === n);
 const userOf = (n) => S.users.find((u) => u.name === n);
@@ -403,22 +405,22 @@ function routerDeploy(r) {
       h("div", { class: "mono", style: "margin-top:4px;font-size:11px" }, "local " + short(r.hash)),
       deployStateLine(r))));
 
-  const dry = h("input", { type: "checkbox", checked: true });
-  const force = h("input", { type: "checkbox" });
-  const out = h("div", null);
-  const runningLabel = h("span", null);
+  const dry = h("input", { type: "checkbox", checked: S.deployOpts.dry, onchange: () => S.deployOpts.dry = dry.checked });
+  const force = h("input", { type: "checkbox", checked: S.deployOpts.force, onchange: () => S.deployOpts.force = force.checked });
+  const running = S.deployRunning && S.deployRunning.startsWith(r.name + ":");
+  const busy = (b) => running ? true : b;
   const bar = h("div", { class: "card pad row wrap-row" },
-    h("button", { class: "btn sm", onclick: () => runDeploy(r, "status", dry, force, out, runningLabel) }, "Status"),
-    h("button", { class: "btn pri sm", onclick: () => runDeploy(r, "apply", dry, force, out, runningLabel) }, "Apply"),
-    h("button", { class: "btn danger sm", onclick: () => confirmDialog("Uninstall с роутера?", "Все правила mkpk-tt будут удалены с роутера. Локальный конфиг не тронут.", "Uninstall", () => runDeploy(r, "uninstall", dry, force, out, runningLabel)) }, "Uninstall…"),
+    h("button", { class: "btn sm", disabled: busy(false), onclick: () => runDeploy(r, "status") }, "Status"),
+    h("button", { class: "btn pri sm", disabled: busy(false), onclick: () => runDeploy(r, "apply") }, "Apply"),
+    h("button", { class: "btn danger sm", disabled: busy(false), onclick: () => confirmDialog("Uninstall с роутера?", "Все правила mkpk-tt будут удалены с роутера. Локальный конфиг не тронут.", "Uninstall", () => runDeploy(r, "uninstall")) }, "Uninstall…"),
     h("span", { class: "spacer" }),
     h("label", { class: "inline-check", title: "Показать, что будет сделано, без изменений на роутере" }, dry, "dry-run"),
     h("label", { class: "inline-check", title: "Применить, даже если hash совпадает" }, force, "force"),
-    runningLabel);
-  wrap.append(bar, out);
+    running && h("span", null, h("span", { class: "spin" }), " " + S.deployRunning.split(":")[1] + "…"));
+  wrap.append(bar);
   const prev = S.deploy[r.name];
-  if (prev && prev.result) out.append(deployResult(r, prev.result, dry, force, out, runningLabel));
-  else out.append(h("div", { class: "card pad foot-note" }, "Результат действия появится здесь. Начните со Status."));
+  if (prev && prev.result) wrap.append(deployResult(r, prev.result));
+  else wrap.append(h("div", { class: "card pad foot-note" }, "Результат действия появится здесь. Начните со Status."));
   return wrap;
 }
 function deployStateLine(r) {
@@ -433,18 +435,14 @@ function deployStateLine(r) {
   const [tone, text] = map[routerState(r)];
   return h("div", { class: "foot-note", style: "margin-top:3px;color:var(--" + tone + ")" }, text);
 }
-async function runDeploy(r, action, dry, force, out, runningLabel) {
-  runningLabel.innerHTML = "";
-  runningLabel.append(h("span", { class: "spin" }), " " + action + "…");
+async function runDeploy(r, action) {
+  S.deployRunning = r.name + ":" + action;
+  render();
   try {
-    const res = await deployAction(r.name, action, { force: force.checked, dry_run: dry.checked });
-    out.innerHTML = "";
-    out.append(deployResult(r, res, dry, force, out, runningLabel));
-    renderSidebar();
-  } catch (e) {
-    out.innerHTML = "";
-    out.append(deployResult(r, { _kind: "err", msg: e.message, action }, dry, force, out, runningLabel));
-  } finally { runningLabel.innerHTML = ""; }
+    await deployAction(r.name, action, { force: S.deployOpts.force, dry_run: S.deployOpts.dry });
+  } catch (e) { /* recorded in S.deploy[r.name].result */ }
+  S.deployRunning = null;
+  render(); // full re-render: header pill, sidebar dot and result all reflect new state
 }
 // deployAction records installed state and returns the raw result
 async function deployAction(routerName, action, opts) {
@@ -473,7 +471,7 @@ async function deployAction(routerName, action, opts) {
   rec.result = res;
   return res;
 }
-function deployResult(r, res, dry, force, out, runningLabel) {
+function deployResult(r, res) {
   const kinds = {
     synced: ["ok", "Синхронизировано", "На роутере hash " + short(res.installed_hash) + " совпадает с локальным конфигом."],
     never: ["warn", "На роутере ничего не установлено", "mkpk-tt-meta не найдена. Локальный конфиг (hash " + short(res.desired_hash) + ") ещё не деплоился."],
@@ -489,7 +487,7 @@ function deployResult(r, res, dry, force, out, runningLabel) {
     h("div", { class: "row" }, h("span", { class: "badge " + (toneClass === "danger" ? "amber" : toneClass), style: toneClass === "danger" ? "color:var(--danger);background:var(--danger-bg);border-color:var(--danger-border)" : "" }, tone === "ok" ? "✓" : tone === "warn" ? "●" : "✕"),
       h("span", { style: "font-weight:600" }, title)),
     h("div", { class: "foot-note", style: "margin-top:5px" }, msg));
-  if (res._kind === "drift") card.append(h("button", { class: "btn pri sm", style: "margin-top:8px", onclick: () => runDeploy(r, "apply", dry, force, out, runningLabel) }, "Apply — задеплоить изменения"));
+  if (res._kind === "drift") card.append(h("button", { class: "btn pri sm", style: "margin-top:8px", onclick: () => runDeploy(r, "apply") }, "Apply — задеплоить изменения"));
   if (res._kind === "err") card.append(h("button", { class: "btn link", style: "margin-top:8px", onclick: () => openRouterModal(r.name) }, "Настройки роутера →"));
   if (res.log) {
     const term = h("pre", { class: "term hidden" }, res.log);
