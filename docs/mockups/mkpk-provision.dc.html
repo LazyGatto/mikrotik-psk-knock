@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0;background:#f6f6f4;color:#1a1a1e;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#4753c5}a:hover{color:#3a45ad}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes pop{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</helmet>
+<div style="display:flex;height:100vh;overflow:hidden;font-size:13px">
+  <!-- ===== Sidebar ===== -->
+  <div data-screen-label="Sidebar" style="width:230px;flex:none;background:#fbfbf9;border-right:1px solid #e6e6e1;display:flex;flex-direction:column">
+    <div style="padding:14px 16px 10px;display:flex;align-items:center;gap:9px;border-bottom:1px solid #eeeeea">
+      <svg width="22" height="22" viewBox="0 0 22 22"><rect width="22" height="22" rx="5" fill="#4753c5"></rect><circle cx="6.5" cy="11" r="1.7" fill="#fff"></circle><circle cx="11" cy="11" r="1.7" fill="#fff" opacity=".75"></circle><circle cx="15.5" cy="11" r="1.7" fill="#fff" opacity=".5"></circle></svg>
+      <div>
+        <div style="font-weight:650;font-size:13px;letter-spacing:-.01em">mkpk-provision</div>
+        <div style="font-size:10.5px;color:#8a8a90">provisioning console</div>
+      </div>
+    </div>
+    <div style="padding:12px 10px 6px;font-size:10.5px;font-weight:600;letter-spacing:.08em;color:#8a8a90;text-transform:uppercase;display:flex;justify-content:space-between;align-items:center"><span style="padding-left:6px">Роутеры</span></div>
+    <div style="flex:1;overflow-y:auto;padding:0 8px">
+      <sc-for list="{{ routersNav }}" as="r" hint-placeholder-count="2">
+        <div onClick="{{ r.onSelect }}" style="display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:7px;cursor:pointer;margin-bottom:1px;background:{{ r.bg }}" style-hover="background:#f0f0ec">
+          <svg width="14" height="14" viewBox="0 0 14 14" style="flex:none;opacity:.55"><rect x="1" y="4.5" width="12" height="5.5" rx="1.5" fill="none" stroke="#3c3c42" stroke-width="1.3"></rect><circle cx="4" cy="7.2" r=".9" fill="#3c3c42"></circle><circle cx="6.6" cy="7.2" r=".9" fill="#3c3c42"></circle></svg>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</div>
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#8a8a90;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.address }}</div>
+          </div>
+          <sc-if value="{{ r.drift }}" hint-placeholder-val="{{ false }}"><span title="Есть незадеплоенные изменения" style="width:7px;height:7px;border-radius:50%;background:#e0940b;flex:none"></span></sc-if>
+        </div>
+      </sc-for>
+      <button onClick="{{ addRouter }}" style="width:100%;margin-top:6px;padding:7px 9px;border:1px dashed #d4d4ce;border-radius:7px;background:none;color:#66666e;font-size:12px;font-family:inherit;cursor:pointer;text-align:left" style-hover="background:#f0f0ec;color:#3a3a40">+ Добавить роутер</button>
+    </div>
+    <div style="padding:10px 16px;border-top:1px solid #eeeeea;font-size:10.5px;color:#a2a2a8;font-family:ui-monospace,Menlo,monospace">127.0.0.1:8642 · local session</div>
+  </div>
+  <!-- ===== Main ===== -->
+  <sc-if value="{{ hasRouters }}" hint-placeholder-val="{{ true }}">
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+    <div data-screen-label="Header" style="padding:14px 24px 0;background:#fff;border-bottom:1px solid #e6e6e1">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div style="font-size:17px;font-weight:650;letter-spacing:-.01em">{{ curName }}</div>
+        <div style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#8a8a90">{{ curAddress }}</div>
+        <sc-if value="{{ curDrift }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ gotoDeploy }}" title="Локальный конфиг отличается от того, что на роутере" style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:20px;border:1px solid #f0d9a8;background:#fdf6e3;color:#96660a;font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit"><span style="width:6px;height:6px;border-radius:50%;background:#e0940b"></span>Не задеплоено — нужен Deploy</button>
+        </sc-if>
+        <sc-if value="{{ curSynced }}" hint-placeholder-val="{{ false }}">
+          <span style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:20px;border:1px solid #cfe6d6;background:#f0f9f2;color:#177a48;font-size:11.5px;font-weight:600">✓ Синхронизировано</span>
+        </sc-if>
+        <sc-if value="{{ curNever }}" hint-placeholder-val="{{ false }}">
+          <span style="display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:20px;border:1px solid #e2e2dd;background:#f4f4f1;color:#77777e;font-size:11.5px;font-weight:600">Ещё не деплоился</span>
+        </sc-if>
+        <div style="flex:1"></div>
+        <button onClick="{{ editCurrentRouter }}" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:6px;border:1px solid #d8d8d2;background:#fff;color:#3a3a40;font-size:12px;font-weight:550;cursor:pointer;font-family:inherit" style-hover="background:#f4f4f2"><svg width="12" height="12" viewBox="0 0 12 12"><path d="M6 1.2l1.1 1.9 2.2.3-1.6 1.6.4 2.2L6 6.1 3.9 7.2l.4-2.2L2.7 3.4l2.2-.3z" fill="none" stroke="#66666e" stroke-width="1.1" stroke-linejoin="round"></path></svg>Настройки роутера</button>
+      </div>
+      <div style="display:flex;gap:2px;margin-top:12px">
+        <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+          <button onClick="{{ t.onClick }}" style="padding:8px 14px;border:none;background:none;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;color:{{ t.color }};border-bottom:2px solid {{ t.border }};display:flex;align-items:center;gap:6px" style-hover="color:#1a1a1e">{{ t.label }}<sc-if value="{{ t.dot }}" hint-placeholder-val="{{ false }}"><span style="width:6px;height:6px;border-radius:50%;background:#e0940b"></span></sc-if></button>
+        </sc-for>
+      </div>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:20px 24px 40px">
+      <!-- ===== Services ===== -->
+      <sc-if value="{{ tabServices }}" hint-placeholder-val="{{ true }}">
+      <div data-screen-label="Services" style="max-width:860px">
+        <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:4px">
+          <div style="font-size:15px;font-weight:650">Services</div>
+          <div style="font-size:12px;color:#8a8a90">{{ svcCount }}</div>
+          <div style="flex:1"></div>
+          <button onClick="{{ addService }}" style="padding:6px 13px;border-radius:6px;border:1px solid #4049b8;background:#4753c5;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="background:#3a45ad">+ Сервис</button>
+        </div>
+        <div style="font-size:12px;color:#8a8a90;margin-bottom:14px">Гейтируемые порт-форварды этого роутера: три «стучальных» порта + опциональный NAT.</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <sc-for list="{{ services }}" as="s" hint-placeholder-count="3">
+            <div style="background:#fff;border:1px solid #e6e6e1;border-radius:9px;padding:12px 14px;display:flex;align-items:center;gap:14px;opacity:{{ s.opacity }}">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:none;width:58px" title="Вкл/выкл сервиса в конфиге. На роутер попадёт только после Deploy.">
+                <button role="switch" onClick="{{ s.toggle }}" style="width:34px;height:19px;border-radius:10px;border:none;cursor:pointer;position:relative;background:{{ s.swBg }};transition:background .15s">
+                  <span style="position:absolute;top:2px;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:left .15s;left:{{ s.swLeft }}"></span>
+                </button>
+                <span style="font-size:10px;color:#8a8a90">{{ s.swLabel }}</span>
+              </div>
+              <div style="min-width:130px">
+                <div style="display:flex;align-items:center;gap:7px">
+                  <span style="font-weight:650;font-size:13px">{{ s.name }}</span>
+                  <sc-if value="{{ s.dirty }}" hint-placeholder-val="{{ false }}"><span title="Изменён после последнего деплоя" style="font-size:10px;font-weight:600;color:#96660a;background:#fdf6e3;border:1px solid #f0d9a8;border-radius:4px;padding:1px 6px">изменён</span></sc-if>
+                </div>
+                <div style="font-size:11px;color:#8a8a90;margin-top:2px">{{ s.subLabel }}</div>
+              </div>
+              <div style="display:flex;gap:5px;flex:none">
+                <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;background:#f2f2ef;border:1px solid #e4e4df;border-radius:5px;padding:2px 7px;color:#55555c"><span style="color:#a2a2a8">s1 </span>{{ s.stage1 }}</span>
+                <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;background:#f2f2ef;border:1px solid #e4e4df;border-radius:5px;padding:2px 7px;color:#55555c"><span style="color:#a2a2a8">s2 </span>{{ s.stage2 }}</span>
+                <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;background:#f2f2ef;border:1px solid #e4e4df;border-radius:5px;padding:2px 7px;color:#55555c"><span style="color:#a2a2a8">tk </span>{{ s.token }}</span>
+              </div>
+              <div style="flex:1;min-width:0;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;color:#66666e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.natLabel }}</div>
+              <div style="display:flex;gap:4px;flex:none">
+                <button onClick="{{ s.edit }}" title="Редактировать" style="width:28px;height:28px;border-radius:6px;border:1px solid #e2e2dd;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:#f4f4f2"><svg width="13" height="13" viewBox="0 0 13 13"><path d="M2 11l.6-2.4L9.2 2a1 1 0 011.4 0l.4.4a1 1 0 010 1.4L4.4 10.4z" fill="none" stroke="#66666e" stroke-width="1.2" stroke-linejoin="round"></path></svg></button>
+                <button onClick="{{ s.del }}" title="Удалить" style="width:28px;height:28px;border-radius:6px;border:1px solid #e2e2dd;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:#fdf0ef;border-color:#eccdc9"><svg width="13" height="13" viewBox="0 0 13 13"><path d="M2.5 3.5h8M5.5 3.5v-1h2v1M3.5 3.5l.5 7h5l.5-7" fill="none" stroke="#b3564d" stroke-width="1.2" stroke-linecap="round"></path></svg></button>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="margin-top:14px;font-size:11.5px;color:#8a8a90;display:flex;gap:6px;align-items:baseline"><span style="flex:none;color:#c9c9c4">ℹ</span><span>Тоггл меняет состояние сервиса <b>в конфиге</b>. Выключенный сервис остаётся в списке, но его правила и токены юзеров не рендерятся и не деплоятся. Изменения попадут на роутер после <b>Deploy → Apply</b>.</span></div>
+      </div>
+      </sc-if>
+      <!-- ===== Users ===== -->
+      <sc-if value="{{ tabUsers }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="Users" style="max-width:860px">
+        <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:4px">
+          <div style="font-size:15px;font-weight:650">Users</div>
+          <div style="font-size:12px;color:#8a8a90">{{ userCount }}</div>
+          <div style="flex:1"></div>
+          <div title="Переключатель варианта подачи Invite — только для мокапа" style="display:inline-flex;align-items:center;gap:7px;border:1px dashed #d4d4ce;border-radius:7px;padding:3px 8px">
+            <span style="font-size:10px;font-weight:600;letter-spacing:.06em;color:#a2a2a8;text-transform:uppercase">Invite · вариант</span>
+            <div style="display:inline-flex;background:#ececea;border-radius:6px;padding:2px">
+              <button onClick="{{ setInvModal }}" style="padding:2px 9px;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;background:{{ invModalBg }};color:{{ invModalColor }};box-shadow:{{ invModalShadow }}">A · модалка</button>
+              <button onClick="{{ setInvInline }}" style="padding:2px 9px;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;background:{{ invInlineBg }};color:{{ invInlineColor }};box-shadow:{{ invInlineShadow }}">B · панель</button>
+            </div>
+          </div>
+          <button onClick="{{ addUser }}" style="padding:6px 13px;border-radius:6px;border:1px solid #4049b8;background:#4753c5;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="background:#3a45ad">+ Юзер</button>
+        </div>
+        <div style="font-size:12px;color:#8a8a90;margin-bottom:14px">Юзер = один PSK + набор сервисов этого роутера. Токены эфемерны и в UI не показываются.</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <sc-for list="{{ users }}" as="u" hint-placeholder-count="3">
+            <div style="background:#fff;border:1px solid #e6e6e1;border-radius:9px">
+              <div style="padding:12px 14px;display:flex;align-items:center;gap:12px">
+                <div style="width:30px;height:30px;border-radius:50%;background:#eef0fb;color:#4753c5;display:flex;align-items:center;justify-content:center;font-weight:650;font-size:13px;flex:none">{{ u.initial }}</div>
+                <div style="min-width:110px">
+                  <div style="display:flex;align-items:center;gap:7px">
+                    <span style="font-weight:650">{{ u.name }}</span>
+                    <sc-if value="{{ u.dirty }}" hint-placeholder-val="{{ false }}"><span title="Изменён после последнего деплоя" style="font-size:10px;font-weight:600;color:#96660a;background:#fdf6e3;border:1px solid #f0d9a8;border-radius:4px;padding:1px 6px">изменён</span></sc-if>
+                  </div>
+                  <div style="font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#a2a2a8;margin-top:2px">psk ••••••••••</div>
+                </div>
+                <div style="flex:1;display:flex;gap:5px;flex-wrap:wrap">
+                  <sc-for list="{{ u.svcChips }}" as="c" hint-placeholder-count="2">
+                    <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;border-radius:5px;padding:2px 8px;border:1px solid {{ c.border }};background:{{ c.bg }};color:{{ c.color }};text-decoration:{{ c.deco }}" title="{{ c.title }}">{{ c.label }}</span>
+                  </sc-for>
+                </div>
+                <div style="display:flex;gap:4px;flex:none">
+                  <button onClick="{{ u.invite }}" style="padding:5px 12px;border-radius:6px;border:1px solid #c3c8ef;background:#f5f6fd;color:#4049b8;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="background:#eceefb">Invite</button>
+                  <button onClick="{{ u.edit }}" title="Редактировать" style="width:28px;height:28px;border-radius:6px;border:1px solid #e2e2dd;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:#f4f4f2"><svg width="13" height="13" viewBox="0 0 13 13"><path d="M2 11l.6-2.4L9.2 2a1 1 0 011.4 0l.4.4a1 1 0 010 1.4L4.4 10.4z" fill="none" stroke="#66666e" stroke-width="1.2" stroke-linejoin="round"></path></svg></button>
+                  <button onClick="{{ u.del }}" title="Удалить" style="width:28px;height:28px;border-radius:6px;border:1px solid #e2e2dd;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:#fdf0ef;border-color:#eccdc9"><svg width="13" height="13" viewBox="0 0 13 13"><path d="M2.5 3.5h8M5.5 3.5v-1h2v1M3.5 3.5l.5 7h5l.5-7" fill="none" stroke="#b3564d" stroke-width="1.2" stroke-linecap="round"></path></svg></button>
+                </div>
+              </div>
+              <sc-if value="{{ u.panelOpen }}" hint-placeholder-val="{{ false }}">
+                <div data-screen-label="Invite inline panel" style="border-top:1px solid #eeeeea;background:#fbfbf9;padding:14px;border-radius:0 0 9px 9px">
+                  <div style="display:flex;align-items:flex-start;gap:9px;padding:10px 12px;background:#fdf6e3;border:1px solid #f0d9a8;border-radius:7px;margin-bottom:10px">
+                    <span style="color:#e0940b;font-size:14px;line-height:1">⚠</span>
+                    <div style="font-size:12px;color:#7a5408;line-height:1.45">Invite-blob содержит <b>PSK юзера</b> — это его ключ доступа. Передавайте только по безопасному каналу (лично, шифрованный мессенджер), не по открытой почте/чатам.</div>
+                  </div>
+                  <sc-if value="{{ invRevealed }}" hint-placeholder-val="{{ false }}">
+                    <div style="font-family:ui-monospace,Menlo,monospace;font-size:11px;background:#fff;border:1px solid #e4e4df;border-radius:7px;padding:10px 12px;word-break:break-all;color:#3c3c42;max-height:96px;overflow-y:auto">{{ invBlob }}</div>
+                    <div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+                      <button onClick="{{ invCopy }}" style="padding:6px 13px;border-radius:6px;border:1px solid #4049b8;background:#4753c5;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">{{ invCopyLabel }}</button>
+                      <button onClick="{{ invDownload }}" style="padding:6px 13px;border-radius:6px;border:1px solid #d8d8d2;background:#fff;color:#3a3a40;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="background:#f4f4f2">Скачать .mkpk</button>
+                      <span style="font-size:11px;color:#a2a2a8">Изменили сервисы или PSK — выдайте блоб заново.</span>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ invHidden }}" hint-placeholder-val="{{ false }}">
+                    <button onClick="{{ invReveal }}" style="padding:7px 14px;border-radius:6px;border:1px solid #d8d8d2;background:#fff;color:#3a3a40;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="background:#f4f4f2">Показать блоб</button>
+                  </sc-if>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      </sc-if>
+      <!-- ===== Render ===== -->
+      <sc-if value="{{ tabRender }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="Render" style="max-width:920px;display:flex;flex-direction:column;min-height:0;height:100%">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+          <div style="font-size:15px;font-weight:650">Render</div>
+          <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;background:#f2f2ef;border:1px solid #e4e4df;border-radius:5px;padding:2px 8px;color:#55555c">hash {{ localHash }}</span>
+          <span style="font-size:12px;color:#8a8a90">{{ rscMeta }}</span>
+          <div style="flex:1"></div>
+          <button onClick="{{ copyRsc }}" style="padding:6px 13px;border-radius:6px;border:1px solid #d8d8d2;background:#fff;color:#3a3a40;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="background:#f4f4f2">{{ copyRscLabel }}</button>
+          <button onClick="{{ downloadRsc }}" style="padding:6px 13px;border-radius:6px;border:1px solid #4049b8;background:#4753c5;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="background:#3a45ad">Скачать .rsc</button>
+        </div>
+        <div style="background:#fff;border:1px solid #e6e6e1;border-radius:9px;overflow:hidden;flex:1;min-height:0;display:flex">
+          <pre style="margin:0;padding:14px 16px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;line-height:1.55;color:#3c3c42;overflow:auto;flex:1;white-space:pre">{{ rscText }}</pre>
+        </div>
+        <div style="margin-top:10px;font-size:11.5px;color:#8a8a90">Рендер по срезу текущего роутера: его сервисы (только включённые) и токен-правила его юзеров.</div>
+      </div>
+      </sc-if>
+      <!-- ===== Deploy ===== -->
+      <sc-if value="{{ tabDeploy }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="Deploy" style="max-width:860px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+          <div style="font-size:15px;font-weight:650">Deploy</div>
+          <div style="flex:1"></div>
+          <div title="Переключатель варианта вывода — только для мокапа" style="display:inline-flex;align-items:center;gap:7px;border:1px dashed #d4d4ce;border-radius:7px;padding:3px 8px">
+            <span style="font-size:10px;font-weight:600;letter-spacing:.06em;color:#a2a2a8;text-transform:uppercase">Вывод · вариант</span>
+            <div style="display:inline-flex;background:#ececea;border-radius:6px;padding:2px">
+              <button onClick="{{ setVarCards }}" style="padding:2px 9px;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;background:{{ varCardsBg }};color:{{ varCardsColor }};box-shadow:{{ varCardsShadow }}">A · карточки</button>
+              <button onClick="{{ setVarTerm }}" style="padding:2px 9px;border:none;border-radius:5px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;background:{{ varTermBg }};color:{{ varTermColor }};box-shadow:{{ varTermShadow }}">B · терминал</button>
+            </div>
+          </div>
+        </div>
+        <sc-if value="{{ dNoCreds }}" hint-placeholder-val="{{ false }}">
+          <div data-screen-label="Deploy no creds" style="background:#fff;border:1px solid #e6e6e1;border-radius:9px;padding:36px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px">
+            <svg width="36" height="36" viewBox="0 0 36 36"><rect x="7" y="15" width="22" height="14" rx="3" fill="none" stroke="#c9c9c4" stroke-width="2"></rect><path d="M12 15v-4a6 6 0 0112 0v4" fill="none" stroke="#c9c9c4" stroke-width="2"></path><circle cx="18" cy="22" r="2" fill="#c9c9c4"></circle></svg>
+            <div style="font-size:14px;font-weight:650">SSH-креды не заданы</div>
+            <div style="font-size:12.5px;color:#66666e;max-width:380px;line-height:1.5">Реквизиты подключения задаются один раз в настройках роутера — экран деплоя их не спрашивает. Задайте порт, пользователя и ключ (или ssh-agent), и действия станут доступны.</div>
+            <button onClick="{{ editCurrentRouter }}" style="margin-top:4px;padding:7px 16px;border-radius:6px;border:1px solid #4049b8;background:#4753c5;color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="background:#3a45ad">Открыть настройки роутера</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ dHasCreds }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+            <div style="flex:1;min-width:260px;background:#fff;border:1px solid #e6e6e1;border-radius:9px;padding:12px 14px">
+              <div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;color:#a2a2a8;text-transform:uppercase;margin-bottom:6px">Подключение</div>
+              <div style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;color:#3c3c42">{{ dCredLine }}</div>
+              <div style="font-size:11.5px;color:#8a8a90;margin-top:3px">{{ dAuthLine }} · <a href="#" onClick="{{ editCurrentRouterA }}">изменить</a></div>
+            </div>
+            <div style="flex:1;min-width:260px;background:#fff;border:1px solid #e6e6e1;border-radius:9px;padding:12px 14px">
+              <div style="font-size:10.5px;font-weight:600;letter-spacing:.07em;color:#a2a2a8;text-transform:uppercase;margin-bottom:6px">Состояние конфига</div>
+              <div style="display:flex;gap:14px;font-family:ui-monospace,Menlo,monospace;font-size:12px">
+                <span><span style="color:#a2a2a8">local </span><span style="color:#3c3c42">{{ dLocalHash }}</span></span>
+                <span><span style="color:#a2a2a8">router </span><span style="color:#3c3c42">{{ dInstHash }}</span></span>
+              </div>
+              <div style="font-size:11.5px;margin-top:3px;font-weight:600;color:{{ dStateColor }}">{{ dStateText }}</div>
+            </div>
+          </div>
+          <div style="background:#fff;border:1px solid #e6e6e1;border-radius:9px;padding:12px 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+            <button onClick="{{ runStatus }}" style="padding:7px 15px;border-radius:6px;border:1px solid #d8d8d2;background:#fff;color:#3a3a40;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="background:#f4f4f2">Status</button>
+            <button onClick="{{ runApply }}" style="padding:7px 15px;border-radius:6px;border:1px solid #4049b8;background:#4753c5;color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="background:#3a45ad">Apply</button>
+            <button onClick="{{ askUninstall }}" style="padding:7px 15px;border-radius:6px;border:1px solid #ecc8c4;background:#fff;color:#b3382d;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="background:#fdf0ef">Uninstall…</button>
+            <div style="width:1px;height:22px;background:#e6e6e1;margin:0 4px"></div>
+            <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#3a3a40;cursor:pointer" title="Показать, что будет сделано, без изменений на роутере"><input type="checkbox" checked="{{ dDry }}" onChange="{{ toggleDry }}" style="accent-color:#4753c5"></input>dry-run</label>
+            <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#3a3a40;cursor:pointer" title="Применить, даже если hash совпадает"><input type="checkbox" checked="{{ dForce }}" onChange="{{ toggleForce }}" style="accent-color:#4753c5"></input>force</label>
+            <sc-if value="{{ dRunning }}" hint-placeholder-val="{{ false }}">
+              <span style="display:inline-flex;align-items:center;gap:7px;font-size:12px;color:#66666e;margin-left:6px"><span style="width:13px;height:13px;border:2px solid #d8d8d2;border-top-color:#4753c5;border-radius:50%;animation:spin .7s linear infinite;display:inline-block"></span>{{ dRunningLabel }}</span>
+            </sc-if>
+          </div>
+          <!-- Variant A: cards -->
+          <sc-if value="{{ varCards }}" hint-placeholder-val="{{ true }}">
+            <sc-if value="{{ resNone }}" hint-placeholder-val="{{ true }}">
+              <div style="border:1px dashed #d8d8d2;border-radius:9px;padding:22px;text-align:center;font-size:12px;color:#a2a2a8">Результат действия появится здесь. Начните со <b>Status</b> — он покажет, что установлено на роутере.</div>
+            </sc-if>
+            <sc-if value="{{ resOk }}" hint-placeholder-val="{{ false }}">
+              <div data-screen-label="Deploy result ok" style="background:#f0f9f2;border:1px solid #cfe6d6;border-radius:9px;padding:14px 16px">
+                <div style="font-weight:650;color:#177a48;font-size:13px;margin-bottom:4px">✓ {{ resTitle }}</div>
+                <div style="font-size:12.5px;color:#2e5c42;line-height:1.5">{{ resMessage }}</div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ resDrift }}" hint-placeholder-val="{{ false }}">
+              <div data-screen-label="Deploy result drift" style="background:#fdf6e3;border:1px solid #f0d9a8;border-radius:9px;padding:14px 16px">
+                <div style="font-weight:650;color:#96660a;font-size:13px;margin-bottom:4px">● {{ resTitle }}</div>
+                <div style="font-size:12.5px;color:#7a5408;line-height:1.5">{{ resMessage }}</div>
+                <button onClick="{{ runApply }}" style="margin-top:10px;padding:6px 14px;border-radius:6px;border:1px solid #4049b8;background:#4753c5;color:#fff;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="background:#3a45ad">Apply — задеплоить изменения</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{ resErr }}" hint-placeholder-val="{{ false }}">
+              <div data-screen-label="Deploy result error" style="background:#fdf0ef;border:1px solid #ecc8c4;border-radius:9px;padding:14px 16px">
+                <div style="font-weight:650;color:#b3382d;font-size:13px;margin-bottom:4px">✕ {{ resTitle }}</div>
+                <div style="font-size:12.5px;color:#8a3a32;line-height:1.5">{{ resMessage }}</div>
+                <div style="font-size:11.5px;color:#8a3a32;margin-top:6px;opacity:.8">Проверьте адрес/порт в настройках роутера и что роутер в сети. <a href="#" onClick="{{ editCurrentRouterA }}">Настройки роутера →</a></div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ resAny }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:10px">
+                <button onClick="{{ toggleRaw }}" style="border:none;background:none;font-family:inherit;font-size:12px;color:#66666e;cursor:pointer;padding:0;display:inline-flex;gap:6px;align-items:center" style-hover="color:#1a1a1e"><span style="font-size:10px">{{ rawArrow }}</span>{{ rawToggleLabel }}</button>
+                <sc-if value="{{ dShowRaw }}" hint-placeholder-val="{{ false }}">
+                  <pre style="margin:8px 0 0;background:#17171b;color:#c9cdd6;border-radius:8px;padding:12px 14px;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;line-height:1.6;overflow-x:auto;white-space:pre-wrap;word-break:break-word">{{ dTermText }}</pre>
+                </sc-if>
+              </div>
+            </sc-if>
+          </sc-if>
+          <!-- Variant B: terminal -->
+          <sc-if value="{{ varTerm }}" hint-placeholder-val="{{ false }}">
+            <div data-screen-label="Deploy terminal" style="background:#17171b;border-radius:9px;padding:14px 16px;min-height:180px">
+              <pre style="margin:0;color:#c9cdd6;font-family:ui-monospace,Menlo,monospace;font-size:11.5px;line-height:1.65;white-space:pre-wrap;word-break:break-word">{{ dTermText }}</pre>
+            </div>
+          </sc-if>
+        </sc-if>
+      </div>
+      </sc-if>
+    </div>
+  </div>
+  </sc-if>
+  <!-- ===== Onboarding (empty) ===== -->
+  <sc-if value="{{ noRouters }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Onboarding empty" style="flex:1;display:flex;align-items:center;justify-content:center;background:#f6f6f4">
+      <div style="text-align:center;max-width:400px;padding:20px">
+        <svg width="52" height="52" viewBox="0 0 52 52" style="margin-bottom:14px"><rect x="6" y="19" width="40" height="17" rx="4" fill="none" stroke="#c9c9c4" stroke-width="2.4"></rect><circle cx="15" cy="27.5" r="2.2" fill="#4753c5"></circle><circle cx="23" cy="27.5" r="2.2" fill="#4753c5" opacity=".6"></circle><circle cx="31" cy="27.5" r="2.2" fill="#4753c5" opacity=".3"></circle><path d="M40 24v7" stroke="#c9c9c4" stroke-width="2.4" stroke-linecap="round"></path></svg>
+        <div style="font-size:17px;font-weight:650;margin-bottom:8px">Добавьте первый роутер</div>
+        <div style="font-size:13px;color:#66666e;line-height:1.55;margin-bottom:18px">Роутер — это ваш MikroTik, который приложение провижинит по SSH. Сервисы и юзеры живут внутри роутера: сначала роутер, потом всё остальное.</div>
+        <button onClick="{{ addRouter }}" style="padding:9px 20px;border-radius:7px;border:1px solid #4049b8;background:#4753c5;color:#fff;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="background:#3a45ad">+ Добавить роутер</button>
+      </div>
+    </div>
+  </sc-if>
+</div>
+<!-- ===== Modal: Router form ===== -->
+<sc-if value="{{ mRouter }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ closeModal }}" style="position:fixed;inset:0;background:rgba(24,24,28,.42);display:flex;align-items:flex-start;justify-content:center;padding:7vh 20px 20px;z-index:50;animation:fade .15s ease">
+    <div data-screen-label="Router form" onClick="{{ stop }}" style="background:#fff;border-radius:11px;width:480px;max-width:100%;box-shadow:0 20px 60px rgba(0,0,0,.28);animation:pop .18s ease;max-height:84vh;display:flex;flex-direction:column;font-size:13px">
+      <div style="padding:15px 18px 12px;border-bottom:1px solid #eeeeea;font-size:14.5px;font-weight:650">{{ routerFormTitle }}</div>
+      <div style="padding:16px 18px;overflow-y:auto">
+        <div style="display:flex;gap:10px">
+          <div style="flex:1"><label style="display:block;font-size:12px;font-weight:550;color:#66666e;margin-bottom:4px">Имя</label><input value="{{ form.name }}" onChange="{{ fName }}" placeholder="router-a" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d8d8d2;border-radius:6px;font-size:13px;font-family:inherit;background:#fff;outline:none" style-focus="border-color:#4753c5;box-shadow:0 0 0 3px rgba(71,83,197,.14)"></input></div>
+          <div style="flex:1.4"><label style="display:block;font-size:12px;font-weight:550;color:#66666e;margin-bottom:4px">Адрес</label><input value="{{ form.address }}" onChange="{{ fAddress }}" placeholder="router.example.com или 10.0.0.1" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d8d8d2;border-radius:6px;font-size:13px;font-family:ui-monospace,Menlo,monospace;background:#fff;outline:none" style-focus="border-color:#4753c5;box-shadow:0 0 0 3px rgba(71,83,197,.14)"></input></div>
+        </div>
+        <div style="margin:18px 0 12px;display:flex;align-items:center;gap:10px"><div style="font-size:11px;font-weight:650;letter-spacing:.07em;color:#a2a2a8;text-transform:uppercase;flex:none">SSH для деплоя</div><div style="flex:1;height:1px;background:#eeeeea"></div></div>
+        <div style="font-size:11.5px;color:#8a8a90;margin-bottom:12px;line-height:1.5">Используется кнопками Status / Apply / Uninstall. Хранится в локальном секретном конфиге (0600) и не покидает эту машину.</div>
+        <div style="display:flex;gap:10px">
+          <div style="width:90px"><label style="display:block;font-size:12px;font-weight:550;color:#66666e;margin-bottom:4px">Порт</label><input value="{{ form.port }}" onChange="{{ fPort }}" placeholder="22" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d8d8d2;border-radius:6px;font-size:13px;font-family:ui-monospace,Menlo,monospace;background:#fff;outline:none" style-focus="border-color:#4753c5;box-shadow:0 0 0 3px rgba(71,83,197,.14)"></input></div>
+          <div style="flex:1"><label style="display:block;font-size:12px;font-weight:550;color:#66666e;margin-bottom:4px">Пользователь</label><input value="{{ form.user }}" onChange="{{ fUser }}" placeholder="admin" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d8d8d2;border-radius:6px;font-size:13px;font-family:ui-monospace,Menlo,monospace;background:#fff;outline:none" style-focus="border-color:#4753c5;box-shadow:0 0 0 3px rgba(71,83,197,.14)"></input></div>
+        </div>
+        <div style="margin-top:12px">
+          <label style="display:block;font-size:12px;font-weight:550;color:#66666e;margin-bottom:5px">Аутентификация</label>
+          <div style="display:inline-flex;background:#ececea;border-radius:7px;padding:2px">
+            <button onClick="{{ setAuthAgent }}" style="padding:5px 12px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;background:{{ authAgentBg }};color:{{ authAgentColor }};box-shadow:{{ authAgentShadow }}">ssh-agent</button>
+            <button onClick="{{ setAuthKey }}" style="padding:5px 12px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;background:{{ authKeyBg }};color:{{ authKeyColor }};box-shadow:{{ authKeyShadow }}">файл ключа</button>
+          </div>
+          <span style="font-size:11px;color:#a2a2a8;margin-left:10px">рекомендуется: секрет не попадает в конфиг</span>
+        </div>
+        <sc-if value="{{ authIsKey }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:12px"><label style="display:block;font-size:12px;font-weight:550;color:#66666e;margin-bottom:4px">Путь к приватному ключу</label><input value="{{ form.keyPath }}" onChange="{{ fKeyPath }}" placeholder="~/.ssh/id_ed25519" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d8d8d2;border-radius:6px;font-size:13px;font-family:ui-monospace,Menlo,monospace;background:#fff;outline:none" style-focus="border-color:#4753c5;box-shadow:0 0 0 3px rgba(71,83,197,.14)"></input>
+          <div style="font-size:11px;color:#a2a2a8;margin-top:4px">В конфиге хранится только путь, не сам ключ.</div></div>
+        </sc-if>
+        <div style="margin-top:14px">
+          <button onClick="{{ togglePw }}" style="border:none;background:none;font-family:inherit;font-size:12px;color:#66666e;cursor:pointer;padding:0;display:inline-flex;gap:6px;align-items:center" style-hover="color:#1a1a1e"><span style="font-size:10px">{{ pwArrow }}</span>Пароль (fallback)</button>
+          <sc-if value="{{ pwOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:10px;padding:12px;background:#fbfbf9;border:1px solid #eeeeea;border-radius:8px">
+              <div style="display:flex;gap:10px">
+                <div style="flex:1"><label style="display:block;font-size:12px;font-weight:550;color:#66666e;margin-bottom:4px">Пароль SSH</label><input type="password" value="{{ form.password }}" onChange="{{ fPassword }}" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d8d8d2;border-radius:6px;font-size:13px;font-family:inherit;background:#fff;outline:none" style-focus="border-color:#4753c5;box-shadow:0 0 0 3px rgba(71,83,197,.14)"></input></div>
+                <div style="flex:1"><label style="display:block;font-size:12px;font-weight:550;color:#66666e;margin-bottom:4px">Пассфраза ключа</label><input type="password" value="{{ form.passphrase }}" onChange="{{ fPassphrase }}" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d8d8d2;border-radius:6px;font-size:13px;font-family:inherit;background:#fff;outline:none" style-focus="border-color:#4753c5;box-shadow:0 0 0 3px rgba(71,83,197,.14)"></input></div>
+              </div>
+              <div style="font-size:11px;color:#a2a2a8;margin-top:8px">Опционально. Лежит в секретном конфиге вместе с PSK; предпочитайте ключ или ssh-agent.</div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+      <div style="padding:13px 18px;border-top:1px solid #eeeeea;display:flex;align-items:center;gap:8px">
+        <sc-if value="{{ routerFormIsEdit }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ askDeleteRouter }}" style="border:none;background:none;font-family:inherit;font-size:12px;color:#b3382d;cursor:pointer;padding:0;font-weight:550" style-hover="text-decoration:underline">Удалить роутер…</button>
+        </sc-if>
+        <div style="flex:1"></div>
+        <button onClick="{{ closeModal }}" style="padding:7px 14px;border-radius:6px;border:1px solid #d8d8d2;background:#fff;color:#3a3a40;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="background:#f4f4f2">Отмена</button>
+        <button onClick="{{ saveRouter }}" style="padding:7px 16px;border-radius:6px;border:1px solid #4049b8;background:#4753c5;color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="background:#3a45ad">Сохранить</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+<!-- ===== Modal: Service form ===== -->
+<sc-if value="{{ mService }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ closeModal }}" style="position:fixed;inset:0;background:rgba(24,24,28,.42);display:flex;align-items:flex-start;justify-content:center;padding:7vh 20px 20px;z-index:50;animation:fade .15s ease">
+    <div data-screen-label="Service form" onClick="{{ stop }}" style="background:#fff;border-radius:11px;width:480px;max-width:100%;box-shadow:0 20px 60px rgba(0,0,0,.28);animation:pop .18s ease;max-height:84vh;display:flex;flex-direction:column;font-size:13px">
+      <div style="padding:15px 18px 12px;border-bottom:1px solid #eeeeea;font-size:14.5px;font-weight:650">{{ serviceFormTitle }}</div>
+      <div style="padding:16px 18px;overflow-y:auto">
+        <div><label style="display:block;font-size:12px;font-weight:550;color:#66666e;margin-bottom:4px">Имя сервиса</label><input value="{{ form.name }}" onChange="{{ fName }}" placeholder="ssh-home" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d8d8d2;border-radius:6px;font-size:13px;font-family:ui-monospace,Menlo,monospace;background:#fff;outline:none" style-focus="border-color:#4753c5;box-shadow:0 0 0 3px rgba(71,83,197,.14)"></input>
+        <div style="font-size:11px;color:#a2a2a8;margin-top:4px">Входит в формулу токена — переименование инвалидирует выданные инвайты.</div></div>
+        <div style="margin-top:14px"><label style="display:block;font-size:12px;font-weight:550;color:#66666e;margin-bottom:4px">Порты «стука»</label>
+          <div style="display:flex;gap:10px">
+            <div style="flex:1"><input value="{{ form.stage1 }}" onChange="{{ fS1 }}" placeholder="41011" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d8d8d2;border-radius:6px;font-size:13px;font-family:ui-monospace,Menlo,monospace;background:#fff;outline:none" style-focus="border-color:#4753c5;box-shadow:0 0 0 3px rgba(71,83,197,.14)"></input><div style="font-size:10.5px;color:#a2a2a8;margin-top:3px;text-align:center">stage 1</div></div>
+            <div style="flex:1"><input value="{{ form.stage2 }}" onChange="{{ fS2 }}" placeholder="41012" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d8d8d2;border-radius:6px;font-size:13px;font-family:ui-monospace,Menlo,monospace;background:#fff;outline:none" style-focus="border-color:#4753c5;box-shadow:0 0 0 3px rgba(71,83,197,.14)"></input><div style="font-size:10.5px;color:#a2a2a8;margin-top:3px;text-align:center">stage 2</div></div>
+            <div style="flex:1"><input value="{{ form.token }}" onChange="{{ fST }}" placeholder="41013" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d8d8d2;border-radius:6px;font-size:13px;font-family:ui-monospace,Menlo,monospace;background:#fff;outline:none" style-focus="border-color:#4753c5;box-shadow:0 0 0 3px rgba(71,83,197,.14)"></input><div style="font-size:10.5px;color:#a2a2a8;margin-top:3px;text-align:center">token</div></div>
+          </div>
+        </div>
+        <div style="margin-top:16px">
+          <label style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:550;color:#3a3a40;cursor:pointer"><input type="checkbox" checked="{{ form.natOn }}" onChange="{{ fNatOn }}" style="accent-color:#4753c5"></input>Пробрасывать порт (NAT)</label>
+          <sc-if value="{{ natOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;gap:10px;margin-top:8px">
+              <div style="flex:2"><label style="display:block;font-size:12px;font-weight:550;color:#66666e;margin-bottom:4px">Внутренний host</label><input value="{{ form.natHost }}" onChange="{{ fNatHost }}" placeholder="10.0.0.10" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d8d8d2;border-radius:6px;font-size:13px;font-family:ui-monospace,Menlo,monospace;background:#fff;outline:none" style-focus="border-color:#4753c5;box-shadow:0 0 0 3px rgba(71,83,197,.14)"></input></div>
+              <div style="flex:1"><label style="display:block;font-size:12px;font-weight:550;color:#66666e;margin-bottom:4px">Порт</label><input value="{{ form.natPort }}" onChange="{{ fNatPort }}" placeholder="2022" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d8d8d2;border-radius:6px;font-size:13px;font-family:ui-monospace,Menlo,monospace;background:#fff;outline:none" style-focus="border-color:#4753c5;box-shadow:0 0 0 3px rgba(71,83,197,.14)"></input></div>
+            </div>
+          </sc-if>
+        </div>
+        <div style="margin-top:16px">
+          <button onClick="{{ toggleNotify }}" style="border:none;background:none;font-family:inherit;font-size:12px;color:#66666e;cursor:pointer;padding:0;display:inline-flex;gap:6px;align-items:center" style-hover="color:#1a1a1e"><span style="font-size:10px">{{ notifyArrow }}</span>Уведомления при открытии (опционально)</button>
+          <sc-if value="{{ notifyOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:10px;padding:12px;background:#fbfbf9;border:1px solid #eeeeea;border-radius:8px;display:flex;flex-direction:column;gap:10px">
+              <div><label style="display:block;font-size:12px;font-weight:550;color:#66666e;margin-bottom:4px">Webhook URL</label><input value="{{ form.webhook }}" onChange="{{ fWebhook }}" placeholder="https://…" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d8d8d2;border-radius:6px;font-size:13px;font-family:ui-monospace,Menlo,monospace;background:#fff;outline:none" style-focus="border-color:#4753c5;box-shadow:0 0 0 3px rgba(71,83,197,.14)"></input></div>
+              <div><label style="display:block;font-size:12px;font-weight:550;color:#66666e;margin-bottom:4px">Telegram chat</label><input value="{{ form.telegram }}" onChange="{{ fTelegram }}" placeholder="@chat или id" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d8d8d2;border-radius:6px;font-size:13px;font-family:ui-monospace,Menlo,monospace;background:#fff;outline:none" style-focus="border-color:#4753c5;box-shadow:0 0 0 3px rgba(71,83,197,.14)"></input></div>
+              <div><label style="display:block;font-size:12px;font-weight:550;color:#66666e;margin-bottom:4px">Email</label><input value="{{ form.email }}" onChange="{{ fEmail }}" placeholder="admin@…" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d8d8d2;border-radius:6px;font-size:13px;font-family:ui-monospace,Menlo,monospace;background:#fff;outline:none" style-focus="border-color:#4753c5;box-shadow:0 0 0 3px rgba(71,83,197,.14)"></input></div>
+              <div style="font-size:11px;color:#a2a2a8">Пустое поле = канал выключен.</div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+      <div style="padding:13px 18px;border-top:1px solid #eeeeea;display:flex;gap:8px;justify-content:flex-end">
+        <button onClick="{{ closeModal }}" style="padding:7px 14px;border-radius:6px;border:1px solid #d8d8d2;background:#fff;color:#3a3a40;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="background:#f4f4f2">Отмена</button>
+        <button onClick="{{ saveService }}" style="padding:7px 16px;border-radius:6px;border:1px solid #4049b8;background:#4753c5;color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="background:#3a45ad">Сохранить</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+<!-- ===== Modal: User form ===== -->
+<sc-if value="{{ mUser }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ closeModal }}" style="position:fixed;inset:0;background:rgba(24,24,28,.42);display:flex;align-items:flex-start;justify-content:center;padding:7vh 20px 20px;z-index:50;animation:fade .15s ease">
+    <div data-screen-label="User form" onClick="{{ stop }}" style="background:#fff;border-radius:11px;width:440px;max-width:100%;box-shadow:0 20px 60px rgba(0,0,0,.28);animation:pop .18s ease;max-height:84vh;display:flex;flex-direction:column;font-size:13px">
+      <div style="padding:15px 18px 12px;border-bottom:1px solid #eeeeea;font-size:14.5px;font-weight:650">{{ userFormTitle }}</div>
+      <div style="padding:16px 18px;overflow-y:auto">
+        <div><label style="display:block;font-size:12px;font-weight:550;color:#66666e;margin-bottom:4px">Имя (client_id)</label><input value="{{ form.name }}" onChange="{{ fName }}" placeholder="phone" style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid #d8d8d2;border-radius:6px;font-size:13px;font-family:ui-monospace,Menlo,monospace;background:#fff;outline:none" style-focus="border-color:#4753c5;box-shadow:0 0 0 3px rgba(71,83,197,.14)"></input></div>
+        <div style="margin-top:14px"><label style="display:block;font-size:12px;font-weight:550;color:#66666e;margin-bottom:4px">PSK</label>
+          <div style="display:flex;gap:8px">
+            <input type="password" value="{{ form.psk }}" onChange="{{ fPsk }}" placeholder="секретный ключ юзера" style="flex:1;box-sizing:border-box;padding:7px 10px;border:1px solid #d8d8d2;border-radius:6px;font-size:13px;font-family:ui-monospace,Menlo,monospace;background:#fff;outline:none" style-focus="border-color:#4753c5;box-shadow:0 0 0 3px rgba(71,83,197,.14)"></input>
+            <button onClick="{{ genPsk }}" style="padding:7px 12px;border-radius:6px;border:1px solid #d8d8d2;background:#fff;color:#3a3a40;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;flex:none" style-hover="background:#f4f4f2">Сгенерировать</button>
+          </div>
+          <div style="font-size:11px;color:#a2a2a8;margin-top:4px">Один PSK на юзера; токены per-service всё равно разные. Смена PSK требует пере-выдачи инвайта.</div>
+        </div>
+        <div style="margin-top:16px"><label style="display:block;font-size:12px;font-weight:550;color:#66666e;margin-bottom:6px">Доступ к сервисам</label>
+          <div style="border:1px solid #e6e6e1;border-radius:8px;overflow:hidden">
+            <sc-for list="{{ ufServices }}" as="s" hint-placeholder-count="3">
+              <label style="display:flex;align-items:center;gap:9px;padding:9px 12px;border-bottom:1px solid #f0f0ec;cursor:pointer;background:#fff" style-hover="background:#fbfbf9">
+                <input type="checkbox" checked="{{ s.checked }}" onChange="{{ s.toggle }}" style="accent-color:#4753c5"></input>
+                <span style="font-family:ui-monospace,Menlo,monospace;font-size:12.5px;flex:1">{{ s.name }}</span>
+                <span style="font-size:11px;color:#a2a2a8">{{ s.note }}</span>
+              </label>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+      <div style="padding:13px 18px;border-top:1px solid #eeeeea;display:flex;gap:8px;justify-content:flex-end">
+        <button onClick="{{ closeModal }}" style="padding:7px 14px;border-radius:6px;border:1px solid #d8d8d2;background:#fff;color:#3a3a40;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="background:#f4f4f2">Отмена</button>
+        <button onClick="{{ saveUser }}" style="padding:7px 16px;border-radius:6px;border:1px solid #4049b8;background:#4753c5;color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="background:#3a45ad">Сохранить</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+<!-- ===== Modal: Invite ===== -->
+<sc-if value="{{ mInvite }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ closeModal }}" style="position:fixed;inset:0;background:rgba(24,24,28,.42);display:flex;align-items:flex-start;justify-content:center;padding:9vh 20px 20px;z-index:50;animation:fade .15s ease">
+    <div data-screen-label="Invite modal" onClick="{{ stop }}" style="background:#fff;border-radius:11px;width:460px;max-width:100%;box-shadow:0 20px 60px rgba(0,0,0,.28);animation:pop .18s ease;font-size:13px">
+      <div style="padding:15px 18px 12px;border-bottom:1px solid #eeeeea;font-size:14.5px;font-weight:650">Invite — {{ invUserName }} <span style="color:#a2a2a8;font-weight:500">@ {{ curName }}</span></div>
+      <div style="padding:16px 18px">
+        <div style="display:flex;align-items:flex-start;gap:9px;padding:10px 12px;background:#fdf6e3;border:1px solid #f0d9a8;border-radius:7px;margin-bottom:12px">
+          <span style="color:#e0940b;font-size:14px;line-height:1">⚠</span>
+          <div style="font-size:12px;color:#7a5408;line-height:1.45">Блоб содержит <b>PSK юзера</b> — его ключ доступа. Передавайте только по безопасному каналу (лично, шифрованный мессенджер), не по открытой почте или чатам.</div>
+        </div>
+        <div style="font-size:12px;color:#66666e;margin-bottom:10px">Внутри: адрес роутера, PSK и {{ invSvcCount }} — всё, что нужно клиентскому приложению.</div>
+        <sc-if value="{{ invHidden }}" hint-placeholder-val="{{ true }}">
+          <div style="position:relative;border-radius:7px;overflow:hidden">
+            <div style="font-family:ui-monospace,Menlo,monospace;font-size:11px;background:#f6f6f4;border:1px solid #e4e4df;border-radius:7px;padding:10px 12px;word-break:break-all;color:#3c3c42;filter:blur(5px);user-select:none;max-height:96px;overflow:hidden">{{ invBlob }}</div>
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
+              <button onClick="{{ invReveal }}" style="padding:8px 16px;border-radius:7px;border:1px solid #d8d8d2;background:#fff;color:#3a3a40;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;box-shadow:0 2px 8px rgba(0,0,0,.12)" style-hover="background:#f4f4f2">Показать блоб</button>
+            </div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ invRevealed }}" hint-placeholder-val="{{ false }}">
+          <div style="font-family:ui-monospace,Menlo,monospace;font-size:11px;background:#f6f6f4;border:1px solid #e4e4df;border-radius:7px;padding:10px 12px;word-break:break-all;color:#3c3c42;max-height:120px;overflow-y:auto">{{ invBlob }}</div>
+        </sc-if>
+      </div>
+      <div style="padding:13px 18px;border-top:1px solid #eeeeea;display:flex;gap:8px;align-items:center">
+        <span style="font-size:11px;color:#a2a2a8;flex:1">Изменили сервисы или PSK — выдайте блоб заново.</span>
+        <button onClick="{{ invDownload }}" style="padding:7px 13px;border-radius:6px;border:1px solid #d8d8d2;background:#fff;color:#3a3a40;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="background:#f4f4f2">Скачать .mkpk</button>
+        <button onClick="{{ invCopy }}" style="padding:7px 15px;border-radius:6px;border:1px solid #4049b8;background:#4753c5;color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="background:#3a45ad">{{ invCopyLabel }}</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+<!-- ===== Modal: Confirm ===== -->
+<sc-if value="{{ mConfirm }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ closeModal }}" style="position:fixed;inset:0;background:rgba(24,24,28,.42);display:flex;align-items:flex-start;justify-content:center;padding:14vh 20px 20px;z-index:60;animation:fade .15s ease">
+    <div data-screen-label="Confirm dialog" onClick="{{ stop }}" style="background:#fff;border-radius:11px;width:400px;max-width:100%;box-shadow:0 20px 60px rgba(0,0,0,.28);animation:pop .18s ease;font-size:13px">
+      <div style="padding:18px 18px 0;display:flex;gap:12px">
+        <div style="width:34px;height:34px;border-radius:50%;background:#fdf0ef;display:flex;align-items:center;justify-content:center;flex:none"><svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 2L14.5 13.5H1.5z" fill="none" stroke="#b3382d" stroke-width="1.4" stroke-linejoin="round"></path><path d="M8 6.5v3.2M8 11.6v.1" stroke="#b3382d" stroke-width="1.4" stroke-linecap="round"></path></svg></div>
+        <div>
+          <div style="font-size:14px;font-weight:650;margin-bottom:5px">{{ confirmTitle }}</div>
+          <div style="font-size:12.5px;color:#66666e;line-height:1.5">{{ confirmMessage }}</div>
+        </div>
+      </div>
+      <div style="padding:16px 18px;display:flex;gap:8px;justify-content:flex-end">
+        <button onClick="{{ closeModal }}" style="padding:7px 14px;border-radius:6px;border:1px solid #d8d8d2;background:#fff;color:#3a3a40;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="background:#f4f4f2">Отмена</button>
+        <button onClick="{{ confirmAction }}" style="padding:7px 16px;border-radius:6px;border:1px solid #a1332a;background:#c0392b;color:#fff;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit" style-hover="background:#a83226">{{ confirmLabel }}</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;startEmpty&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Прототип&quot;},&quot;deployVariant&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;cards&quot;,&quot;terminal&quot;],&quot;default&quot;:&quot;cards&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Варианты&quot;},&quot;inviteVariant&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;modal&quot;,&quot;inline&quot;],&quot;default&quot;:&quot;modal&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Варианты&quot;}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this._fh = {};
+    const demo = this.demoData();
+    let st = {
+      routers: demo, currentId: 'kz', tab: 'services', modal: null, form: {},
+      varDeploy: null, varInvite: null,
+      deploy: { running: false, runLabel: '', dry: true, force: false, result: null, lines: [], showRaw: false },
+      inviteUserId: null, invitePanel: false, revealed: false, copied: false, copiedRsc: false,
+      pwOpen: false, notifyOpen: false
+    };
+    if (props && props.startEmpty) { st.routers = []; st.currentId = null; }
+    const h = (typeof location !== 'undefined' ? (location.hash || '') : '').replace('#', '');
+    this.applyPreset(st, h);
+    this.state = st;
+  }
+  demoData() {
+    return [
+      { id: 'kz', name: 'router-a', address: 'router.example.com', unreachable: false,
+        ssh: { port: '22', user: 'admin', auth: 'agent', keyPath: '', password: '', passphrase: '' },
+        deployedHash: '9b21e4d7', deployedRules: 42, deployedAt: '2026-07-25 14:02',
+        services: [
+          { id: 's1', name: 'ssh-home', enabled: true, stage1: '41011', stage2: '41012', token: '41013', natHost: '10.0.0.10', natPort: '2022', webhook: '', telegram: '@mkpk_alerts', email: '', dirty: true },
+          { id: 's2', name: 'web-home', enabled: true, stage1: '41021', stage2: '41022', token: '41023', natHost: '10.0.0.10', natPort: '8443', webhook: '', telegram: '', email: '', dirty: false },
+          { id: 's3', name: 'rdp-work', enabled: false, stage1: '41031', stage2: '41032', token: '41033', natHost: '', natPort: '', webhook: 'https://hooks.example.com/mkpk', telegram: '', email: '', dirty: false }
+        ],
+        users: [
+          { id: 'u1', name: 'phone', psk: 'wJalrXUtnFEMIK7MDENG', services: ['ssh-home', 'web-home'], dirty: false },
+          { id: 'u2', name: 'laptop', psk: 'kR9mQ2xVbN8pL4sT7yUw', services: ['ssh-home', 'web-home', 'rdp-work'], dirty: true },
+          { id: 'u3', name: 'tablet', psk: 'aB3cD5eF7gH9jK1mN2pQ', services: ['web-home'], dirty: false }
+        ] },
+      { id: 'home', name: 'home', address: '10.0.0.1', unreachable: false, ssh: null,
+        deployedHash: null, deployedRules: 0, deployedAt: null,
+        services: [{ id: 'hs1', name: 'nas-web', enabled: true, stage1: '42011', stage2: '42012', token: '42013', natHost: '10.0.0.5', natPort: '5001', webhook: '', telegram: '', email: '', dirty: false }],
+        users: [{ id: 'hu1', name: 'phone', psk: 'zX8cV6bN4mQ2wE0rT9yU', services: ['nas-web'], dirty: false }] },
+      { id: 'office', name: 'office', address: '192.168.88.1', unreachable: true,
+        ssh: { port: '22', user: 'admin', auth: 'key', keyPath: '~/.ssh/id_ed25519', password: '', passphrase: '' },
+        deployedHash: 'c47a10b2', deployedRules: 18, deployedAt: '2026-07-20 09:15',
+        services: [{ id: 'os1', name: 'cam-view', enabled: true, stage1: '43011', stage2: '43012', token: '43013', natHost: '192.168.88.20', natPort: '8080', webhook: '', telegram: '', email: '', dirty: false }],
+        users: [{ id: 'ou1', name: 'phone', psk: 'pL5kJ3hG1fD9sA7qW2eR', services: ['cam-view'], dirty: false }] }
+    ];
+  }
+  applyPreset(st, h) {
+    if (!h) return;
+    const kz = st.routers.find(r => r.id === 'kz');
+    if (h === 'empty') { st.routers = []; st.currentId = null; }
+    else if (h === 'router-form') { st.modal = { type: 'router', editId: null }; st.form = this.routerForm(null); }
+    else if (h === 'router-edit') { st.modal = { type: 'router', editId: 'kz' }; st.form = this.routerForm(kz); st.pwOpen = false; }
+    else if (h === 'service-form') { st.modal = { type: 'service', editId: 's1' }; st.form = this.serviceForm(kz.services[0]); st.notifyOpen = true; }
+    else if (h === 'user-form') { st.modal = { type: 'user', editId: 'u2' }; st.form = this.userForm(kz.users[1]); }
+    else if (h === 'users') { st.tab = 'users'; }
+    else if (h === 'invite') { st.tab = 'users'; st.modal = { type: 'invite' }; st.inviteUserId = 'u1'; st.revealed = false; }
+    else if (h === 'invite-open') { st.tab = 'users'; st.modal = { type: 'invite' }; st.inviteUserId = 'u1'; st.revealed = true; }
+    else if (h === 'invite-inline') { st.tab = 'users'; st.varInvite = 'inline'; st.invitePanel = true; st.inviteUserId = 'u2'; st.revealed = true; }
+    else if (h === 'render') { st.tab = 'render'; }
+    else if (h === 'deploy') { st.tab = 'deploy'; }
+    else if (h === 'deploy-drift') { st.tab = 'deploy'; st.deploy.result = this.mkStatusResult(kz); st.deploy.lines = this.statusLines(kz); }
+    else if (h === 'deploy-terminal') { st.tab = 'deploy'; st.varDeploy = 'terminal'; st.deploy.lines = this.statusLines(kz); }
+    else if (h === 'deploy-nocreds') { st.currentId = 'home'; st.tab = 'deploy'; }
+    else if (h === 'deploy-error') { const o = st.routers.find(r => r.id === 'office'); st.currentId = 'office'; st.tab = 'deploy'; st.deploy.result = this.mkErrResult(o); st.deploy.lines = this.errLines(o); }
+    else if (h === 'deploy-applied') { st.tab = 'deploy'; kz.deployedHash = this.hashOf(kz); kz.deployedRules = 45; kz.deployedAt = '2026-07-27 11:32'; kz.services.forEach(s => s.dirty = false); kz.users.forEach(u => u.dirty = false); st.deploy.result = { kind: 'ok', title: 'Задеплоено', message: 'Конфиг применён: 45 правил, hash ' + kz.deployedHash + '. Локальный конфиг и роутер синхронизированы.' }; st.deploy.lines = this.applyLines(kz); }
+  }
+  hashOf(r) {
+    const s = JSON.stringify({ s: r.services, u: r.users, a: r.address });
+    let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+    return ('0000000' + h.toString(16)).slice(-8);
+  }
+  cur() { return this.state.routers.find(r => r.id === this.state.currentId) || null; }
+  f(name) {
+    if (!this._fh[name]) this._fh[name] = (e) => {
+      const t = e.target; const v = t.type === 'checkbox' ? t.checked : t.value;
+      this.setState(s => ({ form: Object.assign({}, s.form, { [name]: v }) }));
+    };
+    return this._fh[name];
+  }
+  routerForm(r) {
+    return r ? { name: r.name, address: r.address, port: (r.ssh && r.ssh.port) || '22', user: (r.ssh && r.ssh.user) || '', auth: (r.ssh && r.ssh.auth) || 'agent', keyPath: (r.ssh && r.ssh.keyPath) || '', password: (r.ssh && r.ssh.password) || '', passphrase: (r.ssh && r.ssh.passphrase) || '' }
+      : { name: '', address: '', port: '22', user: 'admin', auth: 'agent', keyPath: '', password: '', passphrase: '' };
+  }
+  serviceForm(s) {
+    return s ? { name: s.name, stage1: s.stage1, stage2: s.stage2, token: s.token, natOn: !!(s.natHost || s.natPort), natHost: s.natHost, natPort: s.natPort, webhook: s.webhook, telegram: s.telegram, email: s.email }
+      : { name: '', stage1: '', stage2: '', token: '', natOn: false, natHost: '', natPort: '', webhook: '', telegram: '', email: '' };
+  }
+  userForm(u) {
+    return u ? { name: u.name, psk: u.psk, services: u.services.slice() } : { name: '', psk: '', services: [] };
+  }
+  updRouters(fn) { this.setState(s => ({ routers: s.routers.map(fn) })); }
+  markCur(fn) { const id = this.state.currentId; this.updRouters(r => r.id === id ? fn(Object.assign({}, r)) : r); }
+  makeBlob(r, u) {
+    const svcs = r.services.filter(s => s.enabled && u.services.indexOf(s.name) >= 0)
+      .map(s => ({ name: s.name, stage1: +s.stage1, stage2: +s.stage2, token: +s.token, check_port: s.natPort ? +s.natPort : undefined }));
+    const j = JSON.stringify({ router: r.address, bucket_seconds: 30, user: { client_id: u.name, psk: u.psk }, services: svcs });
+    let b = ''; try { b = btoa(unescape(encodeURIComponent(j))); } catch (e) { b = ''; }
+    return b.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  buildRsc(r) {
+    const L = [];
+    const hash = this.hashOf(r);
+    L.push('# mkpk-provision — rendered slice for router "' + r.name + '" (' + r.address + ')');
+    L.push('# hash: ' + hash + ' · generated 2026-07-27 11:30');
+    L.push('');
+    L.push('/ip firewall address-list');
+    L.push('add list=mkpk-tt-meta address=127.0.0.1 comment="mkpk-tt-meta hash=' + hash + '"');
+    L.push('');
+    const en = r.services.filter(s => s.enabled);
+    en.forEach(s => {
+      L.push('# ===== service: ' + s.name + ' =====');
+      L.push('/ip firewall filter');
+      L.push('add chain=input protocol=tcp dst-port=' + s.stage1 + ' action=add-src-to-address-list \\');
+      L.push('    address-list=mkpk-tt-s1-' + s.name + ' address-list-timeout=10s comment="mkpk-tt: ' + s.name + ' stage1"');
+      L.push('add chain=input protocol=tcp dst-port=' + s.stage2 + ' src-address-list=mkpk-tt-s1-' + s.name + ' \\');
+      L.push('    action=add-src-to-address-list address-list=mkpk-tt-s2-' + s.name + ' address-list-timeout=10s comment="mkpk-tt: ' + s.name + ' stage2"');
+      r.users.filter(u => u.services.indexOf(s.name) >= 0).forEach(u => {
+        L.push('# token rules: ' + s.name + ' × ' + u.name);
+        L.push('add chain=input protocol=tcp dst-port=' + s.token + ' src-address-list=mkpk-tt-s2-' + s.name + ' \\');
+        L.push('    action=add-src-to-address-list address-list=mkpk-tt-hit-now-' + u.name + '-' + s.name + ' \\');
+        L.push('    address-list-timeout=30s comment="mkpk-tt: token ' + u.name + '@' + s.name + '"');
+      });
+      if (s.natHost) {
+        L.push('/ip firewall nat');
+        L.push('add chain=dstnat protocol=tcp dst-port=' + s.natPort + ' src-address-list=mkpk-tt-open-' + s.name + ' \\');
+        L.push('    action=dst-nat to-addresses=' + s.natHost + ' to-ports=' + s.natPort + ' comment="mkpk-tt: nat ' + s.name + '"');
+      }
+      L.push('');
+    });
+    L.push('# ===== cleanup scheduler =====');
+    L.push('/system scheduler');
+    L.push('add name=mkpk-tt-gc interval=1m on-event="/ip firewall address-list remove [find where list~\\"mkpk-tt-\\" and dynamic]"');
+    return L.join('\n');
+  }
+  statusLines(r) {
+    const lh = this.hashOf(r);
+    return ['$ mkpk-provision deploy status --router ' + r.name,
+      'connecting to ' + r.address + ':' + (r.ssh ? r.ssh.port : '22') + ' as ' + (r.ssh ? r.ssh.user : '?') + ' (' + this.authShort(r) + ')…',
+      'connected · fetching mkpk-tt-meta…',
+      'installed: hash=' + (r.deployedHash || 'none') + ' rules=' + r.deployedRules + (r.deployedAt ? ' (' + r.deployedAt + ')' : ''),
+      'local:     hash=' + lh + ' rules=' + this.ruleCount(r),
+      (r.deployedHash === lh ? 'OK: router matches local config' : 'DRIFT: local config differs from router — deploy required')];
+  }
+  applyLines(r) {
+    const lh = this.hashOf(r);
+    return ['$ mkpk-provision deploy apply --router ' + r.name + (this.state && this.state.deploy.dry ? ' --dry-run' : ''),
+      'connecting to ' + r.address + ':' + (r.ssh ? r.ssh.port : '22') + ' as ' + (r.ssh ? r.ssh.user : '?') + ' (' + this.authShort(r) + ')…',
+      'rendering slice… ' + this.ruleCount(r) + ' rules',
+      'uploading mkpk.rsc… done',
+      'executing /import… done',
+      'verifying hash… ' + lh + ' OK'];
+  }
+  errLines(r) {
+    return ['$ mkpk-provision deploy status --router ' + r.name,
+      'connecting to ' + r.address + ':' + (r.ssh ? r.ssh.port : '22') + ' as ' + (r.ssh ? r.ssh.user : '?') + ' (' + this.authShort(r) + ')…',
+      'dial tcp ' + r.address + ':' + (r.ssh ? r.ssh.port : '22') + ': connect: connection refused',
+      'ERROR: cannot reach router — check address/port or that the router is online'];
+  }
+  authShort(r) { if (!r.ssh) return 'no creds'; return r.ssh.auth === 'agent' ? 'ssh-agent' : 'key ' + r.ssh.keyPath; }
+  ruleCount(r) { let n = 3; r.services.filter(s => s.enabled).forEach(s => { n += 2; n += r.users.filter(u => u.services.indexOf(s.name) >= 0).length; if (s.natHost) n += 1; }); return n; }
+  mkStatusResult(r) {
+    const lh = this.hashOf(r);
+    if (!r.deployedHash) return { kind: 'drift', title: 'На роутере ничего не установлено', message: 'mkpk-tt-meta не найдена. Локальный конфиг (' + this.ruleCount(r) + ' правил, hash ' + lh + ') ещё не деплоился.' };
+    if (r.deployedHash === lh) return { kind: 'ok', title: 'Синхронизировано', message: 'На роутере hash ' + r.deployedHash + ' (' + r.deployedRules + ' правил, ' + r.deployedAt + ') — совпадает с локальным конфигом.' };
+    return { kind: 'drift', title: 'Drift: конфиг отличается', message: 'На роутере hash ' + r.deployedHash + ' (' + r.deployedRules + ' правил, ' + r.deployedAt + '), локально ' + lh + ' (' + this.ruleCount(r) + ' правил). Нужен Apply.' };
+  }
+  mkErrResult(r) { return { kind: 'err', title: 'Не удалось подключиться', message: 'dial tcp ' + r.address + ':' + (r.ssh ? r.ssh.port : '22') + ': connect: connection refused' }; }
+  runAction(kind) {
+    const r = this.cur(); if (!r || !r.ssh) return;
+    const labels = { status: 'Status…', apply: 'Apply…', uninstall: 'Uninstall…' };
+    this.setState(s => ({ deploy: Object.assign({}, s.deploy, { running: true, runLabel: labels[kind], result: null, lines: [] }) }));
+    setTimeout(() => {
+      let result, lines;
+      if (r.unreachable) { result = this.mkErrResult(r); lines = this.errLines(r); }
+      else if (kind === 'status') { result = this.mkStatusResult(r); lines = this.statusLines(r); }
+      else if (kind === 'apply') {
+        lines = this.applyLines(r);
+        if (this.state.deploy.dry) {
+          result = { kind: 'ok', title: 'Dry-run завершён', message: 'Было бы применено: ' + this.ruleCount(r) + ' правил, hash ' + this.hashOf(r) + '. На роутере ничего не изменено (dry-run).' };
+        } else {
+          const lh = this.hashOf(r);
+          this.updRouters(x => x.id === r.id ? Object.assign({}, x, { deployedHash: lh, deployedRules: this.ruleCount(r), deployedAt: '2026-07-27 11:32', services: x.services.map(s => Object.assign({}, s, { dirty: false })), users: x.users.map(u => Object.assign({}, u, { dirty: false })) }) : x);
+          result = { kind: 'ok', title: 'Задеплоено', message: 'Конфиг применён: ' + this.ruleCount(r) + ' правил, hash ' + lh + '. Локальный конфиг и роутер синхронизированы.' };
+        }
+      } else {
+        lines = ['$ mkpk-provision deploy uninstall --router ' + r.name,
+          'connecting to ' + r.address + ':' + r.ssh.port + '…',
+          'removing mkpk-tt rules… 42 removed', 'removing scheduler mkpk-tt-gc… done', 'uninstall complete'];
+        this.updRouters(x => x.id === r.id ? Object.assign({}, x, { deployedHash: null, deployedRules: 0, deployedAt: null }) : x);
+        result = { kind: 'ok', title: 'Снято с роутера', message: 'Все правила mkpk-tt удалены с роутера. Конфиг в приложении не тронут — Apply вернёт всё обратно.' };
+      }
+      this.setState(s => ({ deploy: Object.assign({}, s.deploy, { running: false, result, lines }) }));
+    }, 800);
+  }
+  renderVals() {
+    const st = this.state;
+    const r = this.cur();
+    const varDeploy = st.varDeploy || (this.props && this.props.deployVariant) || 'cards';
+    const varInvite = st.varInvite || (this.props && this.props.inviteVariant) || 'modal';
+    const close = () => this.setState({ modal: null, invitePanel: false, revealed: false, copied: false });
+    const openConfirm = (title, message, label, fn) => this.setState({ modal: { type: 'confirm', title, message, label, fn } });
+    const segOn = { bg: '#fff', color: '#1a1a1e', shadow: '0 1px 2px rgba(0,0,0,.12)' };
+    const segOff = { bg: 'transparent', color: '#77777e', shadow: 'none' };
+    const drift = r ? (r.deployedHash !== null && r.deployedHash !== this.hashOf(r)) : false;
+    const never = r ? r.deployedHash === null : false;
+    const vals = {
+      hasRouters: st.routers.length > 0, noRouters: st.routers.length === 0,
+      routersNav: st.routers.map(x => ({
+        name: x.name, address: x.address, drift: x.deployedHash !== null && x.deployedHash !== this.hashOf(x),
+        bg: x.id === st.currentId ? '#ecedf8' : 'transparent',
+        onSelect: () => this.setState({ currentId: x.id, deploy: Object.assign({}, this.state.deploy, { result: null, lines: [] }) })
+      })),
+      addRouter: () => this.setState({ modal: { type: 'router', editId: null }, form: this.routerForm(null), pwOpen: false }),
+      stop: (e) => e.stopPropagation(), closeModal: close,
+      curName: r ? r.name : '', curAddress: r ? r.address : '',
+      curDrift: drift, curSynced: !drift && !never && !!r, curNever: never,
+      gotoDeploy: () => this.setState({ tab: 'deploy' }),
+      editCurrentRouter: () => this.setState({ modal: { type: 'router', editId: r.id }, form: this.routerForm(r), pwOpen: false }),
+      editCurrentRouterA: (e) => { e.preventDefault(); this.setState({ modal: { type: 'router', editId: r.id }, form: this.routerForm(r), pwOpen: false }); },
+      tabs: ['services', 'users', 'render', 'deploy'].map(t => ({
+        label: { services: 'Services', users: 'Users', render: 'Render', deploy: 'Deploy' }[t],
+        color: st.tab === t ? '#1a1a1e' : '#77777e',
+        border: st.tab === t ? '#4753c5' : 'transparent',
+        dot: t === 'deploy' && drift,
+        onClick: () => this.setState({ tab: t })
+      })),
+      tabServices: st.tab === 'services', tabUsers: st.tab === 'users', tabRender: st.tab === 'render', tabDeploy: st.tab === 'deploy',
+      form: st.form,
+      fName: this.f('name'), fAddress: this.f('address'), fPort: this.f('port'), fUser: this.f('user'),
+      fKeyPath: this.f('keyPath'), fPassword: this.f('password'), fPassphrase: this.f('passphrase'),
+      fS1: this.f('stage1'), fS2: this.f('stage2'), fST: this.f('token'), fNatOn: this.f('natOn'),
+      fNatHost: this.f('natHost'), fNatPort: this.f('natPort'), fWebhook: this.f('webhook'), fTelegram: this.f('telegram'), fEmail: this.f('email'), fPsk: this.f('psk'),
+      mRouter: !!st.modal && st.modal.type === 'router', mService: !!st.modal && st.modal.type === 'service',
+      mUser: !!st.modal && st.modal.type === 'user', mInvite: !!st.modal && st.modal.type === 'invite',
+      mConfirm: !!st.modal && st.modal.type === 'confirm'
+    };
+    if (r) {
+      vals.svcCount = r.services.length + (r.services.length === 1 ? ' сервис' : ' сервиса(-ов)');
+      vals.services = r.services.map(s => ({
+        name: s.name, stage1: s.stage1, stage2: s.stage2, token: s.token, dirty: s.dirty,
+        opacity: s.enabled ? '1' : '.62',
+        swBg: s.enabled ? '#4753c5' : '#c9c9c4', swLeft: s.enabled ? '17px' : '2px',
+        swLabel: s.enabled ? 'в конфиге: вкл' : 'выключен',
+        subLabel: (s.telegram || s.webhook || s.email) ? 'notify: ' + [s.webhook && 'webhook', s.telegram && 'telegram', s.email && 'email'].filter(Boolean).join(', ') : 'без уведомлений',
+        natLabel: s.natHost ? '→ ' + s.natHost + ':' + s.natPort : 'без NAT',
+        toggle: () => this.markCur(x => Object.assign(x, { services: x.services.map(y => y.id === s.id ? Object.assign({}, y, { enabled: !y.enabled, dirty: true }) : y) })),
+        edit: () => this.setState({ modal: { type: 'service', editId: s.id }, form: this.serviceForm(s), notifyOpen: !!(s.webhook || s.telegram || s.email) }),
+        del: () => openConfirm('Удалить сервис «' + s.name + '»?', 'Сервис исчезнет из конфига; у юзеров пропадёт доступ к нему. Изменение попадёт на роутер после Deploy.', 'Удалить', () => { this.markCur(x => Object.assign(x, { services: x.services.filter(y => y.id !== s.id), users: x.users.map(u => Object.assign({}, u, { services: u.services.filter(n => n !== s.name) })) })); close(); })
+      }));
+      vals.addService = () => this.setState({ modal: { type: 'service', editId: null }, form: this.serviceForm(null), notifyOpen: false });
+      vals.userCount = String(r.users.length);
+      vals.users = r.users.map(u => ({
+        name: u.name, initial: (u.name[0] || '?').toUpperCase(), dirty: u.dirty,
+        svcChips: u.services.map(n => {
+          const svc = r.services.find(x => x.name === n);
+          const off = svc && !svc.enabled;
+          return { label: n, off, border: off ? '#e2e2dd' : '#dfe2f4', bg: off ? '#f4f4f1' : '#f5f6fd', color: off ? '#a2a2a8' : '#4049b8', deco: off ? 'line-through' : 'none', title: off ? 'Сервис выключен в конфиге' : 'Доступ разрешён' };
+        }),
+        panelOpen: varInvite === 'inline' && st.invitePanel && st.inviteUserId === u.id,
+        invite: () => {
+          if (varInvite === 'modal') this.setState({ modal: { type: 'invite' }, inviteUserId: u.id, revealed: false, copied: false });
+          else this.setState(s => ({ invitePanel: !(s.invitePanel && s.inviteUserId === u.id), inviteUserId: u.id, revealed: false, copied: false }));
+        },
+        edit: () => this.setState({ modal: { type: 'user', editId: u.id }, form: this.userForm(u) }),
+        del: () => openConfirm('Удалить юзера «' + u.name + '»?', 'Его PSK и доступы будут удалены из конфига; выданный invite-blob перестанет работать после Deploy.', 'Удалить', () => { this.markCur(x => Object.assign(x, { users: x.users.filter(y => y.id !== u.id) })); close(); })
+      }));
+      vals.addUser = () => this.setState({ modal: { type: 'user', editId: null }, form: this.userForm(null) });
+      vals.setInvModal = () => this.setState({ varInvite: 'modal', invitePanel: false });
+      vals.setInvInline = () => this.setState({ varInvite: 'inline', modal: st.modal && st.modal.type === 'invite' ? null : st.modal });
+      const im = varInvite === 'modal' ? segOn : segOff, ii = varInvite === 'inline' ? segOn : segOff;
+      vals.invModalBg = im.bg; vals.invModalColor = im.color; vals.invModalShadow = im.shadow;
+      vals.invInlineBg = ii.bg; vals.invInlineColor = ii.color; vals.invInlineShadow = ii.shadow;
+      const iu = r.users.find(u => u.id === st.inviteUserId);
+      vals.invUserName = iu ? iu.name : '';
+      vals.invBlob = iu ? this.makeBlob(r, iu) : '';
+      const nsv = iu ? r.services.filter(s => s.enabled && iu.services.indexOf(s.name) >= 0).length : 0;
+      vals.invSvcCount = nsv + (nsv === 1 ? ' сервис' : ' сервиса(-ов)');
+      vals.invRevealed = st.revealed; vals.invHidden = !st.revealed;
+      vals.invReveal = () => this.setState({ revealed: true });
+      vals.invCopyLabel = st.copied ? '✓ Скопировано' : 'Скопировать';
+      vals.invCopy = () => { try { navigator.clipboard.writeText(vals.invBlob); } catch (e) {} this.setState({ copied: true, revealed: true }); setTimeout(() => this.setState({ copied: false }), 1600); };
+      vals.invDownload = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([vals.invBlob], { type: 'application/octet-stream' })); a.download = (iu ? iu.name : 'user') + '-' + r.name + '.mkpk'; a.click(); };
+      const rsc = this.buildRsc(r);
+      vals.rscText = rsc; vals.localHash = this.hashOf(r);
+      vals.rscMeta = rsc.split('\n').length + ' строк · ' + this.ruleCount(r) + ' правил · только включённые сервисы';
+      vals.copyRscLabel = st.copiedRsc ? '✓ Скопировано' : 'Скопировать';
+      vals.copyRsc = () => { try { navigator.clipboard.writeText(rsc); } catch (e) {} this.setState({ copiedRsc: true }); setTimeout(() => this.setState({ copiedRsc: false }), 1600); };
+      vals.downloadRsc = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([rsc], { type: 'text/plain' })); a.download = 'mkpk-' + r.name + '.rsc'; a.click(); };
+      vals.dNoCreds = !r.ssh; vals.dHasCreds = !!r.ssh;
+      if (r.ssh) {
+        vals.dCredLine = r.ssh.user + ' @ ' + r.address + ' : ' + r.ssh.port;
+        vals.dAuthLine = r.ssh.auth === 'agent' ? 'ssh-agent' : 'ключ: ' + r.ssh.keyPath;
+        if (r.ssh.password) vals.dAuthLine += ' · пароль-fallback задан';
+      }
+      vals.dLocalHash = this.hashOf(r); vals.dInstHash = r.deployedHash || '—';
+      vals.dStateColor = never ? '#77777e' : (drift ? '#96660a' : '#177a48');
+      vals.dStateText = never ? 'Ещё не деплоился' : (drift ? '● Drift — локальный конфиг отличается, нужен Apply' : '✓ Синхронизировано');
+      vals.dDry = st.deploy.dry; vals.dForce = st.deploy.force;
+      vals.toggleDry = () => this.setState(s => ({ deploy: Object.assign({}, s.deploy, { dry: !s.deploy.dry }) }));
+      vals.toggleForce = () => this.setState(s => ({ deploy: Object.assign({}, s.deploy, { force: !s.deploy.force }) }));
+      vals.dRunning = st.deploy.running; vals.dRunningLabel = st.deploy.runLabel;
+      vals.runStatus = () => this.runAction('status');
+      vals.runApply = () => this.runAction('apply');
+      vals.askUninstall = () => openConfirm('Uninstall с роутера «' + r.name + '»?', 'Снимет с роутера все правила mkpk-tt: стук перестанет работать у всех юзеров этого роутера. Конфиг в приложении останется — Apply вернёт всё обратно.', 'Uninstall', () => { close(); this.runAction('uninstall'); });
+      vals.varCards = varDeploy === 'cards'; vals.varTerm = varDeploy === 'terminal';
+      vals.setVarCards = () => this.setState({ varDeploy: 'cards' });
+      vals.setVarTerm = () => this.setState({ varDeploy: 'terminal' });
+      const vc = varDeploy === 'cards' ? segOn : segOff, vt = varDeploy === 'terminal' ? segOn : segOff;
+      vals.varCardsBg = vc.bg; vals.varCardsColor = vc.color; vals.varCardsShadow = vc.shadow;
+      vals.varTermBg = vt.bg; vals.varTermColor = vt.color; vals.varTermShadow = vt.shadow;
+      const res = st.deploy.result;
+      vals.resNone = !res; vals.resAny = !!res;
+      vals.resOk = !!res && res.kind === 'ok'; vals.resDrift = !!res && res.kind === 'drift'; vals.resErr = !!res && res.kind === 'err';
+      vals.resTitle = res ? res.title : ''; vals.resMessage = res ? res.message : '';
+      vals.dShowRaw = st.deploy.showRaw;
+      vals.toggleRaw = () => this.setState(s => ({ deploy: Object.assign({}, s.deploy, { showRaw: !s.deploy.showRaw }) }));
+      vals.rawArrow = st.deploy.showRaw ? '▼' : '▶';
+      vals.rawToggleLabel = st.deploy.showRaw ? 'Скрыть raw-лог' : 'Показать raw-лог';
+      vals.dTermText = st.deploy.lines.length ? st.deploy.lines.join('\n') : (st.deploy.running ? '…' : '$ — вывод появится здесь после Status / Apply / Uninstall');
+    }
+    // Router form
+    vals.routerFormTitle = st.modal && st.modal.type === 'router' ? (st.modal.editId ? 'Роутер — ' + (st.form.name || '') : 'Новый роутер') : '';
+    vals.routerFormIsEdit = !!(st.modal && st.modal.type === 'router' && st.modal.editId);
+    const aa = st.form.auth === 'agent' ? segOn : segOff, ak = st.form.auth === 'key' ? segOn : segOff;
+    vals.authAgentBg = aa.bg; vals.authAgentColor = aa.color; vals.authAgentShadow = aa.shadow;
+    vals.authKeyBg = ak.bg; vals.authKeyColor = ak.color; vals.authKeyShadow = ak.shadow;
+    vals.authIsKey = st.form.auth === 'key';
+    vals.setAuthAgent = () => this.setState(s => ({ form: Object.assign({}, s.form, { auth: 'agent' }) }));
+    vals.setAuthKey = () => this.setState(s => ({ form: Object.assign({}, s.form, { auth: 'key' }) }));
+    vals.pwOpen = st.pwOpen; vals.pwArrow = st.pwOpen ? '▼' : '▶';
+    vals.togglePw = () => this.setState(s => ({ pwOpen: !s.pwOpen }));
+    vals.saveRouter = () => {
+      const f = st.form; if (!f.name || !f.address) { close(); return; }
+      const ssh = f.user ? { port: f.port || '22', user: f.user, auth: f.auth, keyPath: f.keyPath, password: f.password, passphrase: f.passphrase } : null;
+      if (st.modal.editId) this.updRouters(x => x.id === st.modal.editId ? Object.assign({}, x, { name: f.name, address: f.address, ssh }) : x);
+      else { const id = 'r' + Date.now(); this.setState(s => ({ routers: s.routers.concat([{ id, name: f.name, address: f.address, ssh, unreachable: false, deployedHash: null, deployedRules: 0, deployedAt: null, services: [], users: [] }]), currentId: id, tab: 'services' })); }
+      close();
+    };
+    vals.askDeleteRouter = () => {
+      const rr = st.routers.find(x => x.id === st.modal.editId); if (!rr) return;
+      openConfirm('Удалить роутер «' + rr.name + '»?', 'Вместе с ним удалятся ' + rr.services.length + ' сервиса(-ов) и ' + rr.users.length + ' юзер(-ов). Правила на самом роутере не трогаются — сначала сделайте Uninstall, если нужно.', 'Удалить роутер',
+        () => { this.setState(s => { const routers = s.routers.filter(x => x.id !== rr.id); return { routers, currentId: routers.length ? routers[0].id : null, modal: null }; }); });
+    };
+    // Service form
+    vals.serviceFormTitle = st.modal && st.modal.type === 'service' ? (st.modal.editId ? 'Сервис — ' + (st.form.name || '') : 'Новый сервис') : '';
+    vals.natOpen = !!st.form.natOn;
+    vals.notifyOpen = st.notifyOpen; vals.notifyArrow = st.notifyOpen ? '▼' : '▶';
+    vals.toggleNotify = () => this.setState(s => ({ notifyOpen: !s.notifyOpen }));
+    vals.saveService = () => {
+      const f = st.form; if (!f.name) { close(); return; }
+      const patch = { name: f.name, stage1: f.stage1, stage2: f.stage2, token: f.token, natHost: f.natOn ? f.natHost : '', natPort: f.natOn ? f.natPort : '', webhook: f.webhook, telegram: f.telegram, email: f.email, dirty: true };
+      if (st.modal.editId) {
+        const old = r.services.find(x => x.id === st.modal.editId);
+        this.markCur(x => Object.assign(x, {
+          services: x.services.map(y => y.id === st.modal.editId ? Object.assign({}, y, patch) : y),
+          users: old && old.name !== f.name ? x.users.map(u => Object.assign({}, u, { services: u.services.map(n => n === old.name ? f.name : n) })) : x.users
+        }));
+      } else this.markCur(x => Object.assign(x, { services: x.services.concat([Object.assign({ id: 's' + Date.now(), enabled: true }, patch)]) }));
+      close();
+    };
+    // User form
+    vals.userFormTitle = st.modal && st.modal.type === 'user' ? (st.modal.editId ? 'Юзер — ' + (st.form.name || '') : 'Новый юзер') : '';
+    vals.ufServices = (r ? r.services : []).map(s => ({
+      name: s.name, note: s.enabled ? '' : 'выключен в конфиге',
+      checked: (st.form.services || []).indexOf(s.name) >= 0,
+      toggle: () => this.setState(ss => { const list = (ss.form.services || []).slice(); const i = list.indexOf(s.name); if (i >= 0) list.splice(i, 1); else list.push(s.name); return { form: Object.assign({}, ss.form, { services: list }) }; })
+    }));
+    vals.genPsk = () => { const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'; let p = ''; for (let i = 0; i < 22; i++) p += abc[Math.floor(Math.random() * abc.length)]; this.setState(s => ({ form: Object.assign({}, s.form, { psk: p }) })); };
+    vals.saveUser = () => {
+      const f = st.form; if (!f.name) { close(); return; }
+      const patch = { name: f.name, psk: f.psk, services: (f.services || []).slice(), dirty: true };
+      if (st.modal.editId) this.markCur(x => Object.assign(x, { users: x.users.map(y => y.id === st.modal.editId ? Object.assign({}, y, patch) : y) }));
+      else this.markCur(x => Object.assign(x, { users: x.users.concat([Object.assign({ id: 'u' + Date.now() }, patch)]) }));
+      close();
+    };
+    // Confirm
+    vals.confirmTitle = st.modal && st.modal.type === 'confirm' ? st.modal.title : '';
+    vals.confirmMessage = st.modal && st.modal.type === 'confirm' ? st.modal.message : '';
+    vals.confirmLabel = st.modal && st.modal.type === 'confirm' ? st.modal.label : '';
+    vals.confirmAction = () => { if (st.modal && st.modal.fn) st.modal.fn(); };
+    return vals;
+  }
+}
+</script>
+</body>
+</html>

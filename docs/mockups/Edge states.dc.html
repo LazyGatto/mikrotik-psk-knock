@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<style>body{margin:0;background:#f0eee9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}a{color:#4753c5}a:hover{color:#3a45ad}</style>
+</helmet>
+<section id="t2" style="padding:40px 44px 32px;border-bottom:1px solid rgba(0,0,0,.08);scroll-margin-top:16px">
+  <div style="display:flex;align-items:baseline;gap:10px;margin:0 0 6px">
+    <a href="#t2" style="font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1a1a1a;color:#fff;border-radius:4px;text-decoration:none">2</a>
+    <span style="font:600 13px/1.2 -apple-system,sans-serif;color:#1a1a1a">v2 — юзеры на верхнем уровне, мультироутерный доступ</span>
+    <span style="font:400 11px -apple-system,sans-serif;color:rgba(0,0,0,.5)">по апдейту брифа №1 + дашборд. Полная версия: <a href="mkpk-provision v2.dc.html">mkpk-provision v2.dc.html</a></span>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start;margin-top:18px">
+    <sc-for list="{{ frames2 }}" as="f" hint-placeholder-count="6">
+      <div id="{{ f.id }}" style="flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px">
+        <div style="display:flex;align-items:baseline;gap:8px;font:400 11px/1.3 -apple-system,sans-serif;color:rgba(0,0,0,.55)">
+          <a href="{{ f.href }}" style="font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none">{{ f.id }}</a>
+          <span style="font-weight:600;color:#1a1a1a">{{ f.title }}</span>
+          <span>{{ f.note }}</span>
+        </div>
+        <div style="width:704px;height:440px;overflow:hidden;background:#fff;border:1px solid rgba(0,0,0,.1);border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+          <iframe src="{{ f.src }}" style="width:1280px;height:800px;border:0;transform:scale(0.55);transform-origin:0 0" loading="lazy"></iframe>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+  <p style="margin:22px 0 0;font:12px/1.5 -apple-system,sans-serif;color:rgba(0,0,0,.5)">Try next: «матрицу доступа компактнее, таблицей» · «покажи ротацию PSK отдельным флоу» · «режим single дефолтом в invite»</p>
+</section>
+<section id="t1" style="padding:40px 44px 32px;scroll-margin-top:16px">
+  <div style="display:flex;align-items:baseline;gap:10px;margin:0 0 6px">
+    <a href="#t1" style="font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;background:#1a1a1a;color:#fff;border-radius:4px;text-decoration:none">1</a>
+    <span style="font:600 13px/1.2 -apple-system,sans-serif;color:#1a1a1a">mkpk-provision — галерея состояний</span>
+    <span style="font:400 11px -apple-system,sans-serif;color:rgba(0,0,0,.5)">каждый кадр — живой прототип; кликабельно. Полная версия: <a href="mkpk-provision.dc.html">mkpk-provision.dc.html</a></span>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start;margin-top:18px">
+    <sc-for list="{{ frames }}" as="f" hint-placeholder-count="6">
+      <div id="{{ f.id }}" style="flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px">
+        <div style="display:flex;align-items:baseline;gap:8px;font:400 11px/1.3 -apple-system,sans-serif;color:rgba(0,0,0,.55)">
+          <a href="{{ f.href }}" style="font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none">{{ f.id }}</a>
+          <span style="font-weight:600;color:#1a1a1a">{{ f.title }}</span>
+          <span>{{ f.note }}</span>
+        </div>
+        <div style="width:704px;height:440px;overflow:hidden;background:#fff;border:1px solid rgba(0,0,0,.1);border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.06)">
+          <iframe src="{{ f.src }}" style="width:1280px;height:800px;border:0;transform:scale(0.55);transform-origin:0 0" loading="lazy"></iframe>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+  <p style="margin:22px 0 0;font:12px/1.5 -apple-system,sans-serif;color:rgba(0,0,0,.5)">Try next: «сделай вывод Deploy как в <a href="#1i" style="font:600 10.5px ui-monospace,Menlo,monospace;padding:2px 6px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none">1i</a> дефолтом» · «invite-панель <a href="#1h" style="font:600 10.5px ui-monospace,Menlo,monospace;padding:2px 6px;background:rgba(0,0,0,.08);color:#1a1a1a;border-radius:5px;text-decoration:none">1h</a> вместо модалки» · «тёмная тема»</p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const frames = [
+      { id: '1a', title: 'Пустой конфиг', note: 'онбординг первого запуска', h: 'empty' },
+      { id: '1b', title: 'Services', note: 'тоггл вкл/выкл, drift-метки «изменён»', h: '' },
+      { id: '1c', title: 'Форма роутера', note: 'SSH-креды: agent/ключ, пароль — fallback', h: 'router-edit' },
+      { id: '1d', title: 'Форма сервиса', note: 'порты стука, NAT, notify', h: 'service-form' },
+      { id: '1e', title: 'Users', note: 'матрица доступа чипами', h: 'users' },
+      { id: '1f', title: 'Форма юзера', note: 'PSK + чекбоксы сервисов', h: 'user-form' },
+      { id: '1g', title: 'Invite — модалка (A)', note: 'шторка: блоб скрыт до клика', h: 'invite' },
+      { id: '1h', title: 'Invite — панель (B)', note: 'инлайн на карточке юзера', h: 'invite-inline' },
+      { id: '1i', title: 'Deploy — карточки (A)', note: 'drift → подсказка Apply + raw-лог', h: 'deploy-drift' },
+      { id: '1j', title: 'Deploy — терминал (B)', note: 'сплошной лог', h: 'deploy-terminal' },
+      { id: '1k', title: 'Deploy — креды не заданы', note: 'ведём в настройки роутера', h: 'deploy-nocreds' },
+      { id: '1l', title: 'Deploy — ошибка', note: 'connection refused', h: 'deploy-error' },
+      { id: '1m', title: 'Render', note: '.rsc со скроллом внутри карточки', h: 'render' },
+      { id: '1n', title: 'Deploy — успех', note: 'после Apply, синхронизировано', h: 'deploy-applied' }
+    ];
+    const frames2 = [
+      { id: '2i', title: 'Обзор (главная)', note: 'сводка, drift-алерт, роутеры и юзеры', h: 'dashboard' },
+      { id: '2a', title: 'Юзер — матрица доступа', note: 'мультироутер, PSK per-router, ротация', h: 'user' },
+      { id: '2b', title: 'Invite — все роутеры', note: 'состав блоба + режим экспорта', h: 'invite' },
+      { id: '2c', title: 'Invite — один роутер', note: 'меньший радиус поражения', h: 'invite-single' },
+      { id: '2d', title: 'Services v2', note: 'типы целей forward / local', h: '' },
+      { id: '2e', title: 'Форма сервиса — коллизия портов', note: 'фронтовая подсказка + генератор', h: 'service-form' },
+      { id: '2f', title: 'Форма сервиса — local', note: 'порт самого роутера, без NAT', h: 'service-form-local' },
+      { id: '2g', title: 'Router → Access', note: 'read-only проекция матрицы', h: 'access' },
+      { id: '2h', title: 'Сайдбар: юзеры сверху-уровнево', note: 'вторая секция навигации', h: 'user-laptop' }
+    ];
+    const mk2 = f => ({ id: f.id, title: f.title, note: f.note, href: '#' + f.id, src: 'mkpk-provision v2.dc.html' + (f.h ? '#' + f.h : '') });
+    return { frames2: frames2.map(mk2), frames: frames.map(f => ({ id: f.id, title: f.title, note: f.note, href: '#' + f.id, src: 'mkpk-provision.dc.html' + (f.h ? '#' + f.h : '') })) };
+  }
+}
+</script>
+</body>
+</html>
