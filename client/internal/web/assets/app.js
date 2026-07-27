@@ -26,6 +26,7 @@ const ICONS = {
   gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .32 1.77l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.6 1.6 0 0 0-1.77-.32 1.6 1.6 0 0 0-.97 1.47V21a2 2 0 0 1-4 0v-.08a1.6 1.6 0 0 0-1.05-1.47 1.6 1.6 0 0 0-1.77.32l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.6 1.6 0 0 0 .32-1.77 1.6 1.6 0 0 0-1.47-.97H3a2 2 0 0 1 0-4h.08a1.6 1.6 0 0 0 1.47-1.05 1.6 1.6 0 0 0-.32-1.77l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.6 1.6 0 0 0 1.77.32H9a1.6 1.6 0 0 0 .97-1.47V3a2 2 0 0 1 4 0v.08a1.6 1.6 0 0 0 .97 1.47 1.6 1.6 0 0 0 1.77-.32l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.6 1.6 0 0 0-.32 1.77V9a1.6 1.6 0 0 0 1.47.97H21a2 2 0 0 1 0 4h-.08a1.6 1.6 0 0 0-1.47.97z"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4 12H2m20 0h-2M5 5l1.5 1.5m11 11L19 19M19 5l-1.5 1.5M6.5 17.5 5 19"/>',
   moon: '<path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8z"/>',
+  refresh: '<path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v4h-4"/>',
   pencil: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
   trash: '<path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/>',
   lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
@@ -638,11 +639,18 @@ function openServiceModal(router, name) {
   g.to_addr = h("input", { type: "text", value: s ? s.target_to_address : "", placeholder: "192.0.2.10" });
   g.to_port = h("input", { type: "number", value: s ? s.target_to_port : "", placeholder: "22" });
   const fwdRow = h("div", { class: "grid2" }, field("to_address", g.to_addr), field("to_port", g.to_port));
-  const localRow = h("div", { class: "field" }, h("label", null, "Порт роутера"), g.port, h("div", { class: "note" }, "input accept на этот порт роутера, без NAT."));
-  const fwdPort = field("Внешний порт", g.port);
+  // one port input, shared between both target types (a DOM node has one parent)
+  const portLabel = h("label", null, "Внешний порт");
+  const portNote = h("div", { class: "note hidden" }, "input accept на этот порт роутера, без NAT.");
+  const portField = h("div", { class: "field" }, portLabel, g.port, portNote);
   const typeSeg = seg2(["forward", "local"], ["forward (dst-nat)", "local (input)"], ttype, (v) => { ttype = v; syncType(); });
   const protoSeg = seg2(["tcp", "udp"], ["tcp", "udp"], proto, (v) => { proto = v; });
-  function syncType() { fwdRow.classList.toggle("hidden", ttype === "local"); fwdPort.classList.toggle("hidden", ttype === "local"); localRow.classList.toggle("hidden", ttype !== "local"); }
+  function syncType() {
+    const local = ttype === "local";
+    fwdRow.classList.toggle("hidden", local);
+    portLabel.textContent = local ? "Порт роутера" : "Внешний порт";
+    portNote.classList.toggle("hidden", !local);
+  }
 
   const conflict = h("div", { class: "foot-note", style: "color:var(--danger)" });
   function checkPorts() {
@@ -662,9 +670,9 @@ function openServiceModal(router, name) {
   }
   [g.s1, g.s2, g.tk].forEach((e) => e.addEventListener("input", checkPorts));
 
-  const suggest = h("button", { type: "button", class: "btn link", onclick: async () => {
+  const suggest = h("button", { type: "button", class: "btn link row", style: "gap:5px", onclick: async () => {
     try { const d = await api("GET", "/api/ports/suggest?count=3&router=" + encodeURIComponent(router)); [g.s1.value, g.s2.value, g.tk.value] = d.ports; checkPorts(); } catch (e) { toast(e.message, true); }
-  } }, "⚄ Подобрать свободные");
+  } }, icon("refresh", "ic-sm"), "Подобрать свободные");
 
   const save = h("button", { class: "btn pri", onclick: async () => {
     try {
@@ -678,7 +686,7 @@ function openServiceModal(router, name) {
     field("Имя сервиса", g.name, "Входит в формулу токена — переименование инвалидирует выданные инвайты."),
     h("div", { class: "field" }, h("label", null, "Порты «стука» (stage1 / stage2 / token)"),
       h("div", { class: "grid3" }, g.s1, g.s2, g.tk), h("div", { class: "row" }, suggest), conflict),
-    field("Тип цели", typeSeg), fwdPort, fwdRow, localRow, field("Протокол", protoSeg));
+    field("Тип цели", typeSeg), portField, fwdRow, field("Протокол", protoSeg));
   syncType(); checkPorts();
   modal(h("div", null, h("div", { class: "modal-head" }, h("h3", null, s ? "Сервис " + s.name : "Новый сервис")), body,
     h("div", { class: "modal-foot" }, h("span", { class: "spacer" }), h("button", { class: "btn", onclick: closeModal }, "Отмена"), save)));
