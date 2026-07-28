@@ -18,6 +18,7 @@ final class AppModel: ObservableObject {
         let routerAddress: String
         let checkPort: Int      // 0 → check unavailable ("check off")
         var status: ServiceStatus = .unknown
+        var openUntil: Date? = nil     // set after a knock opens the port (countdown)
         // Runtime inputs for actions:
         let router: RouterInvite
         let service: ServiceInvite
@@ -37,6 +38,9 @@ final class AppModel: ObservableObject {
     @Published var clientID: String = ""
     @Published var groups: [RouterGroup] = []
     @Published var lastError: String?
+    @Published var now: Date = Date()   // ticks while a service countdown is live
+
+    private var countdownTimer: Timer?
 
     /// Set by the menu-bar controller: pause/resume the outside-click dismissal
     /// while a modal (the open panel, which runs out-of-process) is up, so the
@@ -157,16 +161,56 @@ final class AppModel: ObservableObject {
         update(vm.id, .checking)
         Task {
             let res = await Check.run(CheckOptions(host: vm.routerAddress, port: vm.checkPort, timeout: 1, attempts: 6, interval: 0.5))
-            update(vm.id, res.status == .open ? .open : .closed)
+            if res.status == .open {
+                // Arm the countdown from the service's allowed timeout, if known.
+                let until = vm.service.allowedTimeout.flatMap(GoDuration.seconds).map { Date().addingTimeInterval($0) }
+                update(vm.id, .open, openUntil: until)
+                ensureCountdownTimer()
+            } else {
+                update(vm.id, .closed, openUntil: nil)
+            }
         }
     }
 
-    private func update(_ id: String, _ status: ServiceStatus) {
+    private func update(_ id: String, _ status: ServiceStatus, openUntil: Date?? = nil) {
         for gi in groups.indices {
             if let si = groups[gi].services.firstIndex(where: { $0.id == id }) {
                 groups[gi].services[si].status = status
+                if let openUntil { groups[gi].services[si].openUntil = openUntil }
                 return
             }
         }
+    }
+
+    // MARK: countdown
+
+    private var anyOpenWithCountdown: Bool {
+        groups.contains { $0.services.contains { $0.status == .open && $0.openUntil != nil } }
+    }
+
+    private func ensureCountdownTimer() {
+        if anyOpenWithCountdown, countdownTimer == nil {
+            let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+                Task { @MainActor in self?.tickCountdowns() }
+            }
+            RunLoop.main.add(t, forMode: .common)
+            countdownTimer = t
+        } else if !anyOpenWithCountdown {
+            countdownTimer?.invalidate()
+            countdownTimer = nil
+        }
+    }
+
+    private func tickCountdowns() {
+        now = Date()
+        for gi in groups.indices {
+            for si in groups[gi].services.indices where groups[gi].services[si].status == .open {
+                if let until = groups[gi].services[si].openUntil, until <= now {
+                    groups[gi].services[si].status = .closed
+                    groups[gi].services[si].openUntil = nil
+                }
+            }
+        }
+        ensureCountdownTimer()
     }
 }

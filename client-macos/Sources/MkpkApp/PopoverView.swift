@@ -177,7 +177,7 @@ struct ServiceRowView: View {
                     Text(svc.name).font(.system(size: 13, weight: .semibold, design: .monospaced))
                     Text(svc.addressLabel).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1)
                 }
-                Text(statusText).font(.system(size: 11)).foregroundStyle(.secondary)
+                Text(statusLine).font(.system(size: 11)).foregroundStyle(svc.status == .open ? Palette.open : .secondary)
             }
             Spacer(minLength: 6)
             if svc.status == .knocking || svc.status == .checking {
@@ -203,15 +203,26 @@ struct ServiceRowView: View {
         case .unknown: return Palette.idle.opacity(0.5)
         }
     }
-    private var statusText: String {
+    private var statusLine: String {
         switch svc.status {
         case .unknown: return "Не проверялось"
         case .checking: return "Проверяем…"
         case .knocking: return "Стучимся…"
-        case .open: return "Открыто"
+        case .open:
+            if let until = svc.openUntil {
+                let remaining = max(0, until.timeIntervalSince(model.now))
+                return "Открыто · ещё \(Self.formatRemaining(remaining))"
+            }
+            return "Открыто"
         case .closed: return "Закрыто"
         case .error: return "Ошибка"
         }
+    }
+
+    static func formatRemaining(_ seconds: TimeInterval) -> String {
+        let total = Int(seconds.rounded())
+        let m = total / 60, s = total % 60
+        return m > 0 ? "\(m)м \(s)с" : "\(s)с"
     }
 }
 
