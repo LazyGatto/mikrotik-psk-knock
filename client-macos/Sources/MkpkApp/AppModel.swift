@@ -38,6 +38,11 @@ final class AppModel: ObservableObject {
     @Published var groups: [RouterGroup] = []
     @Published var lastError: String?
 
+    /// Set by the menu-bar controller: pause/resume the outside-click dismissal
+    /// while a modal (the open panel, which runs out-of-process) is up, so the
+    /// popover doesn't hide when the user clicks inside that dialog.
+    var onSuspendDismissal: ((Bool) -> Void)?
+
     private var store: InviteStore?
 
     var isEmpty: Bool { groups.isEmpty }
@@ -81,6 +86,8 @@ final class AppModel: ObservableObject {
         if let mkpk = UTType(filenameExtension: "mkpk") { types.insert(mkpk, at: 0) }
         panel.allowedContentTypes = types
         NSApp.activate(ignoringOtherApps: true)
+        onSuspendDismissal?(true)
+        defer { onSuspendDismissal?(false) }
         guard panel.runModal() == .OK else { return }
         let urls = panel.urls
         Task { for url in urls { await importFile(url) } }

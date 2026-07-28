@@ -9,6 +9,7 @@ final class MenuBarController: NSObject {
     private let statusItem: NSStatusItem
     private let panel: NSPanel
     private var outsideClickMonitor: Any?
+    private var dismissalSuspended = false
 
     init(model: AppModel) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -38,6 +39,35 @@ final class MenuBarController: NSObject {
         panel.contentView?.wantsLayer = true
         panel.contentView?.layer?.cornerRadius = 12
         panel.contentView?.layer?.masksToBounds = true
+
+        // Let the model pause outside-click dismissal while a modal (open panel)
+        // is up — those run out-of-process and would otherwise hide the popover.
+        model.onSuspendDismissal = { [weak self] suspend in
+            self?.setDismissalSuspended(suspend)
+        }
+    }
+
+    private func installMonitor() {
+        guard outsideClickMonitor == nil else { return }
+        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            self?.hide()
+        }
+    }
+
+    private func removeMonitor() {
+        if let m = outsideClickMonitor {
+            NSEvent.removeMonitor(m)
+            outsideClickMonitor = nil
+        }
+    }
+
+    private func setDismissalSuspended(_ suspended: Bool) {
+        dismissalSuspended = suspended
+        if suspended {
+            removeMonitor()
+        } else if panel.isVisible {
+            installMonitor()
+        }
     }
 
     @objc private func togglePanel() {
@@ -51,17 +81,12 @@ final class MenuBarController: NSObject {
     private func show() {
         positionPanel()
         panel.makeKeyAndOrderFront(nil)
-        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
-            self?.hide()
-        }
+        if !dismissalSuspended { installMonitor() }
     }
 
     private func hide() {
         panel.orderOut(nil)
-        if let m = outsideClickMonitor {
-            NSEvent.removeMonitor(m)
-            outsideClickMonitor = nil
-        }
+        removeMonitor()
     }
 
     private func positionPanel() {
