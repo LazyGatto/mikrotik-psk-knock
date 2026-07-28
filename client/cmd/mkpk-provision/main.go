@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -23,6 +24,17 @@ func main() {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
+}
+
+// printJSON writes v as indented JSON to stdout — the machine-readable output
+// used by the --json flags for automation (Ansible, scripts).
+func printJSON(v any) error {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(b))
+	return nil
 }
 
 func run(args []string) error {
@@ -67,7 +79,7 @@ func run(args []string) error {
 func usage() {
 	fmt.Fprintf(os.Stderr, `Usage:
   mkpk-provision secret generate [--bytes 32]
-  mkpk-provision config validate --config mkpk.yaml
+  mkpk-provision config validate --config mkpk.yaml [--json]
   mkpk-provision profile init --out mkpk.yaml --router-name r1 --router-address host
   mkpk-provision router set --config mkpk.yaml --name r1 --address host [--ssh-user admin] [--ssh-key ~/.ssh/id_ed25519] [--ssh-agent] [--ssh-port 22]
   mkpk-provision router remove --config mkpk.yaml --name r1
@@ -78,7 +90,7 @@ func usage() {
   mkpk-provision token --config mkpk.yaml [--router r1] --client laptop [--service ssh] [--bucket N] [--debug]
   mkpk-provision routeros render --config mkpk.yaml [--router r1] [--out generated.rsc]
   mkpk-provision export --config mkpk.yaml --user laptop [--router r1] [--out laptop.mkpk]   # all routers when --router omitted
-  mkpk-provision deploy [status|uninstall] --config mkpk.yaml [--router r1]   # creds come from the router
+  mkpk-provision deploy [status|uninstall] --config mkpk.yaml [--router r1] [--json]   # creds come from the router
   mkpk-provision serve --config mkpk.yaml [--addr 127.0.0.1:8765]
 `)
 }
@@ -106,12 +118,16 @@ func configCmd(args []string) error {
 	}
 	fs := flag.NewFlagSet("config validate", flag.ContinueOnError)
 	configPath := fs.String("config", config.DefaultPath(), "config path")
+	asJSON := fs.Bool("json", false, "machine-readable JSON summary")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		return err
+	}
+	if *asJSON {
+		return printJSON(admin.Summarize(cfg))
 	}
 	printSummary(*configPath, admin.Summarize(cfg))
 	return nil
@@ -541,6 +557,7 @@ func deployCmd(args []string) error {
 	password := fs.String("password", "", "override SSH password (fallback)")
 	force := fs.Bool("force", false, "deploy even if the router is already up to date")
 	dryRun := fs.Bool("dry-run", false, "report the action without changing the router")
+	asJSON := fs.Bool("json", false, "machine-readable JSON output")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -570,6 +587,9 @@ func deployCmd(args []string) error {
 		if err != nil {
 			return err
 		}
+		if *asJSON {
+			return printJSON(st)
+		}
 		if !st.Installed {
 			fmt.Printf("router=%s installed=false desired_hash=%s\n", st.Router, st.DesiredHash)
 			return nil
@@ -583,6 +603,9 @@ func deployCmd(args []string) error {
 		if err != nil {
 			return err
 		}
+		if *asJSON {
+			return printJSON(res)
+		}
 		if !res.Applied {
 			fmt.Printf("router=%s would uninstall mkpk-tt-* layer\n", res.Router)
 			return nil
@@ -594,6 +617,9 @@ func deployCmd(args []string) error {
 		res, err := admin.Apply(cfg, rn, opts, *force, *dryRun)
 		if err != nil {
 			return err
+		}
+		if *asJSON {
+			return printJSON(res)
 		}
 		switch {
 		case res.Action == "skip":

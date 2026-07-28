@@ -33,8 +33,10 @@ Print a fresh base64url-safe secret.
 .B profile init --out \fIFILE\fB --router-name \fINAME\fB --router-address \fIHOST\fR
 Create a starter config with a generated PSK and safe defaults.
 .TP
-.B config validate --config \fIFILE\fR
-Load, apply defaults, check invariants and print a secret-free summary.
+.B config validate --config \fIFILE\fR [\fB--json\fR]
+Load, apply defaults, check invariants and print a secret-free summary. With
+.B --json
+the summary is emitted as JSON for automation.
 .TP
 .B router set --config \fIFILE\fB --name \fINAME\fB --address \fIHOST\fR \
 [\fB--ssh-user\fR \fIU\fR] [\fB--ssh-key\fR \fIPATH\fR] [\fB--ssh-agent\fR] [\fB--ssh-port\fR \fIN\fR]
@@ -66,12 +68,14 @@ Render the RouterOS .rsc for a router (all services and users).
 .B export --config \fIFILE\fB --user \fINAME\fR [\fB--router\fR \fINAME\fR] [\fB--out\fR \fIFILE\fR]
 Produce a user's invite blob. All the user's routers when --router is omitted.
 .TP
-.B deploy \fR[\fBstatus\fR|\fBuninstall\fR] \fB--config \fIFILE\fR [\fB--router\fR \fINAME\fR]
+.B deploy \fR[\fBstatus\fR|\fBuninstall\fR] \fB--config \fIFILE\fR [\fB--router\fR \fINAME\fR] [\fB--json\fR]
 Install/update the mkpk layer over SSH (default), report install state
 .RB ( status ),
 or remove it
 .RB ( uninstall ).
-Connection credentials come from the router.
+Connection credentials come from the router. With
+.B --json
+the result (action, hashes, applied) is emitted as JSON for automation.
 .TP
 .B serve --config \fIFILE\fR [\fB--addr\fR \fI127.0.0.1:8765\fR]
 Start the local web UI (loopback only, per-session token).
@@ -83,7 +87,6 @@ Print the program version and exit.
 .I ~/.config/mkpk/mkpk.yaml
 Default config path (0600). Holds all secrets.
 .SH EXAMPLES
-.PP
 Initialize, add a service and a user, deploy, and export an invite:
 .PP
 .RS
