@@ -167,6 +167,8 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
 .btn.link svg.ic-sm { width: 13px; height: 13px; }
 .iconbtn { width: 26px; height: 26px; border-radius: 5px; border: none; background: none; color: var(--text-3); display: grid; place-items: center; padding: 0; flex: none; }
 .iconbtn:hover { background: var(--border); }
+.iconbtn:disabled { opacity: .3; cursor: default; }
+.iconbtn:disabled:hover { background: none; }
 .iconbtn svg { width: 14px; height: 14px; }
 
 /* ---------- chips / badges / dots ---------- */

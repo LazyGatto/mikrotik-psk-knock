@@ -46,6 +46,13 @@ func SaveConfig(path string, cfg config.Config) error {
 	if err != nil {
 		return err
 	}
+	return WriteRaw(path, data)
+}
+
+// WriteRaw writes bytes to path (0600), creating the parent directory as needed,
+// atomically (temp file + rename). Used by SaveConfig and by undo/redo restoring
+// raw config snapshots.
+func WriteRaw(path string, data []byte) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err

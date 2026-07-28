@@ -10,8 +10,10 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"mikrotik-psk-knock/client/internal/admin"
@@ -21,10 +23,17 @@ import (
 //go:embed assets/index.html assets/app.js assets/style.css
 var assetsFS embed.FS
 
-// Server holds the config path and session token.
+const maxUndo = 100
+
+// Server holds the config path, session token and the undo/redo history. History
+// is per running session, in memory: raw config-file snapshots (the config is
+// tiny). A single local operator uses it, so a mutex is enough for safety.
 type Server struct {
 	configPath string
 	token      string
+	mu         sync.Mutex
+	undo       [][]byte // snapshots of the file before each mutation
+	redo       [][]byte
 }
 
 // Handler builds the HTTP handler for the local admin UI.
@@ -43,6 +52,8 @@ func Handler(configPath, token string) http.Handler {
 	mux.HandleFunc("/api/client", s.auth(s.handleClient))
 	mux.HandleFunc("/api/user", s.auth(s.handleUser))
 	mux.HandleFunc("/api/user/psk", s.auth(s.handleUserPSK))
+	mux.HandleFunc("/api/undo", s.auth(s.handleUndo))
+	mux.HandleFunc("/api/redo", s.auth(s.handleRedo))
 	mux.HandleFunc("/api/export", s.auth(s.handleExport))
 	mux.HandleFunc("/api/render", s.auth(s.handleRender))
 	mux.HandleFunc("/api/deploy/status", s.auth(s.handleDeployStatus))
@@ -144,7 +155,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeConfig(w, s.configPath, cfg)
+	s.writeConfig(w, cfg)
 }
 
 func (s *Server) handleSecret(w http.ResponseWriter, r *http.Request) {
@@ -236,11 +247,11 @@ func (s *Server) handleRouter(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := admin.SaveConfig(s.configPath, cfg); err != nil {
+	if err := s.save(cfg); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeConfig(w, s.configPath, cfg)
+	s.writeConfig(w, cfg)
 }
 
 type enableReq struct {
@@ -269,11 +280,11 @@ func (s *Server) handleServiceEnable(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := admin.SaveConfig(s.configPath, cfg); err != nil {
+	if err := s.save(cfg); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeConfig(w, s.configPath, cfg)
+	s.writeConfig(w, cfg)
 }
 
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
@@ -334,11 +345,11 @@ func (s *Server) handleService(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := admin.SaveConfig(s.configPath, cfg); err != nil {
+	if err := s.save(cfg); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeConfig(w, s.configPath, cfg)
+	s.writeConfig(w, cfg)
 }
 
 type clientReq struct {
@@ -378,11 +389,11 @@ func (s *Server) handleClient(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := admin.SaveConfig(s.configPath, cfg); err != nil {
+	if err := s.save(cfg); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeConfig(w, s.configPath, cfg)
+	s.writeConfig(w, cfg)
 }
 
 type userReq struct {
@@ -421,11 +432,11 @@ func (s *Server) handleUser(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := admin.SaveConfig(s.configPath, cfg); err != nil {
+	if err := s.save(cfg); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeConfig(w, s.configPath, cfg)
+	s.writeConfig(w, cfg)
 }
 
 type pskReq struct {
@@ -454,11 +465,11 @@ func (s *Server) handleUserPSK(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := admin.SaveConfig(s.configPath, cfg); err != nil {
+	if err := s.save(cfg); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeConfig(w, s.configPath, cfg)
+	s.writeConfig(w, cfg)
 }
 
 func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
@@ -538,12 +549,71 @@ func (s *Server) handleDeployUninstall(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
+// --- undo / redo ---
+
+// save snapshots the current on-disk config into the undo history, clears the
+// redo history, then writes the new config. Every config mutation goes through
+// it so each step is undoable.
+func (s *Server) save(cfg config.Config) error {
+	s.mu.Lock()
+	if prev, err := os.ReadFile(s.configPath); err == nil {
+		s.undo = append(s.undo, prev)
+		if len(s.undo) > maxUndo {
+			s.undo = s.undo[len(s.undo)-maxUndo:]
+		}
+		s.redo = nil
+	}
+	s.mu.Unlock()
+	return admin.SaveConfig(s.configPath, cfg)
+}
+
+func (s *Server) handleUndo(w http.ResponseWriter, r *http.Request) { s.step(w, r, &s.undo, &s.redo) }
+func (s *Server) handleRedo(w http.ResponseWriter, r *http.Request) { s.step(w, r, &s.redo, &s.undo) }
+
+// step pops one snapshot from `from`, pushes the current state onto `to`, and
+// restores the popped snapshot as the config. Undo and redo are symmetric.
+func (s *Server) step(w http.ResponseWriter, r *http.Request, from, to *[][]byte) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	s.mu.Lock()
+	if len(*from) == 0 {
+		s.mu.Unlock()
+		writeErr(w, http.StatusBadRequest, "nothing to do")
+		return
+	}
+	cur, err := os.ReadFile(s.configPath)
+	snap := (*from)[len(*from)-1]
+	*from = (*from)[:len(*from)-1]
+	if err == nil {
+		*to = append(*to, cur)
+	}
+	s.mu.Unlock()
+
+	if err := admin.WriteRaw(s.configPath, snap); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	cfg, err := config.Load(s.configPath)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.writeConfig(w, cfg)
+}
+
 // --- helpers ---
 
-func writeConfig(w http.ResponseWriter, path string, cfg config.Config) {
+func (s *Server) writeConfig(w http.ResponseWriter, cfg config.Config) {
+	s.mu.Lock()
+	canUndo, canRedo := len(s.undo) > 0, len(s.redo) > 0
+	s.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"path":    path,
-		"summary": admin.Summarize(cfg),
+		"path":     s.configPath,
+		"summary":  admin.Summarize(cfg),
+		"can_undo": canUndo,
+		"can_redo": canRedo,
 	})
 }
 

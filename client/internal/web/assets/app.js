@@ -6,6 +6,7 @@ const I18N = {
   ru: {
     save: "Сохранить", cancel: "Отмена", close: "Закрыть", del: "Удалить", settings: "Настройки",
     add: "Добавить", copy: "Скопировать", copied: "✓ Скопировано", loading: "загрузка…", error: "ошибка",
+    undo: "Отменить", redo: "Вернуть", "toast.undone": "Отменено", "toast.redone": "Возвращено",
     "nav.dashboard": "Обзор", "nav.routers": "Роутеры", "nav.users": "Юзеры",
     "nav.add_router": "+ Добавить роутер", "nav.add_user": "+ Добавить юзера",
     "nav.drift_title": "Есть роутеры с незадеплоенными изменениями", "nav.no_access": "нет доступов",
@@ -114,6 +115,7 @@ const I18N = {
   en: {
     save: "Save", cancel: "Cancel", close: "Close", del: "Delete", settings: "Settings",
     add: "Add", copy: "Copy", copied: "✓ Copied", loading: "loading…", error: "error",
+    undo: "Undo", redo: "Redo", "toast.undone": "Undone", "toast.redone": "Redone",
     "nav.dashboard": "Overview", "nav.routers": "Routers", "nav.users": "Users",
     "nav.add_router": "+ Add router", "nav.add_user": "+ Add user",
     "nav.drift_title": "Routers with undeployed changes", "nav.no_access": "no access",
@@ -254,6 +256,8 @@ const ICONS = {
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4 12H2m20 0h-2M5 5l1.5 1.5m11 11L19 19M19 5l-1.5 1.5M6.5 17.5 5 19"/>',
   moon: '<path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8z"/>',
   refresh: '<path d="M21 12a9 9 0 1 1-2.64-6.36M21 3v4h-4"/>',
+  undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10H9"/>',
+  redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h6"/>',
   pencil: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
   trash: '<path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/>',
   lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
@@ -310,6 +314,7 @@ const S = {
   deploy: {},
   deployOpts: { dry: true, force: false },
   deployRunning: null,
+  canUndo: false, canRedo: false,
 };
 const routerOf = (n) => S.routers.find((r) => r.name === n);
 const userOf = (n) => S.users.find((u) => u.name === n);
@@ -329,6 +334,7 @@ async function applyConfig(data) {
   const sum = data.summary || { routers: [], users: [] };
   S.routers = (sum.routers || []).map((r) => ({ ...r, services: r.services || [], clients: r.clients || [] }));
   S.users = (sum.users || []).map((u) => ({ ...u, access: (u.access || []).map((a) => ({ ...a, services: a.services || [] })) }));
+  S.canUndo = !!data.can_undo; S.canRedo = !!data.can_redo;
   for (const r of S.routers) {
     const d = S.deploy[r.name] || (S.deploy[r.name] = {});
     if (d.baseline === undefined) d.baseline = r.hash;
@@ -340,6 +346,25 @@ async function applyConfig(data) {
 }
 async function reload() { applyConfig(await api("GET", "/api/config")); }
 function go(view) { S.view = { tab: "services", ...view }; render(); }
+
+async function undo() {
+  if (!S.canUndo) return;
+  try { applyConfig(await api("POST", "/api/undo")); toast(t("toast.undone")); } catch (e) { toast(e.message, true); }
+}
+async function redo() {
+  if (!S.canRedo) return;
+  try { applyConfig(await api("POST", "/api/redo")); toast(t("toast.redone")); } catch (e) { toast(e.message, true); }
+}
+// Ctrl/Cmd+Z undo, Ctrl/Cmd+Shift+Z redo — but never while typing in a field or
+// with a modal open (let the browser's native input undo work there).
+document.addEventListener("keydown", (e) => {
+  if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
+  const el = document.activeElement;
+  if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT")) return;
+  if (document.querySelector(".overlay")) return;
+  e.preventDefault();
+  e.shiftKey ? redo() : undo();
+});
 
 // ---------- render root ----------
 function render() { renderSidebar(); renderMain(); }
@@ -379,7 +404,9 @@ function renderSidebar() {
   nav.append(h("button", { class: "dashed", onclick: () => openUserModal(null) }, t("nav.add_user")));
 
   const foot = h("div", { class: "sidebar-foot row" },
-    h("span", { class: "grow" }, location.host + " · local"),
+    h("button", { class: "iconbtn", disabled: !S.canUndo, title: t("undo") + " (⌘Z)", onclick: undo }, icon("undo")),
+    h("button", { class: "iconbtn", disabled: !S.canRedo, title: t("redo") + " (⇧⌘Z)", onclick: redo }, icon("redo")),
+    h("span", { class: "grow" }),
     h("button", { class: "iconbtn", style: "width:auto;padding:0 6px;font-weight:650;font-size:11px", title: t("lang.switch"), onclick: toggleLang }, LANG.toUpperCase()),
     h("button", { class: "iconbtn", title: THEME === "light" ? t("theme.dark") : t("theme.light"), onclick: toggleTheme }, icon(THEME === "light" ? "moon" : "sun")));
   sb.append(nav, foot);
