@@ -1,7 +1,7 @@
 {
   "$schema": "https://wails.io/schemas/config.v2.json",
   "name": "mkpk-desktop",
-  "outputfilename": "mkpk-provision",
+  "outputfilename": "mkpk-desktop",
   "frontend:install": "",
   "frontend:build": "",
   "frontend:dev:watcher": "",
