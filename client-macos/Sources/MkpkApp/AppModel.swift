@@ -1,4 +1,6 @@
 import Foundation
+import AppKit
+import UniformTypeIdentifiers
 import MkpkKit
 
 /// The app's observable state: the imported invites projected into router groups
@@ -34,27 +36,76 @@ final class AppModel: ObservableObject {
 
     @Published var clientID: String = ""
     @Published var groups: [RouterGroup] = []
+    @Published var lastError: String?
 
     private var store: InviteStore?
 
-    /// Dev seed: two synthetic invites (placeholder hosts). Replaced by real
-    /// import + a persistent backend as the UI grows.
-    private static let seedBlobs = [
-        "eyJ2IjoyLCJjbGllbnRfaWQiOiJsYXB0b3AiLCJyb3V0ZXJzIjpbeyJyb3V0ZXIiOiJyb3V0ZXIuZXhhbXBsZS5jb20iLCJidWNrZXRfc2Vjb25kcyI6MzAsInBzayI6InRlc3QtcHNrLTEiLCJzZXJ2aWNlcyI6W3sibmFtZSI6InNzaC1ob21lIiwic3RhZ2UxIjo0MTAxMSwic3RhZ2UyIjo0MTAxMiwidG9rZW4iOjQxMDEzLCJjaGVja19wb3J0IjoyMiwiYWxsb3dlZF90aW1lb3V0IjoiM20ifSx7Im5hbWUiOiJ3ZWItaG9tZSIsInN0YWdlMSI6NDEwMjEsInN0YWdlMiI6NDEwMjIsInRva2VuIjo0MTAyMywiY2hlY2tfcG9ydCI6NDQzfSx7Im5hbWUiOiJ3ZyIsInN0YWdlMSI6NDEwMzEsInN0YWdlMiI6NDEwMzIsInRva2VuIjo0MTAzMywiY2hlY2tfcG9ydCI6MH1dfV19",
-    ]
+    var isEmpty: Bool { groups.isEmpty }
 
     func load() async {
-        let storage = InMemoryInviteStorage()
-        let s = try? InviteStore(storage: storage)
-        for b in Self.seedBlobs {
-            _ = try? await s?.importBlob(b)
-        }
-        store = s
+        // Persistent file backend (works unsigned; the signed build can add the
+        // Keychain/iCloud backend). Falls back to in-memory if it can't be created.
+        let storage: any InviteStorage = (try? FileInviteStorage()) ?? InMemoryInviteStorage()
+        store = try? InviteStore(storage: storage)
         await rebuild()
     }
 
-    func importBlob(_ blob: String) async {
-        _ = try? await store?.importBlob(blob)
+    @discardableResult
+    func importBlob(_ blob: String) async -> Bool {
+        do {
+            _ = try await store?.importBlob(blob)
+            lastError = nil
+            await rebuild()
+            return true
+        } catch {
+            lastError = "Не удалось импортировать инвайт: неверный формат."
+            return false
+        }
+    }
+
+    func importFile(_ url: URL) async {
+        do {
+            let text = try String(contentsOf: url, encoding: .utf8)
+            _ = await importBlob(text)
+        } catch {
+            lastError = "Не удалось прочитать файл."
+        }
+    }
+
+    /// Open a file picker for `.mkpk` invites.
+    func openFilePanel() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        var types: [UTType] = [.plainText, .json]
+        if let mkpk = UTType(filenameExtension: "mkpk") { types.insert(mkpk, at: 0) }
+        panel.allowedContentTypes = types
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK else { return }
+        let urls = panel.urls
+        Task { for url in urls { await importFile(url) } }
+    }
+
+    /// Import an invite blob from the clipboard.
+    func pasteBlob() {
+        guard let s = NSPasteboard.general.string(forType: .string),
+              !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            lastError = "В буфере обмена нет текста."
+            return
+        }
+        Task { _ = await importBlob(s) }
+    }
+
+    func remove(routerAddress: String) async {
+        // Remove any stored invite that contains only this router; for shared
+        // multi-router invites we remove the whole invite (simple, matches the
+        // "trash on the router group" affordance for now).
+        guard let store else { return }
+        for stored in await store.invites {
+            if let inv = try? stored.decoded(), inv.routers.contains(where: { $0.router == routerAddress }) {
+                try? await store.remove(id: stored.id)
+            }
+        }
         await rebuild()
     }
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import MkpkKit
 
 // Palette from the mockup (mkpk client.dc.html).
@@ -52,13 +53,24 @@ struct PopoverView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(model.groups) { group in
-                        RouterGroupView(model: model, group: group)
+            if let err = model.lastError {
+                Text(err).font(.system(size: 11)).foregroundStyle(Palette.error)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14).padding(.vertical, 6)
+                    .background(Palette.error.opacity(0.1))
+                    .onTapGesture { model.lastError = nil }
+            }
+            if model.isEmpty {
+                emptyState
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        ForEach(model.groups) { group in
+                            RouterGroupView(model: model, group: group)
+                        }
                     }
+                    .padding(12)
                 }
-                .padding(12)
             }
             Divider()
             Text("Стук открывает доступ только с вашего текущего IP")
@@ -70,6 +82,32 @@ struct PopoverView: View {
         .frame(width: 380)
         .frame(minHeight: 200, maxHeight: 640)
         .background(.regularMaterial)
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            for p in providers {
+                _ = p.loadObject(ofClass: URL.self) { url, _ in
+                    if let url { Task { @MainActor in await model.importFile(url) } }
+                }
+            }
+            return true
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "tray.and.arrow.down")
+                .font(.system(size: 30)).foregroundStyle(.secondary)
+            Text("Импортируйте инвайт").font(.system(size: 14, weight: .semibold))
+            Text("Перетащите .mkpk сюда, откройте файл или вставьте блоб из буфера.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Button("Открыть файл…") { model.openFilePanel() }.buttonStyle(AccentButton())
+                Button("Вставить блоб") { model.pasteBlob() }.buttonStyle(OutlineButton())
+            }
+            .padding(.top, 2)
+        }
+        .padding(.horizontal, 28).padding(.vertical, 32)
+        .frame(maxWidth: .infinity)
     }
 
     private var header: some View {
@@ -86,7 +124,13 @@ struct PopoverView: View {
                 Text("client_id: \(model.clientID)").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
             }
             Spacer()
-            Button { /* import — next */ } label: { Image(systemName: "plus") }.buttonStyle(.borderless)
+            Menu {
+                Button("Открыть файл…") { model.openFilePanel() }
+                Button("Вставить из буфера") { model.pasteBlob() }
+            } label: {
+                Image(systemName: "plus")
+            }
+            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
             Button { /* settings — next */ } label: { Image(systemName: "gearshape") }.buttonStyle(.borderless)
         }
         .padding(.horizontal, 14).padding(.vertical, 11)
@@ -108,7 +152,9 @@ struct RouterGroupView: View {
                         .background(Palette.warn.opacity(0.2)).foregroundStyle(Palette.warn).clipShape(Capsule())
                 }
                 Spacer()
-                Button { /* remove — next */ } label: { Image(systemName: "trash").font(.system(size: 11)) }.buttonStyle(.borderless).foregroundStyle(.secondary)
+                Button { Task { await model.remove(routerAddress: group.address) } } label: {
+                    Image(systemName: "trash").font(.system(size: 11))
+                }.buttonStyle(.borderless).foregroundStyle(.secondary)
             }
             VStack(spacing: 8) {
                 ForEach(group.services) { svc in
