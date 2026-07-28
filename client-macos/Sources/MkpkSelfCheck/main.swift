@@ -6,6 +6,34 @@ import MkpkKit
 // The golden token vectors are generated from the Go reference and pin the Swift
 // token to the exact RouterOS/Go formula.
 
+// Live mode: `swift run mkpk-selfcheck live <invite-file> <service>` performs a
+// real knock + check against the router in the invite. Not part of the
+// deterministic self-check (needs the network + a live router).
+let args = CommandLine.arguments
+if args.count >= 4, args[1] == "live" {
+    await runLive(invitePath: args[2], serviceName: args[3])
+    exit(0)
+}
+
+func runLive(invitePath: String, serviceName: String) async {
+    do {
+        let inv = try Invite.load(contentsOf: URL(fileURLWithPath: invitePath))
+        guard let router = inv.routers.first(where: { $0.services.contains { $0.name == serviceName } }),
+              let svc = router.services.first(where: { $0.name == serviceName }) else {
+            print("service \(serviceName) not found in invite"); exit(1)
+        }
+        print("live knock: router=\(router.router) service=\(svc.name) client=\(inv.clientID) check_port=\(svc.checkPort)")
+        let opts = Knock.options(router: router, service: svc, clientID: inv.clientID)
+        print("knocking…")
+        try await Knock.perform(opts)
+        print("knock sent; checking \(router.router):\(svc.checkPort) …")
+        let res = await Check.run(CheckOptions(host: router.router, port: svc.checkPort, timeout: 1, attempts: 10, interval: 0.5))
+        print("result: status=\(res.status.rawValue) attempts=\(res.attempts)\(res.lastError.map { " lastError=\($0)" } ?? "")")
+    } catch {
+        print("live knock error: \(error)"); exit(1)
+    }
+}
+
 var failures = 0
 @MainActor func check(_ name: String, _ ok: Bool) {
     if ok {
@@ -54,6 +82,15 @@ do {
     print("    error: \(error)")
 }
 check("rejects garbage", (try? Invite.decode(blob: "!!!not-base64!!!")) == nil)
+
+// --- check (TCP reachability) ---
+print("check (TCP):")
+let closed = await Check.run(CheckOptions(host: "127.0.0.1", port: 1, timeout: 0.3, attempts: 1, interval: 0))
+check("closed port → closed", closed.status == .closed)
+let badPort = await Check.run(CheckOptions(host: "127.0.0.1", port: 0))
+check("invalid port → error", badPort.status == .error)
+let emptyHost = await Check.run(CheckOptions(host: "", port: 80))
+check("empty host → error", emptyHost.status == .error)
 
 print("")
 if failures == 0 {
