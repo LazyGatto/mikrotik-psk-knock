@@ -91,6 +91,7 @@ const I18N = {
     "router.address_note": "Домен/IP, по которому конечный юзер стучит из недоверенной сети. Именно он попадает в инвайт.",
     "router.ssh_address": "SSH-адрес деплоя (если отличается)",
     "router.ssh_address_note": "Пусто → деплой идёт по публичному адресу. Задайте, если провижн по локальному/management-адресу из safe-env.",
+    "router.tab_general": "Общие", "router.tab_notify": "Нотификации",
     "router.ssh_legend": "SSH для деплоя",
     "router.ssh_note": "Используется кнопками Status / Apply / Uninstall. Хранится в локальном секретном конфиге (0600) и не покидает эту машину.",
     "router.auth": "Аутентификация", "router.auth_note": "рекомендуется ssh-agent: секрет не попадает в конфиг", "router.auth_keyfile": "файл ключа",
@@ -208,6 +209,7 @@ const I18N = {
     "router.address_note": "The domain/IP end users knock from an untrusted network. This is what goes into the invite.",
     "router.ssh_address": "SSH deploy address (if different)",
     "router.ssh_address_note": "Empty → deploy uses the public address. Set it if you provision over a local/management address from safe-env.",
+    "router.tab_general": "General", "router.tab_notify": "Notifications",
     "router.ssh_legend": "SSH for deploy",
     "router.ssh_note": "Used by Status / Apply / Uninstall. Stored in the local secret config (0600) and never leaves this machine.",
     "router.auth": "Authentication", "router.auth_note": "ssh-agent recommended: the secret stays out of the config", "router.auth_keyfile": "key file",
@@ -447,7 +449,7 @@ function renderSidebar() {
   const sb = document.getElementById("sidebar");
   sb.innerHTML = "";
   sb.append(h("div", { class: "brand" },
-    h("span", { class: "logo" }, h("img", { src: "/logo-96.png", alt: "mkpk", width: 28, height: 28 })),
+    h("span", { class: "logo" }, h("img", { src: "/logo-96.png", alt: "mkpk", width: 48, height: 48 })),
     h("div", null, h("h1", null, "mkpk-provision"), h("div", { class: "sub" }, "provisioning console"))));
   const nav = h("div", { class: "nav" });
 
@@ -480,7 +482,7 @@ function renderSidebar() {
   nav.append(h("button", { class: "dashed", onclick: () => openUserModal(null) }, t("nav.add_user")));
 
   const foot = h("div", { class: "sidebar-foot row" },
-    h("span", { class: "grow" }, location.host + " · local", (window.MKPK_VERSION && window.MKPK_VERSION !== "__MKPK_" + "VERSION__") ? h("span", { class: "ver" }, " · " + window.MKPK_VERSION) : null),
+    h("span", { class: "grow" }, (window.MKPK_VERSION && window.MKPK_VERSION !== "__MKPK_" + "VERSION__") ? h("span", { class: "ver" }, window.MKPK_VERSION) : null),
     h("button", { class: "iconbtn", style: "width:auto;padding:0 6px;font-weight:650;font-size:11px", "data-tip": t("lang.switch"), onclick: toggleLang }, LANG.toUpperCase()),
     h("button", { class: "iconbtn", "data-tip": THEME === "light" ? t("theme.dark") : t("theme.light"), onclick: toggleTheme }, icon(THEME === "light" ? "moon" : "sun")));
   sb.append(nav, foot);
@@ -1025,22 +1027,34 @@ function openRouterModal(name) {
     return box;
   }
 
-  const body = h("div", { class: "modal-body" },
+  // Two tabs keep the modal short (no scroll): general/SSH on one, notifications
+  // on the other. Both panels stay in the DOM so save reads every field.
+  const paneGeneral = h("div", { class: "modal-body" },
     h("div", { class: "grid2" }, field(t("field.name"), g.name), field(t("field.address"), g.address, t("router.address_note"))),
     h("fieldset", { class: "fieldset" }, h("legend", null, t("router.ssh_legend")),
       h("div", { class: "note" }, t("router.ssh_note")),
       field(t("router.ssh_address"), g.ssh_address, t("router.ssh_address_note")),
       h("div", { class: "grid2" }, field(t("field.port"), g.port), field(t("field.user"), g.user)),
       field(t("router.auth"), seg, t("router.auth_note")),
-      keyWrap, fbToggle, fbBody),
-    h("fieldset", { class: "fieldset" }, h("legend", null, t("router.notify_legend")),
-      h("div", { class: "note" }, t("router.notify_note")),
-      chan(g.nw, "Webhook", field("URL", g.url)),
-      chan(g.nt, "Telegram", h("div", { class: "grid2" }, field("chat id", g.tg_chat), field("bot token", g.tg_token))),
-      chan(g.ne, "Email",
-        h("div", { class: "grid2" }, field("to", g.email_to), field("from", g.email_from)),
-        h("div", { class: "grid3" }, field("server", g.email_server), field("port", g.email_port), field("tls", g.email_tls)),
-        h("div", { class: "grid2" }, field("user", g.email_user), field("password", g.email_pass)))));
+      keyWrap, fbToggle, fbBody));
+  const paneNotify = h("div", { class: "modal-body hidden" },
+    h("div", { class: "note" }, t("router.notify_note")),
+    chan(g.nw, "Webhook", field("URL", g.url)),
+    chan(g.nt, "Telegram", h("div", { class: "grid2" }, field("chat id", g.tg_chat), field("bot token", g.tg_token))),
+    chan(g.ne, "Email",
+      h("div", { class: "grid2" }, field("to", g.email_to), field("from", g.email_from)),
+      h("div", { class: "grid3" }, field("server", g.email_server), field("port", g.email_port), field("tls", g.email_tls)),
+      h("div", { class: "grid2" }, field("user", g.email_user), field("password", g.email_pass))));
+  let mtab = "general";
+  const tGen = h("button", { type: "button", class: "mtab on", onclick: () => setMTab("general") }, t("router.tab_general"));
+  const tNot = h("button", { type: "button", class: "mtab", onclick: () => setMTab("notify") }, t("router.tab_notify"));
+  function setMTab(x) {
+    mtab = x;
+    tGen.classList.toggle("on", x === "general"); tNot.classList.toggle("on", x === "notify");
+    paneGeneral.classList.toggle("hidden", x !== "general"); paneNotify.classList.toggle("hidden", x !== "notify");
+  }
+  const tabbar = h("div", { class: "modal-tabs" }, tGen, tNot);
+  const body = h("div", null, tabbar, paneGeneral, paneNotify);
 
   const save = h("button", { class: "btn pri", onclick: async () => {
     try {
