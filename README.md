@@ -33,8 +33,8 @@ MikroTik
 
 ## Статус
 
-Рабочая ROS-only реализация с клиентским CLI и SSH-провижинингом; всё проверено end-to-end на живом
-CHR (RouterOS 7.23.2).
+Рабочая ROS-only реализация с CLI, локальным веб-UI и десктопом (Wails), плюс SSH-провижининг; всё
+проверено end-to-end на живом CHR (RouterOS 7.23.2). Текущая версия — `v0.1.0` (semver, пре-1.0).
 
 Сделано:
 
@@ -43,18 +43,35 @@ CHR (RouterOS 7.23.2).
 - проверены на CHR ключевые RouterOS-примитивы: `sha512`, time bucket через `:timestamp`, UDP `content`,
   обновление rule content, scheduler 1s, reboot-survival, startup guard;
 - **клиент** (Go): `mkpk` (runtime — `knock`, `check`) и `mkpk-provision` (admin — `secret`, `config`,
-  `profile`, `service`, `client`, `token`, `routeros render`, `deploy`);
+  `profile`, `router`, `service`, `user`, `token`, `routeros render`, `export`, `deploy`, `serve`);
+- **multi-router / user×service**: один конфиг на много роутеров (сервисы и юзеры принадлежат роутеру),
+  матрица доступа, per-(user,router) PSK, раздача клиенту через per-user invite-blob;
 - **multi-profile render**: все services/clients в per-profile RouterOS-объекты с per-service изоляцией
-  `allowed`-list;
-- **data-driven poller**: один скрипт + один scheduler на все профили (вместо N), с кэшем и hit-guard;
+  `allowed`-list; **data-driven poller** — один скрипт + один scheduler на все профили, с кэшем и hit-guard;
+- **локальный веб-UI** `mkpk-provision serve` (loopback + per-session токен + Host-guard) поверх ядра
+  `internal/admin`; **десктоп** `mkpk-desktop` — тот же UI в нативном окне (Wails v2, in-process, без
+  открытого порта);
 - **уведомления**: каналы `webhook`, `telegram`, `email` с graceful degradation;
 - **SSH-провижининг**: `mkpk-provision deploy` ставит/обновляет/снимает mkpk-слой по SSH с detect по
   config-hash и verify;
-- фиксация used-marker `used_timeout >= 2*bucket_seconds`, валидация конфига (PSK-alphabet, имена, порты,
-  таймауты).
+- фиксация used-marker `used_timeout >= 2*bucket_seconds`, валидация конфига на входе и на бэке (адреса
+  IP/hostname, имена, порты 1..65535, таймауты, PSK-alphabet).
 
-Следующий шаг: локальный веб-UI поверх deploy-ядра, затем упаковка в десктоп (Wails). План — в
-[docs/roadmap.md](docs/roadmap.md).
+Следующие шаги: релизная обвязка (CI + готовые бинари), стриминг прогресса деплоя и клиентский GUI для
+получателей инвайта. План — в [docs/roadmap.md](docs/roadmap.md).
+
+## Сборка
+
+Из каталога `client/`:
+
+```text
+make build       # CLI: bin/mkpk и bin/mkpk-provision (версия из git-тега)
+make desktop     # десктоп .app (macOS; нужны wails CLI + Xcode CLT)
+make test        # go test ./...
+```
+
+Версия штампуется через `-ldflags` из `git describe --tags`; `mkpk version` / `mkpk-provision version`
+её печатают. Веб-UI показывает версию в футере сайдбара.
 
 ## Документы
 

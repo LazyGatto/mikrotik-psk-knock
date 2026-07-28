@@ -1,0 +1,32 @@
+# CI for the Go module in client/. Runs on the `gitlab`-tagged runner so jobs
+# stay on the local instance. The desktop package (cmd/mkpk-desktop) is excluded:
+# it needs the platform webview (cgo/webkit) which the CI image doesn't carry —
+# it is built on macOS via `make desktop`.
+
+stages:
+  - test
+
+variables:
+  # Keep the module and build cache inside the project dir so it can be cached.
+  GOPATH: "$CI_PROJECT_DIR/.gocache"
+  GOFLAGS: "-mod=mod"
+
+.go-cache: &go-cache
+  cache:
+    key: "go-mod"
+    paths:
+      - .gocache/pkg/mod
+
+test:
+  stage: test
+  image: golang:1.26
+  tags:
+    - gitlab
+  <<: *go-cache
+  script:
+    - cd client
+    # Every package except the desktop wrapper (needs a platform webview).
+    - PKGS=$(go list ./... | grep -v '/cmd/mkpk-desktop')
+    - go vet $PKGS
+    - go build $PKGS
+    - go test -cover $PKGS
