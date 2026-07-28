@@ -67,7 +67,8 @@ const I18N = {
     "user.matrix.explain": "Юзер может иметь доступ к нескольким роутерам. PSK — свой на каждый роутер (создаётся при первом доступе); один инвайт может включать несколько роутеров.",
     "user.needs_deploy": "нужен Deploy", "user.needs_deploy_title": "Локальные изменения не задеплоены",
     "user.svc_count": "{n} из {total} сервисов", "user.no_access": "нет доступа",
-    "user.psk_own": "свой для этого роутера", "user.invite_single_title": "Инвайт только с этим роутером",
+    "user.psk_own": "свой для этого роутера", "user.psk_active": "PSK задан для этого роутера", "user.psk_none": "Нет доступа — PSK не создан",
+    "user.invite_single_title": "Инвайт только с этим роутером",
     "user.rotate_title": "Сгенерировать новый PSK для этой пары юзер×роутер", "user.rotate": "⟳ Ротировать",
     "user.svc_off": "· выключен в конфиге", "user.no_services": "у роутера нет сервисов",
     "user.matrix.foot": "Изменения доступа и ротация PSK попадают на роутер после Deploy этого роутера, а юзеру — через пере-выданный инвайт.",
@@ -176,7 +177,8 @@ const I18N = {
     "user.matrix.explain": "A user can have access to several routers. The PSK is per router (created on first access); one invite can include several routers.",
     "user.needs_deploy": "deploy needed", "user.needs_deploy_title": "Local changes not deployed",
     "user.svc_count": "{n} of {total} services", "user.no_access": "no access",
-    "user.psk_own": "unique for this router", "user.invite_single_title": "Invite with this router only",
+    "user.psk_own": "unique for this router", "user.psk_active": "PSK set for this router", "user.psk_none": "No access — PSK not created",
+    "user.invite_single_title": "Invite with this router only",
     "user.rotate_title": "Generate a new PSK for this user×router pair", "user.rotate": "⟳ Rotate",
     "user.svc_off": "· disabled in config", "user.no_services": "router has no services",
     "user.matrix.foot": "Access changes and PSK rotation reach the router after its Deploy, and the user via a re-issued invite.",
@@ -728,16 +730,15 @@ function userView(u) {
     const a = u.access.find((x) => x.router === r.name);
     const has = !!a;
     const card = h("div", { class: "card pad stack" });
-    card.append(h("div", { class: "row" }, icon("router"), h("span", { style: "font-weight:600" }, r.name),
+    card.append(h("div", { class: "row" },
+      icon("router"), h("span", { style: "font-weight:600" }, r.name),
       h("span", { class: "mono foot-note" }, r.address),
       isDrift(r) && h("button", { class: "badge amber", title: t("user.needs_deploy_title"), onclick: () => go({ kind: "router", id: r.name, tab: "deploy" }) }, t("user.needs_deploy")),
       h("span", { class: "spacer" }),
-      h("span", { class: "foot-note" }, has ? t("user.svc_count", { n: a.services.length, total: r.services.length }) : t("user.no_access"))));
-    if (has) card.append(h("div", { class: "row", style: "background:var(--surface-2);border-radius:6px;padding:6px 9px" },
-      h("span", { class: "lbl" }, "PSK"), h("span", { class: "mono", style: "letter-spacing:1px" }, "••••••••••••"),
-      h("span", { class: "foot-note" }, t("user.psk_own")), h("span", { class: "spacer" }),
-      h("button", { class: "btn sm", title: t("user.invite_single_title"), onclick: () => openInvite(u.name, "single", r.name) }, "Invite"),
-      h("button", { class: "btn ghost sm", title: t("user.rotate_title"), onclick: () => rotatePSK(u.name, r.name) }, t("user.rotate"))));
+      h("span", { class: "foot-note" }, has ? t("user.svc_count", { n: a.services.length, total: r.services.length }) : t("user.no_access")),
+      h("span", { class: "badge " + (has ? "green" : "grey"), title: has ? t("user.psk_active") : t("user.psk_none") }, "PSK"),
+      has && h("button", { class: "btn sm", title: t("user.invite_single_title"), onclick: () => openInvite(u.name, "single", r.name) }, "Invite"),
+      has && h("button", { class: "iconbtn", title: t("user.rotate_title"), onclick: () => rotatePSK(u.name, r.name) }, icon("refresh"))));
     const checks = h("div", { class: "stack", style: "gap:5px" });
     for (const s of r.services) {
       const on = has && a.services.includes(s.name);
