@@ -83,9 +83,9 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
   overflow-y: auto;
 }
 .brand { display: flex; align-items: center; gap: 9px; padding: 16px; }
-.brand .logo { width: 48px; height: 48px; border-radius: 11px; background: none; flex: none; display: grid; place-items: center; overflow: hidden; }
+.brand .logo { width: 48px; height: 48px; background: none; flex: none; display: grid; place-items: center; }
 .brand .logo svg { width: 13px; height: 13px; }
-.brand .logo img { width: 100%; height: 100%; display: block; border-radius: 11px; }
+.brand .logo img { width: 100%; height: 100%; display: block; }
 .brand h1 { margin: 0; font-size: 13px; font-weight: 650; letter-spacing: -.01em; }
 .brand .sub { font-size: 10.5px; color: var(--muted); }
 
