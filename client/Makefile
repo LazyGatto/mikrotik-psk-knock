@@ -7,8 +7,10 @@
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X mikrotik-psk-knock/client/internal/version.Version=$(VERSION)
 BIN := bin
+PREFIX ?= /usr/local
+MANDIR := ../docs/man
 
-.PHONY: all build provision client desktop test version clean
+.PHONY: all build provision client desktop test version install clean
 
 all: build
 
@@ -27,6 +29,12 @@ client:
 # Output: cmd/mkpk-desktop/build/bin/mkpk-desktop.app
 desktop:
 	cd cmd/mkpk-desktop && wails build -s -skipbindings -ldflags "$(LDFLAGS)"
+
+# Install the CLI binaries and man pages under PREFIX (default /usr/local).
+install: build
+	install -d "$(PREFIX)/bin" "$(PREFIX)/share/man/man1"
+	install -m 0755 $(BIN)/mkpk $(BIN)/mkpk-provision "$(PREFIX)/bin/"
+	install -m 0644 $(MANDIR)/mkpk.1 $(MANDIR)/mkpk-provision.1 "$(PREFIX)/share/man/man1/"
 
 test:
 	go test ./...

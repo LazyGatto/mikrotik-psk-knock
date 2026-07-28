@@ -1,0 +1,111 @@
+.TH MKPK 1 "2026-07-28" "mkpk 0.2.0" "User Commands"
+.SH NAME
+mkpk \- MikroTik PSK port-knock runtime client
+.SH SYNOPSIS
+.B mkpk knock
+.RB ( --invite
+.IR FILE " | " --config
+.I FILE
+.B --client
+.IR NAME " [" --router
+.IR NAME "]) [" --service
+.IR NAME "] [" --check "] [" --debug ]
+.br
+.B mkpk check
+.RB ( --invite
+.IR FILE " | " --config
+.I FILE
+.B --client
+.IR NAME " [" --router
+.IR NAME "]) [" --service
+.IR NAME "] [" --host
+.IR HOST "] [" --port
+.IR PORT "] [" --json "] [" --debug ]
+.br
+.B mkpk version
+.SH DESCRIPTION
+.B mkpk
+is the client-side runtime for end users. It performs a staged UDP knock
+followed by a short-lived PSK-derived time token; on success the router adds the
+observed source address to an allowed address-list for a limited time, which
+lets the gated service through. It never contacts the router over SSH \(em
+provisioning is a separate concern handled by
+.BR mkpk-provision (1).
+.PP
+Configuration comes either from an invite blob
+.RB ( --invite ),
+handed to the user out of band, or from a full admin config
+.RB ( --config ).
+An invite carries only what the client needs: the public router address, the
+per-user PSK, and the services and knock ports.
+.SH COMMANDS
+.TP
+.B knock
+Send the knock sequence for a service. With
+.B --check
+it also runs a TCP connect check afterwards.
+.TP
+.B check
+Run only a TCP connect check of the target endpoint, without knocking. Useful
+for before/after status. With
+.B --json
+it prints a machine-readable result.
+.TP
+.B version
+Print the program version and exit.
+.SH OPTIONS
+.TP
+.BI --invite " FILE"
+Path to an invite blob (prefixed with @) or the raw blob string.
+.TP
+.BI --config " FILE"
+Path to a full admin config (mkpk.yaml).
+.TP
+.BI --client " NAME"
+User name to resolve in the config (with --config).
+.TP
+.BI --router " NAME"
+Router name; optional when the config or invite has a single router.
+.TP
+.BI --service " NAME"
+Service to open; required when more than one is available.
+.TP
+.BI --host " HOST", \fB--port\fP " PORT"
+Override the endpoint the check connects to (default: the service target).
+.TP
+.B --check
+After knocking, verify the target endpoint over TCP.
+.TP
+.B --json
+(check) Emit a JSON result: status (open|closed|error), host, port, attempts,
+duration and any error.
+.TP
+.B --debug
+Verbose output: router, bucket, stage ports, local/remote UDP addresses.
+.SH EXIT STATUS
+.B 0
+on success. Non-zero on failure; a failed
+.B check
+distinguishes a closed/unreachable endpoint via
+.BR --json .
+.SH EXAMPLES
+.PP
+Knock and verify using an invite:
+.PP
+.RS
+.EX
+mkpk knock --invite @laptop.mkpk --service ssh --check
+.EE
+.RE
+.PP
+Machine-readable reachability check (for scripts/Ansible):
+.PP
+.RS
+.EX
+mkpk check --invite @laptop.mkpk --service ssh --json
+.EE
+.RE
+.SH SEE ALSO
+.BR mkpk-provision (1)
+.SH PROJECT
+https://gitlab.eg23.ru/lazygatto/mikrotik-psk-knock

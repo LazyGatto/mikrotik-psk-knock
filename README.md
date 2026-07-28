@@ -60,7 +60,7 @@ MikroTik
 Следующие шаги: релизная обвязка (CI + готовые бинари), стриминг прогресса деплоя и клиентский GUI для
 получателей инвайта. План — в [docs/roadmap.md](docs/roadmap.md).
 
-## Сборка
+## Сборка и установка
 
 Из каталога `client/`:
 
@@ -68,6 +68,31 @@ MikroTik
 make build       # CLI: bin/mkpk и bin/mkpk-provision (версия из git-тега)
 make desktop     # десктоп .app (macOS; нужны wails CLI + Xcode CLT)
 make test        # go test ./...
+make install     # ставит бинари и man-страницы под PREFIX (по умолчанию /usr/local)
+```
+
+`make install PREFIX=~/.local` ставит `mkpk`/`mkpk-provision` в `bin/` и man-страницы
+(`mkpk(1)`, `mkpk-provision(1)`, исходники в [docs/man/](docs/man)).
+
+## CLI-first и автоматизация
+
+Все три бинаря — тонкие фронтенды над одним ядром `internal/admin`, и **CLI полностью
+самодостаточен**: веб-UI (`mkpk-provision serve`) и десктоп (`mkpk-desktop`) ничего не умеют
+сверх CLI. Для Ansible/скриптов всё делается headless — `mkpk-provision router set …`,
+`… service add …`, `… user add …`, `… deploy …`, `… export …`, а на клиенте `mkpk knock …`.
+Полный список — в man-страницах или `mkpk-provision help`.
+
+## Релизы
+
+Готовые бинари — во вкладке Releases (собираются CI на теге `vX.Y.Z`). Каждый CLI лежит в
+per-платформенном `.zip` (внутри — бинарь с обычным именем; zip сохраняет бит исполняемости,
+так что `chmod +x` не нужен). Десктопный `.app` для macOS прикладывается отдельным архивом.
+
+**macOS:** скачанные неподписанные бинари помечаются карантином Gatekeeper. Пока не настроена
+нотаризация (нужен Apple Developer ID), снять карантин можно вручную:
+
+```text
+xattr -d com.apple.quarantine ./mkpk
 ```
 
 Версия штампуется через `-ldflags` из `git describe --tags`; `mkpk version` / `mkpk-provision version`

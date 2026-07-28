@@ -1,0 +1,103 @@
+.TH MKPK-PROVISION 1 "2026-07-28" "mkpk-provision 0.2.0" "System Administration"
+.SH NAME
+mkpk-provision \- provision and deploy the MikroTik PSK port-knock layer
+.SH SYNOPSIS
+.B mkpk-provision
+.I COMMAND
+.RI [ options ]
+.SH DESCRIPTION
+.B mkpk-provision
+is the administrator tool. It manages a single YAML config describing one or
+more routers, their services and the users allowed to reach them, renders the
+RouterOS script, deploys it over SSH, and hands each user a compact invite blob.
+It is a complete command-line tool suitable for scripting and automation
+(e.g. Ansible); the local web UI
+.RB ( serve )
+and the desktop app
+.RB ( mkpk-desktop )
+are optional front-ends over the same core and add nothing the CLI cannot do.
+.PP
+The config defaults to
+.I $XDG_CONFIG_HOME/mkpk/mkpk.yaml
+(else
+.IR ~/.config/mkpk/mkpk.yaml );
+override it with
+.B --config
+on any command. It holds every secret (PSKs, SSH key/password), is written
+0600 with an atomic replace, and never leaves the operator's machine.
+.SH COMMANDS
+.TP
+.B secret generate \fR[\fB--bytes\fR \fIN\fR]
+Print a fresh base64url-safe secret.
+.TP
+.B profile init --out \fIFILE\fB --router-name \fINAME\fB --router-address \fIHOST\fR
+Create a starter config with a generated PSK and safe defaults.
+.TP
+.B config validate --config \fIFILE\fR
+Load, apply defaults, check invariants and print a secret-free summary.
+.TP
+.B router set --config \fIFILE\fB --name \fINAME\fB --address \fIHOST\fR \
+[\fB--ssh-user\fR \fIU\fR] [\fB--ssh-key\fR \fIPATH\fR] [\fB--ssh-agent\fR] [\fB--ssh-port\fR \fIN\fR]
+Create or update a router. --address is the public address end users knock;
+SSH deploy uses it unless a separate deploy address is set.
+.TP
+.B router remove --config \fIFILE\fB --name \fINAME\fR
+Remove a router and its services.
+.TP
+.B service add --config \fIFILE\fR [\fB--router\fR \fINAME\fR] --name \fINAME\fR \
+--stage1-port \fIN\fB --stage2-port \fIN\fB --token-port \fIN\fR \
+--target-type \fIforward|local\fB --target-port \fIN\fR \
+[\fB--target-to-address\fR \fIIP\fR] [\fB--target-to-port\fR \fIN\fR]
+Add a service. A forward target dst-nats to an internal host:port; a local
+target gates a port on the router itself.
+.TP
+.B user add --config \fIFILE\fR [\fB--router\fR \fINAME\fR] --name \fINAME\fB --services \fIa,b\fR
+Grant a user access to the listed services on a router (generates a PSK if none).
+.TP
+.B user remove --config \fIFILE\fR [\fB--router\fR \fINAME\fR] --name \fINAME\fR [\fB--all-routers\fR]
+Revoke access on a router, or everywhere with --all-routers.
+.TP
+.B token --config \fIFILE\fR [\fB--router\fR \fINAME\fR] --client \fINAME\fR [\fB--service\fR \fINAME\fR] [\fB--bucket\fR \fIN\fR]
+Print the current time token for a (user, router, service) \(em for debugging.
+.TP
+.B routeros render --config \fIFILE\fR [\fB--router\fR \fINAME\fR] [\fB--out\fR \fIFILE\fR]
+Render the RouterOS .rsc for a router (all services and users).
+.TP
+.B export --config \fIFILE\fB --user \fINAME\fR [\fB--router\fR \fINAME\fR] [\fB--out\fR \fIFILE\fR]
+Produce a user's invite blob. All the user's routers when --router is omitted.
+.TP
+.B deploy \fR[\fBstatus\fR|\fBuninstall\fR] \fB--config \fIFILE\fR [\fB--router\fR \fINAME\fR]
+Install/update the mkpk layer over SSH (default), report install state
+.RB ( status ),
+or remove it
+.RB ( uninstall ).
+Connection credentials come from the router.
+.TP
+.B serve --config \fIFILE\fR [\fB--addr\fR \fI127.0.0.1:8765\fR]
+Start the local web UI (loopback only, per-session token).
+.TP
+.B version
+Print the program version and exit.
+.SH FILES
+.TP
+.I ~/.config/mkpk/mkpk.yaml
+Default config path (0600). Holds all secrets.
+.SH EXAMPLES
+.PP
+Initialize, add a service and a user, deploy, and export an invite:
+.PP
+.RS
+.EX
+mkpk-provision profile init --out mkpk.yaml --router-name r1 --router-address r1.example.com
+mkpk-provision service add --config mkpk.yaml --name ssh \\
+  --stage1-port 41011 --stage2-port 41012 --token-port 41013 \\
+  --target-type forward --target-port 22 --target-to-address 192.0.2.10 --target-to-port 22
+mkpk-provision user add --config mkpk.yaml --name laptop --services ssh
+mkpk-provision deploy --config mkpk.yaml
+mkpk-provision export --config mkpk.yaml --user laptop --out laptop.mkpk
+.EE
+.RE
+.SH SEE ALSO
+.BR mkpk (1)
+.SH PROJECT
+https://gitlab.eg23.ru/lazygatto/mikrotik-psk-knock
