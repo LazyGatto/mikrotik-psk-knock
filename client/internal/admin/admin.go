@@ -692,11 +692,12 @@ func ExportUser(cfg config.Config, userName, routerName string) (string, error) 
 				continue
 			}
 			rb.Services = append(rb.Services, invite.Service{
-				Name:      s.ServiceName,
-				Stage1:    s.Stage1Port,
-				Stage2:    s.Stage2Port,
-				Token:     s.TokenPort,
-				CheckPort: s.Target.Port,
+				Name:           s.ServiceName,
+				Stage1:         s.Stage1Port,
+				Stage2:         s.Stage2Port,
+				Token:          s.TokenPort,
+				CheckPort:      s.Target.Port,
+				AllowedTimeout: s.EffectiveAllowedTimeout(r.Defaults),
 			})
 		}
 		if len(rb.Services) > 0 {

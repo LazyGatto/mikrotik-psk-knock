@@ -39,6 +39,10 @@ type Service struct {
 	Stage2    int    `json:"stage2"`
 	Token     int    `json:"token"`
 	CheckPort int    `json:"check_port"` // external port for post-knock TCP check
+	// AllowedTimeout is the effective TTL of the allowed-list entry after a knock
+	// (the router's, per-service or default), so the client can show how long the
+	// port stays open. Informational only — the router enforces the real TTL.
+	AllowedTimeout string `json:"allowed_timeout,omitempty"`
 }
 
 // Encode marshals the blob to a base64url string.
