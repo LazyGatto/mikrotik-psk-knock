@@ -15,6 +15,10 @@ let package = Package(
         // verifiable with Command Line Tools only. A real `swift test` suite
         // (Swift Testing / XCTest) needs full Xcode and is added once available.
         .executable(name: "mkpk-selfcheck", targets: ["MkpkSelfCheck"]),
+        // The menu-bar app (invite recipient). SwiftUI in an AppKit NSStatusItem
+        // + NSPanel popover. Run: `swift run MkpkApp` (dev) — a proper .app bundle
+        // (LSUIElement, signed) is assembled by script/ for distribution.
+        .executable(name: "MkpkApp", targets: ["MkpkApp"]),
     ],
     targets: [
         .target(
@@ -23,6 +27,11 @@ let package = Package(
         ),
         .executableTarget(
             name: "MkpkSelfCheck",
+            dependencies: ["MkpkKit"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+        .executableTarget(
+            name: "MkpkApp",
             dependencies: ["MkpkKit"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
