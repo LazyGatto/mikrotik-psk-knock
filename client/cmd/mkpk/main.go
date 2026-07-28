@@ -13,6 +13,7 @@ import (
 	"mikrotik-psk-knock/client/internal/knock"
 	"mikrotik-psk-knock/client/internal/servicecheck"
 	"mikrotik-psk-knock/client/internal/token"
+	"mikrotik-psk-knock/client/internal/version"
 )
 
 func main() {
@@ -47,6 +48,9 @@ func run(args []string) error {
 		return knockCmd(args[1:])
 	case "check":
 		return checkCmd(args[1:])
+	case "version", "--version", "-v":
+		fmt.Printf("mkpk %s\n", version.String())
+		return nil
 	case "help", "-h", "--help":
 		usage()
 		return nil

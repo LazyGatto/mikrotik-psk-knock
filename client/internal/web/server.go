@@ -18,9 +18,10 @@ import (
 
 	"mikrotik-psk-knock/client/internal/admin"
 	"mikrotik-psk-knock/client/internal/config"
+	"mikrotik-psk-knock/client/internal/version"
 )
 
-//go:embed assets/index.html assets/app.js assets/style.css
+//go:embed assets/index.html assets/app.js assets/style.css assets/favicon-16.png assets/favicon-32.png assets/apple-touch-icon.png assets/logo-96.png assets/icon-512.png
 var assetsFS embed.FS
 
 const maxUndo = 100
@@ -43,6 +44,12 @@ func Handler(configPath, token string) http.Handler {
 	mux.HandleFunc("/", s.index)
 	mux.HandleFunc("/app.js", s.static("assets/app.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("/style.css", s.static("assets/style.css", "text/css; charset=utf-8"))
+	mux.HandleFunc("/favicon.ico", s.static("assets/favicon-32.png", "image/png"))
+	mux.HandleFunc("/favicon-16.png", s.static("assets/favicon-16.png", "image/png"))
+	mux.HandleFunc("/favicon-32.png", s.static("assets/favicon-32.png", "image/png"))
+	mux.HandleFunc("/apple-touch-icon.png", s.static("assets/apple-touch-icon.png", "image/png"))
+	mux.HandleFunc("/logo-96.png", s.static("assets/logo-96.png", "image/png"))
+	mux.HandleFunc("/icon-512.png", s.static("assets/icon-512.png", "image/png"))
 	mux.HandleFunc("/api/config", s.auth(s.handleConfig))
 	mux.HandleFunc("/api/secret", s.auth(s.handleSecret))
 	mux.HandleFunc("/api/ports/suggest", s.auth(s.handlePortsSuggest))
@@ -50,6 +57,7 @@ func Handler(configPath, token string) http.Handler {
 	mux.HandleFunc("/api/router/info", s.auth(s.handleRouterInfo))
 	mux.HandleFunc("/api/service", s.auth(s.handleService))
 	mux.HandleFunc("/api/service/enable", s.auth(s.handleServiceEnable))
+	mux.HandleFunc("/api/note", s.auth(s.handleNote))
 	mux.HandleFunc("/api/client", s.auth(s.handleClient))
 	mux.HandleFunc("/api/user", s.auth(s.handleUser))
 	mux.HandleFunc("/api/user/psk", s.auth(s.handleUserPSK))
@@ -121,6 +129,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page := strings.Replace(string(data), "__MKPK_TOKEN__", s.token, 1)
+	page = strings.Replace(page, "__MKPK_VERSION__", version.String(), 1)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(page))
 }
@@ -302,6 +311,43 @@ func (s *Server) handleServiceEnable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	cfg, err = admin.SetServiceEnabled(cfg, req.Router, req.Name, req.Enabled)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := s.save(cfg); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.writeConfig(w, cfg)
+}
+
+type noteReq struct {
+	Kind   string `json:"kind"`   // "router" | "service" | "user"
+	Router string `json:"router"` // service only
+	Name   string `json:"name"`   // router / service / user name
+	Note   string `json:"note"`
+}
+
+// handleNote updates the free-form local note on an entity. The note is stored
+// only in this config — never rendered or exported — so it does not touch a
+// router's render hash / deploy state.
+func (s *Server) handleNote(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	cfg, err := config.Load(s.configPath)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var req noteReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json: "+err.Error())
+		return
+	}
+	cfg, err = admin.SetNote(cfg, req.Kind, req.Router, req.Name, req.Note)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return

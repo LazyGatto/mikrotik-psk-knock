@@ -6,6 +6,9 @@ const I18N = {
   ru: {
     save: "Сохранить", cancel: "Отмена", close: "Закрыть", del: "Удалить", settings: "Настройки",
     add: "Добавить", copy: "Скопировать", copied: "✓ Скопировано", loading: "загрузка…", error: "ошибка",
+    "note.add": "Добавить примечание", "note.title": "Примечание · {kind} {name}", "note.subtitle": "Хранится только в этом конфиге — на роутер не уходит",
+    "note.placeholder": "Заметка для себя…", "note.clear": "Очистить", "note.saved": "Примечание сохранено", "note.cleared": "Примечание удалено",
+    "note.kind.router": "роутер", "note.kind.service": "сервис", "note.kind.user": "юзер",
     undo: "Отменить", redo: "Вернуть", "toast.undone": "Отменено", "toast.redone": "Возвращено",
     "nav.dashboard": "Обзор", "nav.routers": "Роутеры", "nav.users": "Юзеры",
     "nav.add_router": "+ Добавить роутер", "nav.add_user": "+ Добавить юзера",
@@ -50,6 +53,8 @@ const I18N = {
     "deploy.uninstall_title": "Uninstall с роутера?",
     "deploy.uninstall_body": "Все правила mkpk-tt будут удалены с роутера. Локальный конфиг не тронут.",
     "deploy.dry_title": "Показать, что будет сделано, без изменений на роутере",
+    "deploy.dry_btn": "Dry-Run",
+    "deploy.synced_hint": "Уже синхронизировано — включите force, чтобы передеплоить",
     "deploy.force_title": "Применить, даже если hash совпадает",
     "deploy.result_ph": "Результат действия появится здесь. Начните со Status.",
     "dstate.clean": "локальный конфиг (не проверялся по SSH)", "dstate.needs": "● есть локальные изменения — нужен Apply",
@@ -62,7 +67,7 @@ const I18N = {
     "dres.dry.t": "Dry-run завершён", "dres.dry.m": "Показано, что было бы сделано. На роутере ничего не изменено (dry-run).",
     "dres.uninstalled.t": "Снято с роутера", "dres.uninstalled.m": "Все правила mkpk-tt удалены. Конфиг в приложении не тронут — Apply вернёт всё обратно.",
     "dres.err.t": "Не удалось подключиться", "dres.ok": "Готово",
-    "dres.apply_btn": "Apply — задеплоить изменения", "dres.settings_link": "Настройки роутера →",
+    "dres.apply_btn": "Deploy — задеплоить изменения", "dres.settings_link": "Настройки роутера →",
     "dres.show_log": "▶ Показать raw-лог", "dres.hide_log": "▼ Скрыть raw-лог",
     "user.matrix": "Матрица доступа",
     "user.matrix.explain": "Юзер может иметь доступ к нескольким роутерам. PSK — свой на каждый роутер (создаётся при первом доступе); один инвайт может включать несколько роутеров.",
@@ -100,10 +105,11 @@ const I18N = {
     "toast.router_deleted": "Роутер удалён",
     "svc.new": "Новый сервис", "svc.title": "Сервис {name}",
     "svc.field_name": "Имя сервиса", "svc.field_name_note": "Входит в формулу токена — переименование инвалидирует выданные инвайты.",
+    "svc.name_bad": "имя: только A–Z a–z 0–9 _ -, начинается с буквы/цифры, до 32 символов",
     "svc.knock_ports": "Порты «стука» (stage1 / stage2 / token)", "svc.suggest": "Подобрать свободные",
     "svc.type": "Тип цели", "svc.proto": "Протокол", "svc.port_ext": "Внешний порт", "svc.port_local": "Порт роутера",
     "svc.port_local_note": "input accept на этот порт роутера, без NAT.",
-    "svc.conflict": "{label}: {port} занят — {svc} ({field})", "toast.svc_saved": "Сервис сохранён",
+    "svc.conflict": "{label}: {port} занят — {svc} ({field})", "svc.port_range": "{label}: {port} вне диапазона (1–65535)", "svc.required": "заполните: {fields}", "svc.ipv4": "to_address: {addr} — не IPv4-адрес", "toast.svc_saved": "Сервис сохранён",
     "user.new": "Новый юзер", "user.title": "Юзер {name}", "user.field_name": "Имя (client_id)",
     "user.field_name_note": "Единая идентичность во всех роутерах; входит в формулу токена — переименование инвалидирует инвайты.",
     "toast.user_saved": "Юзер сохранён", "user.del": "Удалить юзера…", "user.del.title": "Удалить юзера {name}?",
@@ -116,6 +122,9 @@ const I18N = {
   },
   en: {
     save: "Save", cancel: "Cancel", close: "Close", del: "Delete", settings: "Settings",
+    "note.add": "Add note", "note.title": "Note · {kind} {name}", "note.subtitle": "Stored in this config only — never sent to the router",
+    "note.placeholder": "A note to self…", "note.clear": "Clear", "note.saved": "Note saved", "note.cleared": "Note removed",
+    "note.kind.router": "router", "note.kind.service": "service", "note.kind.user": "user",
     add: "Add", copy: "Copy", copied: "✓ Copied", loading: "loading…", error: "error",
     undo: "Undo", redo: "Redo", "toast.undone": "Undone", "toast.redone": "Redone",
     "nav.dashboard": "Overview", "nav.routers": "Routers", "nav.users": "Users",
@@ -161,6 +170,8 @@ const I18N = {
     "deploy.uninstall_title": "Uninstall from the router?",
     "deploy.uninstall_body": "All mkpk-tt rules will be removed from the router. The local config is untouched.",
     "deploy.dry_title": "Show what would be done, without changing the router",
+    "deploy.dry_btn": "Dry-Run",
+    "deploy.synced_hint": "Already synced — enable force to redeploy",
     "deploy.force_title": "Apply even if the hash matches",
     "deploy.result_ph": "The result will appear here. Start with Status.",
     "dstate.clean": "local config (not SSH-checked)", "dstate.needs": "● local changes — Apply needed",
@@ -173,7 +184,7 @@ const I18N = {
     "dres.dry.t": "Dry-run done", "dres.dry.m": "Shows what would be done. Nothing changed on the router (dry-run).",
     "dres.uninstalled.t": "Removed from the router", "dres.uninstalled.m": "All mkpk-tt rules removed. The app config is untouched — Apply restores everything.",
     "dres.err.t": "Connection failed", "dres.ok": "Done",
-    "dres.apply_btn": "Apply — deploy changes", "dres.settings_link": "Router settings →",
+    "dres.apply_btn": "Deploy — deploy changes", "dres.settings_link": "Router settings →",
     "dres.show_log": "▶ Show raw log", "dres.hide_log": "▼ Hide raw log",
     "user.matrix": "Access matrix",
     "user.matrix.explain": "A user can have access to several routers. The PSK is per router (created on first access); one invite can include several routers.",
@@ -211,10 +222,11 @@ const I18N = {
     "toast.router_deleted": "Router deleted",
     "svc.new": "New service", "svc.title": "Service {name}",
     "svc.field_name": "Service name", "svc.field_name_note": "Part of the token formula — renaming invalidates issued invites.",
+    "svc.name_bad": "name: only A–Z a–z 0–9 _ -, starts with a letter/digit, up to 32 chars",
     "svc.knock_ports": "Knock ports (stage1 / stage2 / token)", "svc.suggest": "Suggest free",
     "svc.type": "Target type", "svc.proto": "Protocol", "svc.port_ext": "External port", "svc.port_local": "Router port",
     "svc.port_local_note": "input accept to this router port, no NAT.",
-    "svc.conflict": "{label}: {port} taken — {svc} ({field})", "toast.svc_saved": "Service saved",
+    "svc.conflict": "{label}: {port} taken — {svc} ({field})", "svc.port_range": "{label}: {port} out of range (1–65535)", "svc.required": "fill in: {fields}", "svc.ipv4": "to_address: {addr} — not an IPv4 address", "toast.svc_saved": "Service saved",
     "user.new": "New user", "user.title": "User {name}", "user.field_name": "Name (client_id)",
     "user.field_name_note": "A single identity across all routers; part of the token formula — renaming invalidates invites.",
     "toast.user_saved": "User saved", "user.del": "Delete user…", "user.del.title": "Delete user {name}?",
@@ -267,6 +279,7 @@ const ICONS = {
   lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   warn: '<path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4m0 3h.01"/>',
   user: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/>',
+  note: '<path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/>',
 };
 function icon(name, cls) {
   const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -316,7 +329,7 @@ const S = {
   path: "", routers: [], users: [],
   view: { kind: "dashboard", id: null, tab: "services" },
   deploy: {},
-  deployOpts: { dry: true, force: false },
+  deployOpts: { force: false },
   deployRunning: null,
   canUndo: false, canRedo: false,
   health: {}, // router -> {reachable, identity, version, uptime, board, err}
@@ -399,11 +412,21 @@ function startPolling() {
   pollTimer = setInterval(pollAll, 20000);
 }
 function shortVersion(v) { return (v || "").split(" ")[0]; }
+// isSafeName — mirrors the backend: ^[A-Za-z0-9][A-Za-z0-9_-]*$, max 32 chars.
+// Names compose into RouterOS object names, so no spaces / unicode / punctuation.
+const MAX_NAME_LEN = 32;
+function isSafeName(s) { return /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(s) && s.length <= MAX_NAME_LEN; }
+// isIPv4 — strict dotted-quad, each octet 0..255, no leading zeros beyond "0".
+function isIPv4(s) {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(s);
+  if (!m) return false;
+  return m.slice(1).every((o) => { const n = +o; return n >= 0 && n <= 255 && String(n) === o; });
+}
 // small live status dot for a router (sidebar / lists)
 function routerDot(r) {
-  if (isDrift(r)) return h("span", { class: "dot amber", title: t("nav.needs_dot") });
+  if (isDrift(r)) return h("span", { class: "dot amber", "data-tip": t("nav.needs_dot") });
   const hv = S.health[r.name];
-  if (hv && hv.reachable) return h("span", { class: "dot green pulse", title: t("health.reachable") });
+  if (hv && hv.reachable) return h("span", { class: "dot green pulse", "data-tip": t("health.reachable") });
   return null;
 }
 // rich health marker for the router header
@@ -411,27 +434,27 @@ function healthMarker(r) {
   if (!r.deploy.configured) return null;
   const hv = S.health[r.name];
   if (!hv) return h("span", { class: "row", style: "gap:6px" }, h("span", { class: "dot grey" }), h("span", { class: "foot-note" }, t("health.checking")));
-  if (!hv.reachable) return h("span", { class: "row", style: "gap:6px", title: hv.err || "" }, h("span", { class: "dot grey" }), h("span", { class: "foot-note" }, t("health.unreachable")));
-  return h("span", { class: "row", style: "gap:6px", title: hv.board || "" },
+  if (!hv.reachable) return h("span", { class: "row", style: "gap:6px", "data-tip": hv.err || "" }, h("span", { class: "dot grey" }), h("span", { class: "foot-note" }, t("health.unreachable")));
+  return h("span", { class: "row", style: "gap:6px", "data-tip": hv.board || "" },
     h("span", { class: "dot green pulse" }),
     h("span", { class: "mono foot-note" }, [hv.identity, shortVersion(hv.version), hv.uptime].filter(Boolean).join(" · ")));
 }
 
 // ---------- render root ----------
-function render() { renderSidebar(); renderMain(); }
+function render() { hideTip(); renderSidebar(); renderMain(); }
 
 function renderSidebar() {
   const sb = document.getElementById("sidebar");
   sb.innerHTML = "";
   sb.append(h("div", { class: "brand" },
-    h("span", { class: "logo" }, icon("logo")),
+    h("span", { class: "logo" }, h("img", { src: "/logo-96.png", alt: "mkpk", width: 28, height: 28 })),
     h("div", null, h("h1", null, "mkpk-provision"), h("div", { class: "sub" }, "provisioning console"))));
   const nav = h("div", { class: "nav" });
 
   const dashRow = h("button", { class: "nav-row" + (S.view.kind === "dashboard" ? " sel" : ""), onclick: () => go({ kind: "dashboard" }) },
     icon("dash"), h("span", { class: "grow title" }, t("nav.dashboard")));
   const driftCount = S.routers.filter(isDrift).length;
-  if (driftCount) dashRow.append(h("span", { class: "badge amber", title: t("nav.drift_title") }, String(driftCount)));
+  if (driftCount) dashRow.append(h("span", { class: "badge amber", "data-tip": t("nav.drift_title") }, String(driftCount)));
   nav.append(dashRow);
 
   nav.append(navHeader(t("nav.routers"), () => openRouterModal(null)));
@@ -439,8 +462,9 @@ function renderSidebar() {
     nav.append(h("button", { class: "nav-row" + (S.view.kind === "router" && S.view.id === r.name ? " sel" : ""), onclick: () => go({ kind: "router", id: r.name }) },
       icon("router"),
       h("span", { class: "grow" }, h("div", { class: "title" }, r.name), h("div", { class: "meta" }, r.address)),
+      noteBadge("router", null, r.name, r.note),
       routerDot(r),
-      h("span", { class: "gear", onclick: (e) => { e.stopPropagation(); openRouterModal(r.name); }, title: t("nav.router_settings") }, icon("gear"))));
+      h("span", { class: "gear", onclick: (e) => { e.stopPropagation(); openRouterModal(r.name); }, "data-tip": t("nav.router_settings") }, icon("gear"))));
   }
   nav.append(h("button", { class: "dashed", onclick: () => openRouterModal(null) }, t("nav.add_router")));
 
@@ -450,25 +474,26 @@ function renderSidebar() {
     nav.append(h("button", { class: "nav-row" + (S.view.kind === "user" && S.view.id === u.name ? " sel" : ""), onclick: () => go({ kind: "user", id: u.name }) },
       h("span", { class: "avatar" }, initials(u.name)),
       h("span", { class: "grow" }, h("div", { class: "title" }, u.name), h("div", { class: "meta" }, summary)),
-      h("span", { class: "gear", onclick: (e) => { e.stopPropagation(); openUserModal(u.name); }, title: t("nav.user_edit") }, icon("pencil"))));
+      noteBadge("user", null, u.name, u.note),
+      h("span", { class: "gear", onclick: (e) => { e.stopPropagation(); openUserModal(u.name); }, "data-tip": t("nav.user_edit") }, icon("pencil"))));
   }
   nav.append(h("button", { class: "dashed", onclick: () => openUserModal(null) }, t("nav.add_user")));
 
   const foot = h("div", { class: "sidebar-foot row" },
-    h("span", { class: "grow" }, location.host + " · local"),
-    h("button", { class: "iconbtn", style: "width:auto;padding:0 6px;font-weight:650;font-size:11px", title: t("lang.switch"), onclick: toggleLang }, LANG.toUpperCase()),
-    h("button", { class: "iconbtn", title: THEME === "light" ? t("theme.dark") : t("theme.light"), onclick: toggleTheme }, icon(THEME === "light" ? "moon" : "sun")));
+    h("span", { class: "grow" }, location.host + " · local", (window.MKPK_VERSION && window.MKPK_VERSION !== "__MKPK_" + "VERSION__") ? h("span", { class: "ver" }, " · " + window.MKPK_VERSION) : null),
+    h("button", { class: "iconbtn", style: "width:auto;padding:0 6px;font-weight:650;font-size:11px", "data-tip": t("lang.switch"), onclick: toggleLang }, LANG.toUpperCase()),
+    h("button", { class: "iconbtn", "data-tip": THEME === "light" ? t("theme.dark") : t("theme.light"), onclick: toggleTheme }, icon(THEME === "light" ? "moon" : "sun")));
   sb.append(nav, foot);
 }
 
 // undo/redo button group shown in the top bar of every view
 function histButtons() {
   return h("div", { class: "row", style: "gap:4px" },
-    h("button", { class: "iconbtn", disabled: !S.canUndo, title: t("undo") + " (⌘Z)", onclick: undo }, icon("undo")),
-    h("button", { class: "iconbtn", disabled: !S.canRedo, title: t("redo") + " (⇧⌘Z)", onclick: redo }, icon("redo")));
+    h("button", { class: "iconbtn", disabled: !S.canUndo, "data-tip": t("undo") + " (⌘Z)", onclick: undo }, icon("undo")),
+    h("button", { class: "iconbtn", disabled: !S.canRedo, "data-tip": t("redo") + " (⇧⌘Z)", onclick: redo }, icon("redo")));
 }
 function navHeader(label, onAdd) {
-  return h("div", { class: "nav-eyebrow" }, h("span", null, label), h("button", { onclick: onAdd, title: t("add") }, "+"));
+  return h("div", { class: "nav-eyebrow" }, h("span", null, label), h("button", { onclick: onAdd, "data-tip": t("add") }, "+"));
 }
 
 function renderMain() {
@@ -531,7 +556,8 @@ function dashboard() {
     ulist.append(h("div", { class: "list-row", onclick: () => go({ kind: "user", id: u.name }) },
       h("span", { class: "avatar" }, initials(u.name)),
       h("span", { class: "grow" }, h("div", { class: "name" }, u.name)),
-      h("div", { class: "row wrap-row" }, ...chips)));
+      h("div", { class: "row wrap-row" }, ...chips),
+      noteBadge("user", null, u.name, u.note, true)));
   }
   if (!S.users.length) ulist.append(h("div", { class: "pad foot-note" }, t("dash.no_users")));
   wrap.append(ulist);
@@ -559,7 +585,8 @@ function dashRouterRow(r) {
     hv && hv.reachable && !isDrift(r) ? h("span", { class: "dot green pulse" }) : h("span", { class: "dot " + tone }),
     h("span", { class: "grow" },
       h("div", { class: "name" }, r.name, " ", h("span", { class: "mono", style: "color:var(--muted);font-weight:400" }, r.address)),
-      h("div", { class: "sub" }, (r.deploy.configured ? "" : t("dash.row.no_creds")) + t("rstate." + st) + " · " + t("dash.row.svc", { on: svcOn, total: r.services.length }) + " · " + t("dash.row.users", { n: usersWith }) + dev)));
+      h("div", { class: "sub" }, (r.deploy.configured ? "" : t("dash.row.no_creds")) + t("rstate." + st) + " · " + t("dash.row.svc", { on: svcOn, total: r.services.length }) + " · " + t("dash.row.users", { n: usersWith }) + dev)),
+    noteBadge("router", null, r.name, r.note, true));
 }
 async function checkAllStatuses() {
   toast(t("toast.checking"));
@@ -595,6 +622,7 @@ function routerView(r) {
       h("div", { class: "grow" }, h("h2", null, r.name),
         h("div", { class: "sub row", style: "gap:10px" }, h("span", { class: "mono" }, r.address), healthMarker(r))),
       histButtons(),
+      noteBadge("router", null, r.name, r.note, true),
       pill,
       h("button", { class: "btn sm", onclick: () => openRouterModal(r.name) }, t("settings"))),
     tabbar,
@@ -615,15 +643,16 @@ function routerServices(r) {
       ? t("svc.target_local", { port: s.target_port, proto: s.target_protocol })
       : ":" + s.target_port + "/" + s.target_protocol + " → " + s.target_to_address + ":" + s.target_to_port;
     wrap.append(h("div", { class: "card pad row", style: s.enabled ? "" : "opacity:.62" },
-      h("button", { class: "switch" + (s.enabled ? " on" : ""), title: s.enabled ? t("svc.on_title") : t("svc.off_title"), onclick: () => toggleService(r.name, s.name, !s.enabled) }),
+      h("button", { class: "switch" + (s.enabled ? " on" : ""), "data-tip": s.enabled ? t("svc.on_title") : t("svc.off_title"), onclick: () => toggleService(r.name, s.name, !s.enabled) }),
       h("span", { class: "grow" },
         h("div", { class: "row" }, h("span", { class: "mono", style: "font-weight:600" }, s.name),
           h("span", { class: "badge " + (s.target_type === "local" ? "green" : "indigo") }, s.target_type)),
         h("div", { class: "row wrap-row", style: "margin-top:5px;gap:6px" },
           h("span", { class: "chip" }, s.stage1_port + " / " + s.stage2_port + " / " + s.token_port),
           h("span", { class: "foot-note" }, target))),
-      h("button", { class: "iconbtn", title: t("svc.edit"), onclick: () => openServiceModal(r.name, s.name) }, icon("pencil")),
-      h("button", { class: "iconbtn", title: t("svc.delete"), onclick: () => delService(r.name, s.name) }, icon("trash"))));
+      noteBadge("service", r.name, s.name, s.note, true),
+      h("button", { class: "iconbtn", "data-tip": t("svc.edit"), onclick: () => openServiceModal(r.name, s.name) }, icon("pencil")),
+      h("button", { class: "iconbtn", "data-tip": t("svc.delete"), onclick: () => delService(r.name, s.name) }, icon("trash"))));
   }
   wrap.append(h("div", { class: "foot-note" }, t("svc.foot")));
   return wrap;
@@ -640,7 +669,7 @@ function routerAccess(r) {
     const chips = a.services.map((sn) => {
       const svc = r.services.find((s) => s.name === sn);
       const off = svc && !svc.enabled;
-      return h("span", { class: "chip" + (off ? " strike" : ""), title: off ? t("access.svc_off") : "" }, sn);
+      return h("span", { class: "chip" + (off ? " strike" : ""), "data-tip": off ? t("access.svc_off") : "" }, sn);
     });
     wrap.append(h("div", { class: "card pad row" },
       h("span", { class: "avatar" }, initials(u.name)),
@@ -687,17 +716,18 @@ function routerDeploy(r) {
       h("div", { class: "mono", style: "margin-top:4px;font-size:11px" }, "local " + short(r.hash)),
       deployStateLine(r))));
 
-  const dry = h("input", { type: "checkbox", checked: S.deployOpts.dry, onchange: () => S.deployOpts.dry = dry.checked });
-  const force = h("input", { type: "checkbox", checked: S.deployOpts.force, onchange: () => S.deployOpts.force = force.checked });
+  const force = h("input", { type: "checkbox", checked: S.deployOpts.force, onchange: () => { S.deployOpts.force = force.checked; render(); } });
   const running = S.deployRunning && S.deployRunning.startsWith(r.name + ":");
   const busy = (b) => running ? true : b;
+  const synced = routerState(r) === "synced";
+  const deployDisabled = busy(false) || (synced && !S.deployOpts.force);
   wrap.append(h("div", { class: "card pad row wrap-row" },
     h("button", { class: "btn sm", disabled: busy(false), onclick: () => runDeploy(r, "status") }, "Status"),
-    h("button", { class: "btn pri sm", disabled: busy(false), onclick: () => runDeploy(r, "apply") }, "Apply"),
+    h("button", { class: "btn ok sm", disabled: busy(false), "data-tip": t("deploy.dry_title"), onclick: () => runDeploy(r, "apply", { dry: true, force: S.deployOpts.force }) }, t("deploy.dry_btn")),
+    h("button", { class: "btn pri sm", disabled: deployDisabled, "data-tip": synced && !S.deployOpts.force ? t("deploy.synced_hint") : "", onclick: () => runDeploy(r, "apply", { dry: false, force: S.deployOpts.force }) }, "Deploy"),
     h("button", { class: "btn danger sm", disabled: busy(false), onclick: () => confirmDialog(t("deploy.uninstall_title"), t("deploy.uninstall_body"), "Uninstall", () => runDeploy(r, "uninstall")) }, "Uninstall…"),
     h("span", { class: "spacer" }),
-    h("label", { class: "inline-check", title: t("deploy.dry_title") }, dry, "dry-run"),
-    h("label", { class: "inline-check", title: t("deploy.force_title") }, force, "force"),
+    h("label", { class: "inline-check", "data-tip": t("deploy.force_title") }, force, "force"),
     running && h("span", null, h("span", { class: "spin" }), " " + S.deployRunning.split(":")[1] + "…")));
   const prev = S.deploy[r.name];
   if (prev && prev.result) wrap.append(deployResult(r, prev.result));
@@ -709,11 +739,12 @@ function deployStateLine(r) {
   const tone = { clean: "muted", needs: "warn", synced: "ok", never: "warn", empty: "muted", error: "muted" }[st];
   return h("div", { class: "foot-note", style: "margin-top:3px;color:var(--" + tone + ")" }, t("dstate." + st));
 }
-async function runDeploy(r, action) {
-  S.deployRunning = r.name + ":" + action;
+async function runDeploy(r, action, opts) {
+  opts = opts || {};
+  S.deployRunning = r.name + ":" + (opts.dry ? "dry" : action);
   render();
   try {
-    await deployAction(r.name, action, { force: S.deployOpts.force, dry_run: S.deployOpts.dry });
+    await deployAction(r.name, action, { force: !!opts.force, dry_run: !!opts.dry });
   } catch (e) { /* recorded in S.deploy[r.name].result */ }
   S.deployRunning = null;
   render();
@@ -760,7 +791,7 @@ function deployResult(r, res) {
     h("div", { class: "row" }, h("span", { class: "badge " + (toneClass === "danger" ? "amber" : toneClass), style: toneClass === "danger" ? "color:var(--danger);background:var(--danger-bg);border-color:var(--danger-border)" : "" }, tone === "ok" ? "✓" : tone === "warn" ? "●" : "✕"),
       h("span", { style: "font-weight:600" }, title)),
     h("div", { class: "foot-note", style: "margin-top:5px" }, msg));
-  if (res._kind === "drift") card.append(h("button", { class: "btn pri sm", style: "margin-top:8px", onclick: () => runDeploy(r, "apply") }, t("dres.apply_btn")));
+  if (res._kind === "drift") card.append(h("button", { class: "btn pri sm", style: "margin-top:8px", onclick: () => runDeploy(r, "apply", { dry: false, force: true }) }, t("dres.apply_btn")));
   if (res._kind === "err") card.append(h("button", { class: "btn link", style: "margin-top:8px", onclick: () => openRouterModal(r.name) }, t("dres.settings_link")));
   if (res.log) {
     const term = h("pre", { class: "term hidden" }, res.log);
@@ -785,17 +816,18 @@ function userView(u) {
     card.append(h("div", { class: "row" },
       icon("router"), h("span", { style: "font-weight:600" }, r.name),
       h("span", { class: "mono foot-note" }, r.address),
-      isDrift(r) && h("button", { class: "badge amber", title: t("user.needs_deploy_title"), onclick: () => go({ kind: "router", id: r.name, tab: "deploy" }) }, t("user.needs_deploy")),
+      noteHint(r.note),
+      isDrift(r) && h("button", { class: "badge amber", "data-tip": t("user.needs_deploy_title"), onclick: () => go({ kind: "router", id: r.name, tab: "deploy" }) }, t("user.needs_deploy")),
       h("span", { class: "spacer" }),
       h("span", { class: "foot-note" }, has ? t("user.svc_count", { n: a.services.length, total: r.services.length }) : t("user.no_access")),
-      h("span", { class: "badge " + (has ? "green" : "grey"), title: has ? t("user.psk_active") : t("user.psk_none") }, "PSK"),
-      has && h("button", { class: "btn sm", title: t("user.invite_single_title"), onclick: () => openInvite(u.name, "single", r.name) }, "Invite"),
-      has && h("button", { class: "iconbtn", title: t("user.rotate_title"), onclick: () => rotatePSK(u.name, r.name) }, icon("refresh"))));
+      h("span", { class: "badge " + (has ? "green" : "grey"), "data-tip": has ? t("user.psk_active") : t("user.psk_none") }, "PSK"),
+      has && h("button", { class: "btn sm", "data-tip": t("user.invite_single_title"), onclick: () => openInvite(u.name, "single", r.name) }, "Invite"),
+      has && h("button", { class: "iconbtn", "data-tip": t("user.rotate_title"), onclick: () => rotatePSK(u.name, r.name) }, icon("refresh"))));
     const checks = h("div", { class: "stack", style: "gap:5px" });
     for (const s of r.services) {
       const on = has && a.services.includes(s.name);
       const cb = h("input", { type: "checkbox", checked: on, onchange: () => setAccess(u.name, r.name, s.name, cb.checked) });
-      checks.append(h("label", { class: "inline-check" }, cb, h("span", { class: "mono" }, s.name), !s.enabled && h("span", { class: "foot-note" }, t("user.svc_off"))));
+      checks.append(h("label", { class: "inline-check" }, cb, h("span", { class: "mono" }, s.name), noteHint(s.note), !s.enabled && h("span", { class: "foot-note" }, t("user.svc_off"))));
     }
     if (!r.services.length) checks.append(h("span", { class: "foot-note" }, t("user.no_services")));
     card.append(checks);
@@ -817,6 +849,7 @@ function userView(u) {
       h("div", { class: "grow" }, h("h2", null, u.name),
         h("div", { class: "sub mono" }, t("user.header_id", { id: u.client_id }))),
       histButtons(),
+      noteBadge("user", null, u.name, u.note, true),
       h("button", { class: "btn sm", onclick: () => openUserModal(u.name) }, t("settings"))),
     h("div", { class: "content" }, wrap));
 }
@@ -858,8 +891,95 @@ function modal(node, size) {
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && document.querySelector(".overlay")) closeModal();
 });
+
+// ---------- tooltips ----------
+// A single styled tooltip shared by every element carrying a data-tip attribute.
+// Shows a touch faster than the native title and is theme-aware. Multi-line and
+// long text wrap; it flips below the target when there is no room above.
+const TIP = { el: null, timer: null, cur: null };
+function tipEl() {
+  if (!TIP.el) { TIP.el = document.createElement("div"); TIP.el.className = "tooltip"; document.body.appendChild(TIP.el); }
+  return TIP.el;
+}
+function hideTip() {
+  if (TIP.timer) { clearTimeout(TIP.timer); TIP.timer = null; }
+  TIP.cur = null;
+  if (TIP.el) TIP.el.classList.remove("show");
+}
+function showTip(target) {
+  const text = target.getAttribute("data-tip");
+  if (!text || !target.isConnected) return;
+  const el = tipEl();
+  el.textContent = text;
+  el.classList.add("show");
+  const r = target.getBoundingClientRect();
+  const tw = el.offsetWidth, th = el.offsetHeight;
+  let left = r.left + r.width / 2 - tw / 2;
+  let top = r.top - th - 8, place = "top";
+  if (top < 6) { top = r.bottom + 8; place = "bottom"; }
+  left = Math.max(6, Math.min(left, window.innerWidth - tw - 6));
+  el.style.left = Math.round(left) + "px";
+  el.style.top = Math.round(top) + "px";
+  el.setAttribute("data-place", place);
+}
+document.addEventListener("mouseover", (e) => {
+  const target = e.target.closest && e.target.closest("[data-tip]");
+  if (!target || target === TIP.cur) return;
+  const text = target.getAttribute("data-tip");
+  hideTip();
+  if (!text) return; // empty data-tip → no tooltip
+  TIP.cur = target;
+  TIP.timer = setTimeout(() => showTip(target), 110);
+});
+document.addEventListener("mouseout", (e) => {
+  if (!TIP.cur) return;
+  const to = e.relatedTarget;
+  if (to && TIP.cur.contains(to)) return; // moved within the same target
+  hideTip();
+});
+document.addEventListener("scroll", hideTip, true);
+document.addEventListener("mousedown", hideTip, true);
 function field(label, input, note) {
   return h("div", { class: "field" }, h("label", null, label), input, note && h("div", { class: "note" }, note));
+}
+
+// noteBadge renders the local-note icon next to an entity. `always` shows a faint
+// icon even when empty (an add affordance); without it, the icon appears only when
+// a note exists (an at-a-glance indicator). Tooltip = the note; click opens the
+// mini editor. Entity is identified by (kind, router, name) — router used only for
+// kind "service".
+function noteBadge(kind, router, name, note, always) {
+  const has = !!(note && note.trim());
+  if (!has && !always) return null;
+  return h("button", {
+    class: "iconbtn note-badge" + (has ? " has-note" : ""),
+    "data-tip": has ? note : t("note.add"),
+    onclick: (e) => { e.stopPropagation(); openNoteModal(kind, router, name, note || ""); },
+  }, icon("note"));
+}
+// noteHint is a read-only note indicator: the note icon + tooltip when a note
+// exists, with no editor. Used where notes are reference-only (the access matrix).
+function noteHint(note) {
+  if (!(note && note.trim())) return null;
+  return h("span", { class: "note-hint", "data-tip": note, onclick: (e) => { e.preventDefault(); e.stopPropagation(); } }, icon("note"));
+}
+function openNoteModal(kind, router, name, note) {
+  const ta = h("textarea", { class: "note-area", maxlength: 1000, rows: 5, placeholder: t("note.placeholder") });
+  ta.value = note || "";
+  const post = async (value) => {
+    try { applyConfig(await api("POST", "/api/note", { kind, router: router || "", name, note: value })); closeModal(); toast(value ? t("note.saved") : t("note.cleared")); }
+    catch (e) { toast(e.message, true); }
+  };
+  const save = h("button", { class: "btn pri", onclick: () => post(ta.value.trim()) }, t("save"));
+  const foot = h("div", { class: "modal-foot" },
+    note ? h("button", { class: "btn danger", onclick: () => post("") }, t("note.clear")) : null,
+    h("span", { class: "spacer" }),
+    h("button", { class: "btn", onclick: closeModal }, t("cancel")), save);
+  modal(h("div", null,
+    h("div", { class: "modal-head" }, h("h3", null, t("note.title", { kind: t("note.kind." + kind), name })), h("div", { class: "sub" }, t("note.subtitle"))),
+    h("div", { class: "modal-body" }, ta),
+    foot), "sm");
+  ta.focus();
 }
 
 function openRouterModal(name) {
@@ -961,15 +1081,15 @@ function openServiceModal(router, name) {
   const r = routerOf(router);
   const s = name ? r.services.find((x) => x.name === name) : null;
   const g = {};
-  g.name = h("input", { type: "text", class: "mono", value: s ? s.name : "", placeholder: "ssh-home" });
-  g.s1 = h("input", { type: "number", value: s ? s.stage1_port : "", placeholder: "41011" });
-  g.s2 = h("input", { type: "number", value: s ? s.stage2_port : "", placeholder: "41012" });
-  g.tk = h("input", { type: "number", value: s ? s.token_port : "", placeholder: "41013" });
+  g.name = h("input", { type: "text", class: "mono", maxlength: 32, value: s ? s.name : "", placeholder: "ssh-home" });
+  g.s1 = h("input", { type: "number", min: 1, max: 65535, value: s ? s.stage1_port : "", placeholder: "41011" });
+  g.s2 = h("input", { type: "number", min: 1, max: 65535, value: s ? s.stage2_port : "", placeholder: "41012" });
+  g.tk = h("input", { type: "number", min: 1, max: 65535, value: s ? s.token_port : "", placeholder: "41013" });
   let ttype = s ? s.target_type : "forward";
   let proto = s ? s.target_protocol : "tcp";
-  g.port = h("input", { type: "number", value: s ? s.target_port : "", placeholder: "2022" });
+  g.port = h("input", { type: "number", min: 1, max: 65535, value: s ? s.target_port : "", placeholder: "2022" });
   g.to_addr = h("input", { type: "text", value: s ? s.target_to_address : "", placeholder: "192.0.2.10" });
-  g.to_port = h("input", { type: "number", value: s ? s.target_to_port : "", placeholder: "22" });
+  g.to_port = h("input", { type: "number", min: 1, max: 65535, value: s ? s.target_to_port : "", placeholder: "22" });
   const fwdRow = h("div", { class: "grid2" }, field("to_address", g.to_addr), field("to_port", g.to_port));
   const portLabel = h("label", null, t("svc.port_ext"));
   const portNote = h("div", { class: "note hidden" }, t("svc.port_local_note"));
@@ -981,25 +1101,48 @@ function openServiceModal(router, name) {
     fwdRow.classList.toggle("hidden", local);
     portLabel.textContent = local ? t("svc.port_local") : t("svc.port_ext");
     portNote.classList.toggle("hidden", !local);
+    checkPorts();
   }
 
   const conflict = h("div", { class: "foot-note", style: "color:var(--danger)" });
   function checkPorts() {
-    const mine = [["stage1", g.s1], ["stage2", g.s2], ["token", g.tk]].map(([l, e]) => [l, +e.value]);
     const errs = [];
+    const bad = new Set(); // inputs to flag red
+    // fields in play: knock ports + target port always; to_address/to_port only for forward
+    const ports = [["stage1", g.s1], ["stage2", g.s2], ["token", g.tk], ["target", g.port]];
+    if (ttype === "forward") ports.push(["to_port", g.to_port]);
+    const required = [["name", g.name], ...ports];
+    if (ttype === "forward") required.push(["to_address", g.to_addr]);
+    // required: nothing left empty
+    const missing = required.filter(([, e]) => e.value.trim() === "");
+    missing.forEach(([, e]) => bad.add(e));
+    if (missing.length) errs.push(t("svc.required", { fields: missing.map(([l]) => l).join(", ") }));
+    // name format: RouterOS-safe identifier
+    if (g.name.value.trim() !== "" && !isSafeName(g.name.value.trim())) { errs.push(t("svc.name_bad")); bad.add(g.name); }
+    // range: each filled port must be 1..65535
+    for (const [l, e] of ports) {
+      const p = +e.value;
+      if (e.value !== "" && (p < 1 || p > 65535 || !Number.isInteger(p))) { errs.push(t("svc.port_range", { label: l, port: e.value })); bad.add(e); }
+    }
+    // to_address (forward only) must be a literal IPv4 — RouterOS dst-nat needs it
+    if (ttype === "forward" && g.to_addr.value.trim() !== "" && !isIPv4(g.to_addr.value.trim())) {
+      errs.push(t("svc.ipv4", { addr: g.to_addr.value.trim() })); bad.add(g.to_addr);
+    }
+    // collision: knock ports vs other services on this router
+    const mine = [["stage1", g.s1], ["stage2", g.s2], ["token", g.tk]].map(([l, e]) => [l, +e.value]);
     for (const svc of r.services) {
       if (s && svc.name === s.name) continue;
       for (const [l, p] of mine) {
         if (!p) continue;
         for (const [pl, pv] of [["stage1", svc.stage1_port], ["stage2", svc.stage2_port], ["token", svc.token_port], ["target", svc.target_port]])
-          if (p === pv) errs.push(t("svc.conflict", { label: l, port: p, svc: svc.name, field: pl }));
+          if (p === pv) { errs.push(t("svc.conflict", { label: l, port: p, svc: svc.name, field: pl })); bad.add(l === "stage1" ? g.s1 : l === "stage2" ? g.s2 : g.tk); }
       }
     }
     conflict.textContent = errs.join("; ");
     save.disabled = errs.length > 0;
-    [g.s1, g.s2, g.tk].forEach((e) => e.classList.toggle("err", errs.some((x) => x.includes(e.value) && e.value)));
+    [g.name, g.s1, g.s2, g.tk, g.port, g.to_port, g.to_addr].forEach((e) => e.classList.toggle("err", bad.has(e)));
   }
-  [g.s1, g.s2, g.tk].forEach((e) => e.addEventListener("input", checkPorts));
+  [g.name, g.s1, g.s2, g.tk, g.port, g.to_port, g.to_addr].forEach((e) => e.addEventListener("input", checkPorts));
 
   const suggest = h("button", { type: "button", class: "btn link row", style: "gap:5px", onclick: async () => {
     try { const d = await api("GET", "/api/ports/suggest?count=3&router=" + encodeURIComponent(router)); [g.s1.value, g.s2.value, g.tk.value] = d.ports; checkPorts(); } catch (e) { toast(e.message, true); }

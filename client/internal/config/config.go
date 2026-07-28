@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"slices"
@@ -51,6 +52,9 @@ type Router struct {
 	Notify   Notify             `yaml:"notify,omitempty" json:"notify"`
 	Defaults Defaults           `yaml:"defaults" json:"defaults"`
 	Services map[string]Service `yaml:"services" json:"services"`
+	// Note is free-form operator commentary, stored only in this local config —
+	// never rendered to the router or included in an invite.
+	Note string `yaml:"note,omitempty" json:"note"`
 }
 
 // User is a person: one client_id (a stable identity across all routers) plus
@@ -60,6 +64,8 @@ type Router struct {
 type User struct {
 	ClientID string                `yaml:"client_id" json:"client_id"`
 	Access   map[string]UserAccess `yaml:"access" json:"access"` // router name → access
+	// Note is free-form operator commentary, stored only in this local config.
+	Note string `yaml:"note,omitempty" json:"note"`
 }
 
 // UserAccess is a user's grant on one router: the services they may open and
@@ -102,6 +108,8 @@ type Service struct {
 	TokenPort   int    `yaml:"token_port" json:"token_port"`
 	AllowedList string `yaml:"allowed_list" json:"allowed_list"`
 	Target      Target `yaml:"target" json:"target"`
+	// Note is free-form operator commentary, stored only in this local config.
+	Note string `yaml:"note,omitempty" json:"note"`
 }
 
 // Target types.
@@ -273,6 +281,9 @@ func (c Config) Validate() error {
 }
 
 func (r Router) Validate() error {
+	if len(r.Note) > maxNoteLen {
+		return fmt.Errorf("note must be at most %d characters", maxNoteLen)
+	}
 	if r.Defaults.BucketSeconds <= 0 {
 		return fmt.Errorf("defaults.bucket_seconds must be positive")
 	}
@@ -303,10 +314,13 @@ func (r Router) Validate() error {
 	}
 	for name, svc := range r.Services {
 		if !isSafeName(name) {
-			return fmt.Errorf("service key %q must match ^[A-Za-z0-9][A-Za-z0-9_-]*$", name)
+			return fmt.Errorf("service name %q must match ^[A-Za-z0-9][A-Za-z0-9_-]*$ (max %d chars)", name, maxNameLen)
 		}
 		if !isSafeName(svc.AllowedList) {
 			return fmt.Errorf("service %q allowed_list %q must match ^[A-Za-z0-9][A-Za-z0-9_-]*$", name, svc.AllowedList)
+		}
+		if len(svc.Note) > maxNoteLen {
+			return fmt.Errorf("service %q note must be at most %d characters", name, maxNoteLen)
 		}
 		if err := validatePort("stage1_port", svc.Stage1Port); err != nil {
 			return fmt.Errorf("service %q %w", name, err)
@@ -339,6 +353,9 @@ func (c Config) validateUsers() error {
 		}
 		if !isSafeName(u.ClientID) {
 			return fmt.Errorf("user %q client_id %q must match ^[A-Za-z0-9][A-Za-z0-9_-]*$", name, u.ClientID)
+		}
+		if len(u.Note) > maxNoteLen {
+			return fmt.Errorf("user %q note must be at most %d characters", name, maxNoteLen)
 		}
 		for rn, access := range u.Access {
 			router, ok := c.Routers[rn]
@@ -388,9 +405,20 @@ func (c Config) RenderClients(routerName string) []RenderClient {
 // router is detected as drift.
 func RenderHash(r Router, clients []RenderClient) string {
 	// Connection/identity metadata does not affect the rendered .rsc, so changing
-	// it must not read as drift: exclude SSH creds and the address.
+	// it must not read as drift: exclude SSH creds, the address and local notes.
 	r.Deploy = Deploy{}
 	r.Address = ""
+	r.Note = ""
+	// Service notes are local-only too; rebuild the map (can't mutate map values
+	// in place) with notes cleared so a note edit is not seen as drift.
+	if r.Services != nil {
+		svcs := make(map[string]Service, len(r.Services))
+		for k, s := range r.Services {
+			s.Note = ""
+			svcs[k] = s
+		}
+		r.Services = svcs
+	}
 	payload := struct {
 		Router  Router
 		Clients []RenderClient
@@ -530,6 +558,9 @@ func validateTarget(t Target) error {
 		if t.ToAddress == "" {
 			return fmt.Errorf("target.to_address is required for a forward target")
 		}
+		if ip := net.ParseIP(t.ToAddress); ip == nil || ip.To4() == nil {
+			return fmt.Errorf("target.to_address %q must be a literal IPv4 address (RouterOS dst-nat)", t.ToAddress)
+		}
 		if err := validatePort("target.to_port", t.ToPort); err != nil {
 			return err
 		}
@@ -640,8 +671,15 @@ func validatePort(name string, port int) error {
 	return nil
 }
 
+// maxNameLen caps router/service/user names. They compose into RouterOS object
+// names (e.g. mkpk-tt-hit-now-<user>-<service>), so keep each part short.
+const maxNameLen = 32
+
+// maxNoteLen caps the free-form local note on any entity.
+const maxNoteLen = 1000
+
 func isSafeName(v string) bool {
-	if v == "" {
+	if v == "" || len(v) > maxNameLen {
 		return false
 	}
 	for i, r := range v {

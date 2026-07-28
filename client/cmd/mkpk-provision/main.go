@@ -14,6 +14,7 @@ import (
 	"mikrotik-psk-knock/client/internal/config"
 	"mikrotik-psk-knock/client/internal/deploy"
 	"mikrotik-psk-knock/client/internal/token"
+	"mikrotik-psk-knock/client/internal/version"
 	"mikrotik-psk-knock/client/internal/web"
 )
 
@@ -52,6 +53,9 @@ func run(args []string) error {
 		return deployCmd(args[1:])
 	case "serve":
 		return serveCmd(args[1:])
+	case "version", "--version", "-v":
+		fmt.Printf("mkpk-provision %s\n", version.String())
+		return nil
 	case "help", "-h", "--help":
 		usage()
 		return nil

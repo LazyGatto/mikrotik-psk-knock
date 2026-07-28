@@ -46,6 +46,10 @@
   --term-bg: #17171b;
   --term-text: #c9cdd6;
 
+  --tip-bg: #26262c;
+  --tip-fg: #f2f2f5;
+  --tip-border: #26262c;
+
   --radius: 9px;
   --radius-sm: 6px;
   --radius-lg: 11px;
@@ -79,8 +83,9 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
   overflow-y: auto;
 }
 .brand { display: flex; align-items: center; gap: 9px; padding: 16px; }
-.brand .logo { width: 22px; height: 22px; border-radius: 6px; background: var(--accent); flex: none; display: grid; place-items: center; }
+.brand .logo { width: 28px; height: 28px; border-radius: 7px; background: none; flex: none; display: grid; place-items: center; overflow: hidden; }
 .brand .logo svg { width: 13px; height: 13px; }
+.brand .logo img { width: 100%; height: 100%; display: block; border-radius: 7px; }
 .brand h1 { margin: 0; font-size: 13px; font-weight: 650; letter-spacing: -.01em; }
 .brand .sub { font-size: 10.5px; color: var(--muted); }
 
@@ -157,6 +162,9 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
 .btn.pri:disabled { background: #a9adcf; border-color: #a9adcf; cursor: not-allowed; }
 .btn.danger { color: var(--danger); border-color: var(--danger-border); background: var(--surface); }
 .btn.danger:hover { background: var(--danger-bg); }
+.btn.ok { color: var(--ok); border-color: var(--ok-border); background: var(--surface); }
+.btn.ok:hover { background: var(--ok-bg); }
+.btn.ok:disabled { color: var(--text-3); border-color: var(--border); background: var(--surface); cursor: not-allowed; }
 .btn.danger-solid { background: var(--danger-strong); border-color: #a1332a; color: #fff; }
 .btn.danger-solid:hover { background: #a83226; }
 .btn.ghost { border-color: transparent; background: none; color: var(--text-3); }
@@ -170,6 +178,25 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
 .iconbtn:disabled { opacity: .3; cursor: default; }
 .iconbtn:disabled:hover { background: none; }
 .iconbtn svg { width: 14px; height: 14px; }
+/* note badge: faint when empty (add affordance), accented when a note exists */
+.note-badge { opacity: .32; }
+.note-badge:hover { opacity: .75; }
+.note-badge.has-note { opacity: 1; color: var(--accent); }
+.note-badge.has-note:hover { background: var(--border); }
+.note-area { width: 100%; box-sizing: border-box; padding: 9px 11px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); color: var(--text); resize: vertical; min-height: 92px; line-height: 1.45; }
+.note-area:focus { outline: none; border-color: var(--accent); }
+/* read-only note indicator (reference-only, e.g. access matrix) */
+.note-hint { display: inline-flex; align-items: center; color: var(--accent); cursor: default; }
+.note-hint svg { width: 13px; height: 13px; }
+.ver { font-family: var(--mono); color: var(--faint); }
+/* custom tooltip: a single shared node positioned by JS (data-tip) */
+.tooltip { position: fixed; z-index: 200; pointer-events: none; max-width: 300px;
+  padding: 6px 9px; border-radius: 7px; font-size: 12px; line-height: 1.42;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+  background: var(--tip-bg); color: var(--tip-fg); border: 1px solid var(--tip-border);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .16);
+  opacity: 0; transform: translateY(3px); transition: opacity .1s ease, transform .1s ease; }
+.tooltip.show { opacity: 1; transform: none; }
 
 /* ---------- chips / badges / dots ---------- */
 .chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 2px 7px; border-radius: 5px; background: var(--chip); border: 1px solid var(--border); font-family: var(--mono); color: var(--text-3); }
@@ -290,6 +317,7 @@ pre.term { margin: 0; padding: 12px 14px; background: var(--term-bg); color: var
     --warn: #e0a94a; --warn-dot: #e0940b; --warn-bg: #2a2413; --warn-border: #4a3c1a;
     --danger: #e0776c; --danger-strong: #c0392b; --danger-border: #4a2a26; --danger-bg: #2a1917;
     --term-bg: #0e0e11;
+    --tip-bg: #3a3a44; --tip-fg: #f2f2f5; --tip-border: #4a4a55;
   }
 }
 :root[data-theme="dark"] {
@@ -302,4 +330,5 @@ pre.term { margin: 0; padding: 12px 14px; background: var(--term-bg); color: var
   --warn: #e0a94a; --warn-dot: #e0940b; --warn-bg: #2a2413; --warn-border: #4a3c1a;
   --danger: #e0776c; --danger-strong: #c0392b; --danger-border: #4a2a26; --danger-bg: #2a1917;
   --term-bg: #0e0e11;
+  --tip-bg: #3a3a44; --tip-fg: #f2f2f5; --tip-border: #4a4a55;
 }

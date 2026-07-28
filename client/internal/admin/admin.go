@@ -296,6 +296,43 @@ func randPort(lo, hi int) (int, error) {
 }
 
 // AddService adds or replaces a service on the router.
+// SetNote updates the free-form, local-only note on an entity. kind selects it:
+// "router" (name = router), "service" (routerName + name), "user" (name = user).
+// The note is stored only in this config — never rendered or exported. It mutates
+// and returns cfg; length is enforced by config validation on save.
+func SetNote(cfg config.Config, kind, routerName, name, note string) (config.Config, error) {
+	switch kind {
+	case "router":
+		r, ok := cfg.Routers[name]
+		if !ok {
+			return cfg, fmt.Errorf("unknown router %q", name)
+		}
+		r.Note = note
+		cfg.Routers[name] = r
+	case "service":
+		r, ok := cfg.Routers[routerName]
+		if !ok {
+			return cfg, fmt.Errorf("unknown router %q", routerName)
+		}
+		svc, ok := r.Services[name]
+		if !ok {
+			return cfg, fmt.Errorf("unknown service %q on router %q", name, routerName)
+		}
+		svc.Note = note
+		r.Services[name] = svc
+	case "user":
+		u, ok := cfg.Users[name]
+		if !ok {
+			return cfg, fmt.Errorf("unknown user %q", name)
+		}
+		u.Note = note
+		cfg.Users[name] = u
+	default:
+		return cfg, fmt.Errorf("unknown note kind %q", kind)
+	}
+	return cfg, nil
+}
+
 func AddService(cfg config.Config, routerName string, o ServiceOptions) (config.Config, error) {
 	r, err := getRouter(cfg, routerName)
 	if err != nil {
@@ -687,6 +724,7 @@ type UserSummary struct {
 	Name     string          `json:"name"`
 	ClientID string          `json:"client_id"`
 	Access   []AccessSummary `json:"access"`
+	Note     string          `json:"note"`
 }
 
 type AccessSummary struct {
@@ -704,6 +742,7 @@ type RouterSummary struct {
 	Defaults config.Defaults  `json:"defaults"`
 	Services []ServiceSummary `json:"services"`
 	Clients  []ClientSummary  `json:"clients"`
+	Note     string           `json:"note"`
 }
 
 // NotifySummary is a secret-free view of a router's notification config: each
@@ -743,6 +782,7 @@ type DeploySummary struct {
 type ServiceSummary struct {
 	Name            string `json:"name"`
 	ServiceName     string `json:"service_name"`
+	Note            string `json:"note"`
 	Enabled         bool   `json:"enabled"`
 	Stage1Port      int    `json:"stage1_port"`
 	Stage2Port      int    `json:"stage2_port"`
@@ -768,12 +808,13 @@ func Summarize(cfg config.Config) Summary {
 	for _, rn := range sortedKeys(cfg.Routers) {
 		r := cfg.Routers[rn]
 		// Non-nil slices so the JSON always carries [] (never null) for the frontend.
-		rs := RouterSummary{Name: rn, Address: r.Address, Hash: cfg.RouterHash(rn), Deploy: deploySummary(r), Notify: notifySummary(r.Notify), Defaults: r.Defaults, Services: []ServiceSummary{}, Clients: []ClientSummary{}}
+		rs := RouterSummary{Name: rn, Address: r.Address, Hash: cfg.RouterHash(rn), Deploy: deploySummary(r), Notify: notifySummary(r.Notify), Defaults: r.Defaults, Services: []ServiceSummary{}, Clients: []ClientSummary{}, Note: r.Note}
 		for _, name := range sortedKeys(r.Services) {
 			svc := r.Services[name]
 			rs.Services = append(rs.Services, ServiceSummary{
 				Name:            name,
 				ServiceName:     svc.ServiceName,
+				Note:            svc.Note,
 				Enabled:         svc.Enabled(),
 				Stage1Port:      svc.Stage1Port,
 				Stage2Port:      svc.Stage2Port,
@@ -800,7 +841,7 @@ func Summarize(cfg config.Config) Summary {
 	}
 	for _, un := range sortedKeys(cfg.Users) {
 		u := cfg.Users[un]
-		us := UserSummary{Name: un, ClientID: u.ClientID, Access: []AccessSummary{}}
+		us := UserSummary{Name: un, ClientID: u.ClientID, Access: []AccessSummary{}, Note: u.Note}
 		for _, rn := range sortedKeys(u.Access) {
 			access := u.Access[rn]
 			svcs := access.Services
