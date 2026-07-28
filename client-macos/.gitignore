@@ -1,0 +1,8 @@
+# SwiftPM build output
+.build/
+# Xcode / SPM local state
+*.xcodeproj
+.swiftpm/
+DerivedData/
+# macOS
+.DS_Store
