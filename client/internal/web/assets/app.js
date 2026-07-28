@@ -13,6 +13,7 @@ const I18N = {
     "nav.router_settings": "Настройки роутера", "nav.user_edit": "Переименовать/удалить",
     "nav.needs_dot": "Нужен Deploy",
     "theme.dark": "Тёмная тема", "theme.light": "Светлая тема", "lang.switch": "Сменить язык",
+    "health.checking": "проверка связи…", "health.unreachable": "недоступен по SSH", "health.reachable": "доступен",
     "onb.title": "Добавьте первый роутер",
     "onb.body": "Роутер — это ваш MikroTik, который приложение провижинит по SSH. Сервисы живут внутри роутера; юзеры — рядом с роутерами и могут иметь доступ к нескольким сразу.",
     "dash.title": "Обзор",
@@ -123,6 +124,7 @@ const I18N = {
     "nav.router_settings": "Router settings", "nav.user_edit": "Rename/delete",
     "nav.needs_dot": "Deploy needed",
     "theme.dark": "Dark theme", "theme.light": "Light theme", "lang.switch": "Switch language",
+    "health.checking": "checking…", "health.unreachable": "unreachable via SSH", "health.reachable": "reachable",
     "onb.title": "Add your first router",
     "onb.body": "A router is your MikroTik, provisioned by this app over SSH. Services live inside a router; users sit alongside routers and can have access to several at once.",
     "dash.title": "Overview",
@@ -317,6 +319,7 @@ const S = {
   deployOpts: { dry: true, force: false },
   deployRunning: null,
   canUndo: false, canRedo: false,
+  health: {}, // router -> {reachable, identity, version, uptime, board, err}
 };
 const routerOf = (n) => S.routers.find((r) => r.name === n);
 const userOf = (n) => S.users.find((u) => u.name === n);
@@ -368,6 +371,52 @@ document.addEventListener("keydown", (e) => {
   e.shiftKey ? redo() : undo();
 });
 
+// ---------- router health polling ----------
+// Probe each creds-configured router over SSH: device info + install state. The
+// same probe feeds the deploy state (installed hash), so drift is known live.
+async function pollInfo(name) {
+  try {
+    const d = await api("GET", "/api/router/info?router=" + encodeURIComponent(name));
+    S.health[name] = { reachable: d.reachable, identity: d.identity, version: d.version, uptime: d.uptime, board: d.board, err: d.error };
+    if (d.reachable) {
+      const rec = S.deploy[name] || (S.deploy[name] = {});
+      rec.checked = true; rec.err = null;
+      rec.installed = d.installed;
+      rec.baseline = d.installed ? d.installed_hash : "";
+    }
+  } catch (e) { S.health[name] = { reachable: false, err: e.message }; }
+}
+let pollTimer;
+async function pollAll() {
+  const targets = S.routers.filter((r) => r.deploy.configured);
+  if (!targets.length) return;
+  await Promise.all(targets.map((r) => pollInfo(r.name)));
+  render();
+}
+function startPolling() {
+  clearInterval(pollTimer);
+  pollAll();
+  pollTimer = setInterval(pollAll, 20000);
+}
+function shortVersion(v) { return (v || "").split(" ")[0]; }
+// small live status dot for a router (sidebar / lists)
+function routerDot(r) {
+  if (isDrift(r)) return h("span", { class: "dot amber", title: t("nav.needs_dot") });
+  const hv = S.health[r.name];
+  if (hv && hv.reachable) return h("span", { class: "dot green pulse", title: t("health.reachable") });
+  return null;
+}
+// rich health marker for the router header
+function healthMarker(r) {
+  if (!r.deploy.configured) return null;
+  const hv = S.health[r.name];
+  if (!hv) return h("span", { class: "row", style: "gap:6px" }, h("span", { class: "dot grey" }), h("span", { class: "foot-note" }, t("health.checking")));
+  if (!hv.reachable) return h("span", { class: "row", style: "gap:6px", title: hv.err || "" }, h("span", { class: "dot grey" }), h("span", { class: "foot-note" }, t("health.unreachable")));
+  return h("span", { class: "row", style: "gap:6px", title: hv.board || "" },
+    h("span", { class: "dot green pulse" }),
+    h("span", { class: "mono foot-note" }, [hv.identity, shortVersion(hv.version), hv.uptime].filter(Boolean).join(" · ")));
+}
+
 // ---------- render root ----------
 function render() { renderSidebar(); renderMain(); }
 
@@ -390,7 +439,7 @@ function renderSidebar() {
     nav.append(h("button", { class: "nav-row" + (S.view.kind === "router" && S.view.id === r.name ? " sel" : ""), onclick: () => go({ kind: "router", id: r.name }) },
       icon("router"),
       h("span", { class: "grow" }, h("div", { class: "title" }, r.name), h("div", { class: "meta" }, r.address)),
-      isDrift(r) && h("span", { class: "dot amber", title: t("nav.needs_dot") }),
+      routerDot(r),
       h("span", { class: "gear", onclick: (e) => { e.stopPropagation(); openRouterModal(r.name); }, title: t("nav.router_settings") }, icon("gear"))));
   }
   nav.append(h("button", { class: "dashed", onclick: () => openRouterModal(null) }, t("nav.add_router")));
@@ -504,11 +553,13 @@ function dashRouterRow(r) {
   const tone = { clean: "grey", needs: "amber", synced: "green", never: "amber", empty: "grey", error: "grey" }[st];
   const svcOn = r.services.filter((s) => s.enabled).length;
   const usersWith = S.users.filter((u) => u.access.some((a) => a.router === r.name)).length;
+  const hv = S.health[r.name];
+  const dev = hv && hv.reachable ? " · " + [shortVersion(hv.version), hv.uptime].filter(Boolean).join(" · ") : "";
   return h("div", { class: "list-row", onclick: () => go({ kind: "router", id: r.name }) },
-    h("span", { class: "dot " + tone }),
+    hv && hv.reachable && !isDrift(r) ? h("span", { class: "dot green pulse" }) : h("span", { class: "dot " + tone }),
     h("span", { class: "grow" },
       h("div", { class: "name" }, r.name, " ", h("span", { class: "mono", style: "color:var(--muted);font-weight:400" }, r.address)),
-      h("div", { class: "sub" }, (r.deploy.configured ? "" : t("dash.row.no_creds")) + t("rstate." + st) + " · " + t("dash.row.svc", { on: svcOn, total: r.services.length }) + " · " + t("dash.row.users", { n: usersWith }))));
+      h("div", { class: "sub" }, (r.deploy.configured ? "" : t("dash.row.no_creds")) + t("rstate." + st) + " · " + t("dash.row.svc", { on: svcOn, total: r.services.length }) + " · " + t("dash.row.users", { n: usersWith }) + dev)));
 }
 async function checkAllStatuses() {
   toast(t("toast.checking"));
@@ -541,7 +592,8 @@ function routerView(r) {
 
   return h("div", null,
     h("div", { class: "topbar" },
-      h("div", { class: "grow" }, h("h2", null, r.name), h("div", { class: "sub" }, h("span", { class: "mono" }, r.address))),
+      h("div", { class: "grow" }, h("h2", null, r.name),
+        h("div", { class: "sub row", style: "gap:10px" }, h("span", { class: "mono" }, r.address), healthMarker(r))),
       histButtons(),
       pill,
       h("button", { class: "btn sm", onclick: () => openRouterModal(r.name) }, t("settings"))),
@@ -1064,4 +1116,4 @@ function downloadText(text, filename) {
 }
 
 // ---------- boot ----------
-reload().catch((e) => toast(e.message, true));
+reload().then(startPolling).catch((e) => toast(e.message, true));

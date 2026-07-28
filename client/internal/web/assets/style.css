@@ -182,6 +182,8 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
 .dot.amber { background: var(--warn-dot); }
 .dot.green { background: var(--ok-dot); }
 .dot.grey { background: var(--faint); }
+.dot.pulse { animation: pulse 1.7s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .28; } }
 .pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 20px; font-size: 12px; font-weight: 550; border: 1px solid transparent; }
 .pill.amber { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn); }
 .pill.green { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok); }

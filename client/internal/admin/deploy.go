@@ -2,6 +2,7 @@ package admin
 
 import (
 	"fmt"
+	"strings"
 
 	"mikrotik-psk-knock/client/internal/config"
 	"mikrotik-psk-knock/client/internal/deploy"
@@ -44,6 +45,66 @@ type UninstallResult struct {
 	Router  string `json:"router"`
 	Applied bool   `json:"applied"`
 	Log     string `json:"log"`
+}
+
+// InfoResult is a live health snapshot of a router: whether it is reachable over
+// SSH, basic device info, and the mkpk install state. Connection failures are
+// reported as Reachable=false with Error set (not a Go error), so a polling UI
+// can render "unreachable" instead of failing.
+type InfoResult struct {
+	Router        string `json:"router"`
+	Reachable     bool   `json:"reachable"`
+	Identity      string `json:"identity"`
+	Version       string `json:"version"`
+	Uptime        string `json:"uptime"`
+	Board         string `json:"board"`
+	Installed     bool   `json:"installed"`
+	UpToDate      bool   `json:"up_to_date"`
+	InstalledHash string `json:"installed_hash"`
+	DesiredHash   string `json:"desired_hash"`
+	Error         string `json:"error,omitempty"`
+}
+
+// infoSep separates the fields in the single info command's output — a sequence
+// unlikely to appear in an identity, version or board name.
+const infoSep = "|~|"
+
+// RouterInfo connects to routerName and returns a health snapshot: device info
+// plus the mkpk install state. A connection failure yields Reachable=false.
+func RouterInfo(cfg config.Config, routerName string, o DeployOptions) (InfoResult, error) {
+	r, err := getRouter(cfg, routerName)
+	if err != nil {
+		return InfoResult{}, err
+	}
+	res := InfoResult{Router: routerName, DesiredHash: cfg.RouterHash(routerName)}
+	c, _, err := connect(r, o)
+	if err != nil {
+		res.Error = err.Error()
+		return res, nil
+	}
+	defer c.Close()
+
+	out, err := c.Run(`:put ([/system identity get name] . "` + infoSep + `" . [/system resource get version] . "` + infoSep + `" . [/system resource get uptime] . "` + infoSep + `" . [/system resource get board-name])`)
+	if err != nil {
+		res.Error = err.Error()
+		return res, nil
+	}
+	res.Reachable = true
+	fields := strings.Split(strings.TrimSpace(out), infoSep)
+	get := func(i int) string {
+		if i < len(fields) {
+			return strings.TrimSpace(fields[i])
+		}
+		return ""
+	}
+	res.Identity, res.Version, res.Uptime, res.Board = get(0), get(1), get(2), get(3)
+
+	if state, err := c.Detect(); err == nil {
+		res.Installed = state.Installed
+		res.InstalledHash = state.Hash
+		res.UpToDate = state.Installed && state.Hash == res.DesiredHash
+	}
+	return res, nil
 }
 
 // Status connects to routerName and reports whether mkpk is installed and up to date.

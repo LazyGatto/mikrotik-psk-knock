@@ -47,6 +47,7 @@ func Handler(configPath, token string) http.Handler {
 	mux.HandleFunc("/api/secret", s.auth(s.handleSecret))
 	mux.HandleFunc("/api/ports/suggest", s.auth(s.handlePortsSuggest))
 	mux.HandleFunc("/api/router", s.auth(s.handleRouter))
+	mux.HandleFunc("/api/router/info", s.auth(s.handleRouterInfo))
 	mux.HandleFunc("/api/service", s.auth(s.handleService))
 	mux.HandleFunc("/api/service/enable", s.auth(s.handleServiceEnable))
 	mux.HandleFunc("/api/client", s.auth(s.handleClient))
@@ -191,7 +192,7 @@ func (s *Server) handlePortsSuggest(w http.ResponseWriter, r *http.Request) {
 
 type routerReq struct {
 	Name          string        `json:"name"`
-	Rename        string        `json:"rename"`         // on edit: new name for the router
+	Rename        string        `json:"rename"` // on edit: new name for the router
 	Address       string        `json:"address"`
 	DeployAddress string        `json:"deploy_address"` // optional SSH override
 	Port          int           `json:"port"`
@@ -201,6 +202,22 @@ type routerReq struct {
 	UseAgent      bool          `json:"use_agent"`
 	Password      string        `json:"password"`
 	Notify        config.Notify `json:"notify"`
+}
+
+// handleRouterInfo returns a live health snapshot (device info + install state)
+// for the router named in ?router=. The UI polls it periodically.
+func (s *Server) handleRouterInfo(w http.ResponseWriter, r *http.Request) {
+	cfg, err := config.Load(s.configPath)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	res, err := admin.RouterInfo(cfg, r.URL.Query().Get("router"), admin.DeployOptions{})
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
 }
 
 func (s *Server) handleRouter(w http.ResponseWriter, r *http.Request) {
