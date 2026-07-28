@@ -133,7 +133,7 @@ func RenderConfig(r config.Router, clients []config.RenderClient) (string, error
 				TokenPort:      s.TokenPort,
 				AllowedList:    s.AllowedList,
 				AllowedListStr: rosString(s.AllowedList),
-				AllowedTimeout: r.Defaults.AllowedTimeout,
+				AllowedTimeout: s.EffectiveAllowedTimeout(r.Defaults),
 				UsedTimeout:    r.Defaults.UsedTimeout,
 			})
 		}

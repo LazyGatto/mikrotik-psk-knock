@@ -109,9 +109,21 @@ type Service struct {
 	Stage2Port  int    `yaml:"stage2_port" json:"stage2_port"`
 	TokenPort   int    `yaml:"token_port" json:"token_port"`
 	AllowedList string `yaml:"allowed_list" json:"allowed_list"`
-	Target      Target `yaml:"target" json:"target"`
+	// AllowedTimeout overrides how long a client stays in this service's allowed
+	// list after a knock. Empty → inherit the router's defaults.allowed_timeout.
+	AllowedTimeout string `yaml:"allowed_timeout,omitempty" json:"allowed_timeout"`
+	Target         Target `yaml:"target" json:"target"`
 	// Note is free-form operator commentary, stored only in this local config.
 	Note string `yaml:"note,omitempty" json:"note"`
+}
+
+// EffectiveAllowedTimeout returns the service's allowed timeout, falling back to
+// the router default when the service does not set one.
+func (s Service) EffectiveAllowedTimeout(def Defaults) string {
+	if s.AllowedTimeout != "" {
+		return s.AllowedTimeout
+	}
+	return def.AllowedTimeout
 }
 
 // Target types.
@@ -342,6 +354,11 @@ func (r Router) Validate() error {
 		}
 		if len(svc.Note) > maxNoteLen {
 			return fmt.Errorf("service %q note must be at most %d characters", name, maxNoteLen)
+		}
+		if svc.AllowedTimeout != "" {
+			if _, err := time.ParseDuration(svc.AllowedTimeout); err != nil {
+				return fmt.Errorf("service %q allowed_timeout: %w", name, err)
+			}
 		}
 		if err := validatePort("stage1_port", svc.Stage1Port); err != nil {
 			return fmt.Errorf("service %q %w", name, err)

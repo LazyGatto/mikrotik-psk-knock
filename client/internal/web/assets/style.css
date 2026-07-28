@@ -191,6 +191,10 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
 .note-hint { display: inline-flex; align-items: center; color: var(--accent); cursor: default; }
 .note-hint svg { width: 13px; height: 13px; }
 .ver { font-family: var(--mono); color: var(--faint); }
+/* compact clock-skew / NTP-off warning icon (sidebar + dashboard) */
+.clock-warn { display: inline-flex; align-items: center; color: var(--warn); flex: none; }
+.clock-warn.soft { opacity: .7; }
+.clock-warn svg { width: 15px; height: 15px; }
 /* custom tooltip: a single shared node positioned by JS (data-tip) */
 .tooltip { position: fixed; z-index: 200; pointer-events: none; max-width: 300px;
   padding: 6px 9px; border-radius: 7px; font-size: 12px; line-height: 1.42;

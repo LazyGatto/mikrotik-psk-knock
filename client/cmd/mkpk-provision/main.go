@@ -277,6 +277,7 @@ func serviceCmd(args []string) error {
 	tokenPort := fs.Int("token-port", 0, "token UDP port")
 	randomPorts := fs.Bool("random-ports", false, "fill unset knock ports with free random ones")
 	allowedList := fs.String("allowed-list", "", "RouterOS allowed address-list; mkpk-tt-allowed-<name> when empty")
+	allowedTimeout := fs.String("allowed-timeout", "", "how long a client stays allowed after a knock (e.g. 10m); inherits the router default when empty")
 	targetType := fs.String("target-type", "forward", "target type: forward (dst-nat) or local (router input)")
 	targetProto := fs.String("target-protocol", "tcp", "target protocol: tcp or udp")
 	targetPort := fs.Int("target-port", 0, "dst-port on the router the client reaches")
@@ -311,12 +312,13 @@ func serviceCmd(args []string) error {
 		}
 	}
 	cfg, err = admin.AddService(cfg, rn, admin.ServiceOptions{
-		Name:        *name,
-		ServiceName: *serviceName,
-		Stage1Port:  *stage1Port,
-		Stage2Port:  *stage2Port,
-		TokenPort:   *tokenPort,
-		AllowedList: *allowedList,
+		Name:           *name,
+		ServiceName:    *serviceName,
+		Stage1Port:     *stage1Port,
+		Stage2Port:     *stage2Port,
+		TokenPort:      *tokenPort,
+		AllowedList:    *allowedList,
+		AllowedTimeout: *allowedTimeout,
 		Target: config.Target{
 			Type:      *targetType,
 			Protocol:  *targetProto,

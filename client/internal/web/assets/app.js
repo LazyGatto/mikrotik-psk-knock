@@ -20,6 +20,7 @@ const I18N = {
     "health.checking": "проверка связи…", "health.unreachable": "недоступен по SSH", "health.reachable": "доступен",
     "clock.skew": "часы разошлись", "clock.skew_tip": "Часы роутера отличаются от локальных на {s}с. Стук привязан ко времени (30-сек bucket) — при таком расхождении токены не совпадут и стук НЕ РАБОТАЕТ. Включите NTP на роутере.",
     "clock.ntp_off": "NTP выключен", "clock.ntp_off_tip": "На роутере выключен NTP-клиент. Сейчас время совпадает, но со временем часы уплывут и стук перестанет работать. Включите NTP: /system ntp client set enabled=yes",
+    "clock.ok_tip": "NTP включён, часы синхронизированы (расхождение {s}с). Стук будет работать.",
     "onb.title": "Добавьте первый роутер",
     "onb.body": "Роутер — это ваш MikroTik, который приложение провижинит по SSH. Сервисы живут внутри роутера; юзеры — рядом с роутерами и могут иметь доступ к нескольким сразу.",
     "dash.title": "Обзор",
@@ -111,6 +112,7 @@ const I18N = {
     "toast.router_deleted": "Роутер удалён",
     "svc.new": "Новый сервис", "svc.title": "Сервис {name}",
     "svc.field_name": "Имя сервиса", "svc.field_name_note": "Входит в формулу токена — переименование инвалидирует выданные инвайты.",
+    "svc.allowed_timeout": "Таймаут доступа", "svc.allowed_timeout_note": "Сколько адрес держится в allowed после стука (напр. 10m, 1h). Пусто = дефолт роутера ({def}).",
     "svc.name_bad": "имя: только A–Z a–z 0–9 _ -, начинается с буквы/цифры, до 32 символов",
     "svc.knock_ports": "Порты «стука» (stage1 / stage2 / token)", "svc.suggest": "Подобрать свободные",
     "svc.type": "Тип цели", "svc.proto": "Протокол", "svc.port_ext": "Внешний порт", "svc.port_local": "Порт роутера",
@@ -143,6 +145,7 @@ const I18N = {
     "health.checking": "checking…", "health.unreachable": "unreachable via SSH", "health.reachable": "reachable",
     "clock.skew": "clock drift", "clock.skew_tip": "The router clock differs from local by {s}s. Knocking is time-based (30s bucket) — at this drift tokens won't match and knocking DOES NOT WORK. Enable NTP on the router.",
     "clock.ntp_off": "NTP off", "clock.ntp_off_tip": "The router's NTP client is off. The clock matches now, but it will drift and knocking will stop working. Enable NTP: /system ntp client set enabled=yes",
+    "clock.ok_tip": "NTP on, clock synced (skew {s}s). Knocking will work.",
     "onb.title": "Add your first router",
     "onb.body": "A router is your MikroTik, provisioned by this app over SSH. Services live inside a router; users sit alongside routers and can have access to several at once.",
     "dash.title": "Overview",
@@ -234,6 +237,7 @@ const I18N = {
     "toast.router_deleted": "Router deleted",
     "svc.new": "New service", "svc.title": "Service {name}",
     "svc.field_name": "Service name", "svc.field_name_note": "Part of the token formula — renaming invalidates issued invites.",
+    "svc.allowed_timeout": "Access timeout", "svc.allowed_timeout_note": "How long the address stays allowed after a knock (e.g. 10m, 1h). Empty = router default ({def}).",
     "svc.name_bad": "name: only A–Z a–z 0–9 _ -, starts with a letter/digit, up to 32 chars",
     "svc.knock_ports": "Knock ports (stage1 / stage2 / token)", "svc.suggest": "Suggest free",
     "svc.type": "Target type", "svc.proto": "Protocol", "svc.port_ext": "External port", "svc.port_local": "Router port",
@@ -483,6 +487,17 @@ function clockWarn(hv) {
   if (!hv.ntp_enabled) {
     return h("span", { class: "pill amber", "data-tip": t("clock.ntp_off_tip") }, icon("warn", "ic-sm"), t("clock.ntp_off"));
   }
+  // All good — a positive confirmation, since a silent clock failure is the worst case.
+  return h("span", { class: "pill green", "data-tip": t("clock.ok_tip", { s: hv.clock_skew_seconds }) }, "NTP ✓");
+}
+// clockWarnDot is the compact (icon-only) form of clockWarn for tight spots —
+// the sidebar router row and the dashboard list — so a clock problem (which
+// silently kills knocking) is visible without opening the router.
+function clockWarnDot(r) {
+  const hv = S.health[r.name];
+  if (!hv || !hv.reachable || !hv.clock_checked) return null;
+  if (!hv.clock_ok) return h("span", { class: "clock-warn", "data-tip": t("clock.skew_tip", { s: hv.clock_skew_seconds }) }, icon("warn", "ic-sm"));
+  if (!hv.ntp_enabled) return h("span", { class: "clock-warn soft", "data-tip": t("clock.ntp_off_tip") }, icon("warn", "ic-sm"));
   return null;
 }
 
@@ -509,6 +524,7 @@ function renderSidebar() {
       icon("router"),
       h("span", { class: "grow" }, h("div", { class: "title" }, r.name), h("div", { class: "meta" }, r.address)),
       noteBadge("router", null, r.name, r.note),
+      clockWarnDot(r),
       routerDot(r),
       h("span", { class: "gear", onclick: (e) => { e.stopPropagation(); openRouterModal(r.name); }, "data-tip": t("nav.router_settings") }, icon("gear"))));
   }
@@ -632,6 +648,7 @@ function dashRouterRow(r) {
     h("span", { class: "grow" },
       h("div", { class: "name" }, r.name, " ", h("span", { class: "mono", style: "color:var(--muted);font-weight:400" }, r.address)),
       h("div", { class: "sub" }, (r.deploy.configured ? "" : t("dash.row.no_creds")) + t("rstate." + st) + " · " + t("dash.row.svc", { on: svcOn, total: r.services.length }) + " · " + t("dash.row.users", { n: usersWith }) + dev)),
+    clockWarnDot(r),
     noteBadge("router", null, r.name, r.note, true));
 }
 async function checkAllStatuses() {
@@ -1245,6 +1262,8 @@ function openServiceModal(router, name) {
   g.s1 = portInput(h("input", { type: "number", value: s ? s.stage1_port : "", placeholder: "41011" }));
   g.s2 = portInput(h("input", { type: "number", value: s ? s.stage2_port : "", placeholder: "41012" }));
   g.tk = portInput(h("input", { type: "number", value: s ? s.token_port : "", placeholder: "41013" }));
+  const routerDefTimeout = (r.defaults && r.defaults.allowed_timeout) || "3m";
+  g.allowed_timeout = h("input", { type: "text", class: "mono", value: s ? (s.allowed_timeout || "") : "", placeholder: routerDefTimeout });
   let ttype = s ? s.target_type : "forward";
   let proto = s ? s.target_protocol : "tcp";
   g.port = portInput(h("input", { type: "number", value: s ? s.target_port : "", placeholder: "2022" }));
@@ -1312,6 +1331,7 @@ function openServiceModal(router, name) {
     try {
       const nameVal = g.name.value.trim();
       const val = { router, name: s ? s.name : nameVal, rename: s ? nameVal : "", stage1_port: +g.s1.value, stage2_port: +g.s2.value, token_port: +g.tk.value,
+        allowed_timeout: g.allowed_timeout.value.trim(),
         target: { type: ttype, protocol: proto, port: +g.port.value, to_address: ttype === "forward" ? g.to_addr.value.trim() : "", to_port: ttype === "forward" ? +g.to_port.value : 0 } };
       closeModal(); applyConfig(await api("POST", "/api/service", val)); toast(t("toast.svc_saved"));
     } catch (e) { toast(e.message, true); }
@@ -1321,7 +1341,8 @@ function openServiceModal(router, name) {
     field(t("svc.field_name"), g.name, t("svc.field_name_note")),
     h("div", { class: "field" }, h("label", null, t("svc.knock_ports")),
       h("div", { class: "grid3" }, g.s1, g.s2, g.tk), h("div", { class: "row" }, suggest), conflict),
-    field(t("svc.type"), typeSeg), portField, fwdRow, field(t("svc.proto"), protoSeg));
+    field(t("svc.type"), typeSeg), portField, fwdRow, field(t("svc.proto"), protoSeg),
+    field(t("svc.allowed_timeout"), g.allowed_timeout, t("svc.allowed_timeout_note", { def: routerDefTimeout })));
   syncType(); checkPorts();
   modal(h("div", null, h("div", { class: "modal-head" }, h("h3", null, s ? t("svc.title", { name: s.name }) : t("svc.new"))), body,
     h("div", { class: "modal-foot" }, h("span", { class: "spacer" }), h("button", { class: "btn", onclick: closeModal }, t("cancel")), save)));

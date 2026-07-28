@@ -244,15 +244,16 @@ func RemoveRouter(cfg config.Config, name string) (config.Config, error) {
 // ServiceOptions describes a service to add. Zero AllowedList / Target.Comment /
 // Target.Protocol get sensible defaults. Notifications are per router, not here.
 type ServiceOptions struct {
-	Name        string
-	ServiceName string
-	Disabled    bool
-	Stage1Port  int
-	Stage2Port  int
-	TokenPort   int
-	AllowedList string
-	Target      config.Target
-	Force       bool
+	Name           string
+	ServiceName    string
+	Disabled       bool
+	Stage1Port     int
+	Stage2Port     int
+	TokenPort      int
+	AllowedList    string
+	AllowedTimeout string // empty → inherit router default
+	Target         config.Target
+	Force          bool
 }
 
 // SuggestPorts returns n distinct free ports for a router — not used by any of
@@ -372,13 +373,19 @@ func AddService(cfg config.Config, routerName string, o ServiceOptions) (config.
 		allowed = "mkpk-tt-allowed-" + o.Name
 	}
 	svc := config.Service{
-		ServiceName: id,
-		Disabled:    o.Disabled,
-		Stage1Port:  o.Stage1Port,
-		Stage2Port:  o.Stage2Port,
-		TokenPort:   o.TokenPort,
-		AllowedList: allowed,
-		Target:      target,
+		ServiceName:    id,
+		Disabled:       o.Disabled,
+		Stage1Port:     o.Stage1Port,
+		Stage2Port:     o.Stage2Port,
+		TokenPort:      o.TokenPort,
+		AllowedList:    allowed,
+		AllowedTimeout: o.AllowedTimeout,
+		Target:         target,
+	}
+	// Preserve the local note when replacing an existing service (the service form
+	// doesn't carry it — notes are edited separately).
+	if existing, ok := r.Services[o.Name]; ok {
+		svc.Note = existing.Note
 	}
 	if err := validateService(o.Name, svc); err != nil {
 		return cfg, err
@@ -783,6 +790,7 @@ type ServiceSummary struct {
 	Name            string `json:"name"`
 	ServiceName     string `json:"service_name"`
 	Note            string `json:"note"`
+	AllowedTimeout  string `json:"allowed_timeout"`
 	Enabled         bool   `json:"enabled"`
 	Stage1Port      int    `json:"stage1_port"`
 	Stage2Port      int    `json:"stage2_port"`
@@ -817,6 +825,7 @@ func Summarize(cfg config.Config) Summary {
 				Name:            name,
 				ServiceName:     svc.ServiceName,
 				Note:            svc.Note,
+				AllowedTimeout:  svc.AllowedTimeout,
 				Enabled:         svc.Enabled(),
 				Stage1Port:      svc.Stage1Port,
 				Stage2Port:      svc.Stage2Port,
