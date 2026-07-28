@@ -57,6 +57,7 @@ const I18N = {
     "deploy.synced_hint": "Уже синхронизировано — включите force, чтобы передеплоить",
     "deploy.force_title": "Применить, даже если hash совпадает",
     "deploy.result_ph": "Результат действия появится здесь. Начните со Status.",
+    "deploy.streaming": "Выполняется по SSH — живой лог ниже…",
     "dstate.clean": "локальный конфиг (не проверялся по SSH)", "dstate.needs": "● есть локальные изменения — нужен Apply",
     "dstate.synced": "✓ синхронизировано", "dstate.never": "● на роутере ничего не установлено",
     "dstate.empty": "нечего деплоить", "dstate.error": "ошибка подключения",
@@ -176,6 +177,7 @@ const I18N = {
     "deploy.synced_hint": "Already synced — enable force to redeploy",
     "deploy.force_title": "Apply even if the hash matches",
     "deploy.result_ph": "The result will appear here. Start with Status.",
+    "deploy.streaming": "Running over SSH — live log below…",
     "dstate.clean": "local config (not SSH-checked)", "dstate.needs": "● local changes — Apply needed",
     "dstate.synced": "✓ synced", "dstate.never": "● nothing installed on the router",
     "dstate.empty": "nothing to deploy", "dstate.error": "connection error",
@@ -753,7 +755,11 @@ function routerDeploy(r) {
     h("label", { class: "inline-check", "data-tip": t("deploy.force_title") }, force, "force"),
     running && h("span", null, h("span", { class: "spin" }), " " + S.deployRunning.split(":")[1] + "…")));
   const prev = S.deploy[r.name];
-  if (prev && prev.result) wrap.append(deployResult(r, prev.result));
+  if (prev && prev.streaming) {
+    wrap.append(h("div", { class: "card pad stack" },
+      h("div", { class: "row" }, h("span", { class: "spin" }), h("span", { class: "foot-note" }, t("deploy.streaming"))),
+      h("pre", { class: "term", id: "deploy-live-" + r.name }, (prev.live || []).join("\n\n"))));
+  } else if (prev && prev.result) wrap.append(deployResult(r, prev.result));
   else wrap.append(h("div", { class: "card pad foot-note" }, t("deploy.result_ph")));
   return wrap;
 }
@@ -765,13 +771,57 @@ function deployStateLine(r) {
 async function runDeploy(r, action, opts) {
   opts = opts || {};
   S.deployRunning = r.name + ":" + (opts.dry ? "dry" : action);
+  const rec = S.deploy[r.name] || (S.deploy[r.name] = {});
+  rec.streaming = true; rec.live = []; rec.result = null; rec.err = null;
   render();
+  // Append straight to the live <pre> so we don't re-render on every line.
+  const term = document.getElementById("deploy-live-" + r.name);
+  const append = (line) => {
+    rec.live.push(line);
+    if (term) { term.textContent += (term.textContent ? "\n\n" : "") + line; term.scrollTop = term.scrollHeight; }
+  };
   try {
-    await deployAction(r.name, action, { force: !!opts.force, dry_run: !!opts.dry });
-  } catch (e) { /* recorded in S.deploy[r.name].result */ }
+    const res = await streamDeploy(r.name, { action, force: !!opts.force, dry_run: !!opts.dry }, append);
+    applyDeployResult(rec, action, res);
+  } catch (e) {
+    rec.checked = true; rec.err = e.message; rec.result = { _kind: "err", msg: e.message, action };
+  }
+  rec.streaming = false;
   S.deployRunning = null;
   render();
 }
+// streamDeploy POSTs to the streaming endpoint and reads newline-delimited JSON
+// events ({type:log|result|error}); onLine is called per log line, and the final
+// result object is returned. Errors arrive as an error event (status is 200).
+async function streamDeploy(routerName, body, onLine) {
+  const resp = await fetch("/api/deploy/stream", {
+    method: "POST",
+    headers: { "X-MKPK-Token": TOKEN, "Content-Type": "application/json" },
+    body: JSON.stringify({ router: routerName, action: body.action, force: !!body.force, dry_run: !!body.dry_run }),
+  });
+  if (!resp.ok || !resp.body) throw new Error((await resp.text()) || resp.statusText);
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "", result = null;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const raw = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!raw) continue;
+      const ev = JSON.parse(raw);
+      if (ev.type === "log") onLine(ev.line);
+      else if (ev.type === "result") result = ev.result;
+      else if (ev.type === "error") throw new Error(ev.msg);
+    }
+  }
+  if (!result) throw new Error("stream ended without a result");
+  return result;
+}
+// deployAction runs a non-streamed action — used by the dashboard "check all".
 async function deployAction(routerName, action, opts) {
   const body = { router: routerName, force: !!opts.force, dry_run: opts.dry_run !== undefined ? opts.dry_run : action !== "apply" };
   const rec = S.deploy[routerName] || (S.deploy[routerName] = {});
@@ -782,12 +832,18 @@ async function deployAction(routerName, action, opts) {
     rec.checked = true; rec.err = e.message; rec.result = { _kind: "err", msg: e.message, action };
     throw e;
   }
+  applyDeployResult(rec, action, res);
+  return res;
+}
+// applyDeployResult folds a deploy result into per-router state and tags it with
+// a _kind the result card renders.
+function applyDeployResult(rec, action, res) {
   rec.checked = true; rec.err = null;
   if (action === "status") {
     rec.installed = res.installed;
     rec.baseline = res.installed ? res.installed_hash : "";
     res._kind = res.installed ? (res.up_to_date ? "synced" : "drift") : "never";
-  } else if (action === "apply") {
+  } else if (action === "apply" || action === "") {
     if (res.applied) { rec.installed = true; rec.baseline = res.hash; res._kind = "applied"; }
     else if (res.action === "skip") { rec.installed = true; rec.baseline = res.hash; res._kind = "synced"; }
     else { res._kind = "dry"; }
@@ -796,7 +852,6 @@ async function deployAction(routerName, action, opts) {
     else res._kind = "dry";
   }
   rec.result = res;
-  return res;
 }
 function deployResult(r, res) {
   const kinds = {

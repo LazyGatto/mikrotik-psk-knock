@@ -83,6 +83,7 @@ func mux(configPath, token string) *http.ServeMux {
 	mux.HandleFunc("/api/deploy/status", s.auth(s.handleDeployStatus))
 	mux.HandleFunc("/api/deploy/apply", s.auth(s.handleDeployApply))
 	mux.HandleFunc("/api/deploy/uninstall", s.auth(s.handleDeployUninstall))
+	mux.HandleFunc("/api/deploy/stream", s.auth(s.handleDeployStream))
 	return mux
 }
 
@@ -107,6 +108,14 @@ type statusRecorder struct {
 func (r *statusRecorder) WriteHeader(code int) {
 	r.status = code
 	r.ResponseWriter.WriteHeader(code)
+}
+
+// Flush forwards to the underlying writer so streaming handlers (deploy stream)
+// keep working through the logging wrapper.
+func (r *statusRecorder) Flush() {
+	if f, ok := r.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 func querySuffix(r *http.Request) string {
@@ -591,6 +600,7 @@ func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
 // of it — they live on the router (config.Deploy), so the deploy screen only
 // chooses an action and its modifiers.
 type deployReq struct {
+	Action string `json:"action"` // stream endpoint: status | apply | uninstall
 	Router string `json:"router"`
 	Force  bool   `json:"force"`
 	DryRun bool   `json:"dry_run"`
@@ -645,6 +655,54 @@ func (s *Server) handleDeployUninstall(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, res)
+}
+
+// handleDeployStream runs a deploy action and streams progress as newline-
+// delimited JSON: {"type":"log","line":...} per SSH exchange as it happens, then
+// a final {"type":"result",...} or {"type":"error",...}. The status is 200 up
+// front (headers are already flushed), so failures arrive as an error event.
+func (s *Server) handleDeployStream(w http.ResponseWriter, r *http.Request) {
+	cfg, req, err := s.deployRequest(r)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	// Flush live when possible (loopback serve); if the writer can't flush (e.g.
+	// an embedded asset server), events still arrive, just batched at the end.
+	flusher, _ := w.(http.Flusher)
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no") // disable proxy buffering
+	w.WriteHeader(http.StatusOK)
+	enc := json.NewEncoder(w)
+	emit := func(v any) {
+		_ = enc.Encode(v)
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+	emit(map[string]any{"type": "log", "line": "→ " + req.Action + " on " + req.Router + " …"})
+	opts := admin.DeployOptions{OnLog: func(line string) {
+		emit(map[string]any{"type": "log", "line": line})
+	}}
+
+	var res any
+	switch req.Action {
+	case "status":
+		res, err = admin.Status(cfg, req.Router, opts)
+	case "uninstall":
+		res, err = admin.Uninstall(cfg, req.Router, opts, req.DryRun)
+	case "apply", "":
+		res, err = admin.Apply(cfg, req.Router, opts, req.Force, req.DryRun)
+	default:
+		emit(map[string]any{"type": "error", "msg": "unknown action: " + req.Action})
+		return
+	}
+	if err != nil {
+		emit(map[string]any{"type": "error", "msg": err.Error()})
+		return
+	}
+	emit(map[string]any{"type": "result", "action": req.Action, "result": res})
 }
 
 // --- undo / redo ---

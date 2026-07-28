@@ -16,6 +16,9 @@ type DeployOptions struct {
 	Address string // override; router.Address when empty
 	Port    int    // override; router deploy port (then 22) when 0
 	Auth    deploy.Auth
+	// OnLog, if set, receives each transcript entry live during the operation, so
+	// a UI can stream deploy progress instead of waiting for the final Log.
+	OnLog func(string)
 }
 
 // StatusResult is the detected install state of a router.
@@ -227,6 +230,7 @@ func connect(r config.Router, o DeployOptions) (*deploy.Client, string, error) {
 	if err != nil {
 		return nil, addr, err
 	}
+	c.OnLog = o.OnLog
 	return c, addr, nil
 }
 

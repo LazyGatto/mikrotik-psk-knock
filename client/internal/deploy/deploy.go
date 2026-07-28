@@ -40,6 +40,17 @@ type Auth struct {
 type Client struct {
 	conn *ssh.Client
 	log  []string
+	// OnLog, if set, is called with each transcript entry as it is recorded, so a
+	// caller can stream deploy progress live instead of waiting for Transcript().
+	OnLog func(string)
+}
+
+// push appends an entry to the transcript and streams it live if OnLog is set.
+func (c *Client) push(entry string) {
+	c.log = append(c.log, entry)
+	if c.OnLog != nil {
+		c.OnLog(entry)
+	}
 }
 
 // record appends one command/output exchange to the transcript.
@@ -51,11 +62,11 @@ func (c *Client) record(cmd, out string, err error) {
 	if err != nil {
 		entry += "\n! " + err.Error()
 	}
-	c.log = append(c.log, entry)
+	c.push(entry)
 }
 
 // note appends a synthetic transcript line (e.g. for the scp upload).
-func (c *Client) note(line string) { c.log = append(c.log, line) }
+func (c *Client) note(line string) { c.push(line) }
 
 // Transcript returns the recorded exchange as a single terminal-style string.
 func (c *Client) Transcript() string { return strings.Join(c.log, "\n\n") }
