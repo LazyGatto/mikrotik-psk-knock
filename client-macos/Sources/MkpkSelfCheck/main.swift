@@ -92,6 +92,39 @@ check("invalid port → error", badPort.status == .error)
 let emptyHost = await Check.run(CheckOptions(host: "", port: 80))
 check("empty host → error", emptyHost.status == .error)
 
+// --- invite store (in-memory backend; Keychain needs a signed app) ---
+print("invite store:")
+// A second synthetic invite for a different client, to test multiple invites.
+let synthBlob2 = "eyJ2IjoyLCJjbGllbnRfaWQiOiJwaG9uZSIsInJvdXRlcnMiOlt7InJvdXRlciI6InIyLmV4YW1wbGUuY29tIiwiYnVja2V0X3NlY29uZHMiOjMwLCJwc2siOiJ0ZXN0LXBzay0yIiwic2VydmljZXMiOlt7Im5hbWUiOiJzc2giLCJzdGFnZTEiOjQyMDExLCJzdGFnZTIiOjQyMDEyLCJ0b2tlbiI6NDIwMTMsImNoZWNrX3BvcnQiOjIyfV19XX0"
+do {
+    let store = try InviteStore(storage: InMemoryInviteStorage())
+    _ = try await store.importBlob(synthBlob)
+    _ = try await store.importBlob(synthBlob2)
+    var n = await store.invites.count
+    check("two invites imported", n == 2)
+    // Reimport the first (same client+routers) → updates in place, no growth.
+    _ = try await store.importBlob("  " + synthBlob + "\n")
+    n = await store.invites.count
+    check("reimport updates (no dup)", n == 2)
+    let routers = await store.routers()
+    check("flattened routers", routers.count == 2)
+    // Remove one.
+    let firstID = await store.invites[0].id
+    try await store.remove(id: firstID)
+    n = await store.invites.count
+    check("remove one", n == 1)
+    // Persistence: a new store over the same backend sees what was saved.
+    let backend = InMemoryInviteStorage()
+    let s1 = try InviteStore(storage: backend)
+    _ = try await s1.importBlob(synthBlob)
+    let s2 = try InviteStore(storage: backend)
+    let reloaded = await s2.invites.count
+    check("persists across store instances", reloaded == 1)
+} catch {
+    check("invite store", false)
+    print("    error: \(error)")
+}
+
 print("")
 if failures == 0 {
     print("all checks passed ✓")
