@@ -233,7 +233,7 @@ safe-env). Терминология: роутер / сервис / юзер; т�
   инструментом. Регэксп очистки окружения расширен `^mkpkTt` → `^mkpk` (реклейм всего namespace).
 
 **Фаза D:**
-- Десктоп-обёртка (Wails v2) поверх ядра — **СДЕЛАНО**. `cmd/mkpk-desktop` монтирует тот же
+- Десктоп-обёртка (Wails v2) поверх ядра — **СДЕЛАНО**. `cmd/mkpk-provision-desktop` монтирует тот же
   `internal/web`-хендлер как asset-server Wails (`EmbeddedHandler`, без Host-guard — нет TCP-листенера),
   per-session токен сохранён. Иконка приложения, `make desktop`. First-run без конфига (`LoadOrEmpty`)
   показывает онбординг.

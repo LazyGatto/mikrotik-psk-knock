@@ -24,11 +24,11 @@ client:
 	@mkdir -p $(BIN)
 	go build -ldflags "$(LDFLAGS)" -o $(BIN)/mkpk ./cmd/mkpk
 
-# Desktop app (.app bundle) via the Wails CLI. Needs `wails` on PATH
+# Provisioning desktop app (.app bundle) via the Wails CLI. Needs `wails` on PATH
 # (go install github.com/wailsapp/wails/v2/cmd/wails@latest) and Xcode CLT.
-# Output: cmd/mkpk-desktop/build/bin/mkpk-desktop.app
+# Output: cmd/mkpk-provision-desktop/build/bin/mkpk-provision-desktop.app
 desktop:
-	cd cmd/mkpk-desktop && wails build -s -skipbindings -ldflags "$(LDFLAGS)"
+	cd cmd/mkpk-provision-desktop && wails build -s -skipbindings -ldflags "$(LDFLAGS)"
 
 # Install the CLI binaries and man pages under PREFIX (default /usr/local).
 install: build

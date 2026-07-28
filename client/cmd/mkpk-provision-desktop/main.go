@@ -1,5 +1,6 @@
-// mkpk-desktop is the Wails desktop wrapper around the same local admin UI that
-// `mkpk-provision serve` exposes. Instead of running an HTTP listener, it mounts
+// mkpk-provision-desktop is the Wails desktop wrapper around the same local admin
+// UI that `mkpk-provision serve` exposes (a separate client GUI over `mkpk` will
+// be mkpk-desktop). Instead of running an HTTP listener, it mounts
 // the existing internal/web handler directly as the Wails asset server: the
 // embedded webview drives it over Wails' in-process transport (origin
 // wails.localhost), so the per-session token and Host guard work unchanged and

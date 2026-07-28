@@ -11,6 +11,6 @@ routeros/generated-*.rsc
 /client/mkpk-provision
 /client/bin/
 # Wails desktop build output (bundle is generated; appicon/Info.plist are source)
-/client/cmd/mkpk-desktop/build/bin/
+/client/cmd/mkpk-provision-desktop/build/bin/
 # Wails auto-generated JS runtime bindings (unused — frontend is served by our handler)
-/client/cmd/mkpk-desktop/frontend/wailsjs/
+/client/cmd/mkpk-provision-desktop/frontend/wailsjs/

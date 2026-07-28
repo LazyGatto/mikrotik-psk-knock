@@ -1,5 +1,5 @@
 # CI for the Go module in client/. Runs on the `gitlab`-tagged runner so jobs
-# stay on the local instance. The desktop package (cmd/mkpk-desktop) is excluded
+# stay on the local instance. The desktop package (cmd/mkpk-provision-desktop) is excluded
 # from CI: it needs the platform webview (cgo/webkit) which the CI image doesn't
 # carry — it is built on macOS via `make desktop`.
 
@@ -29,7 +29,7 @@ test:
   script:
     - cd client
     # Every package except the desktop wrapper (needs a platform webview).
-    - PKGS=$(go list ./... | grep -v '/cmd/mkpk-desktop')
+    - PKGS=$(go list ./... | grep -v '/cmd/mkpk-provision-desktop')
     - go vet $PKGS
     - go build $PKGS
     - go test -cover $PKGS
