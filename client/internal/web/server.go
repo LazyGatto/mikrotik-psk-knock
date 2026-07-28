@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,6 +33,7 @@ const maxUndo = 100
 type Server struct {
 	configPath string
 	token      string
+	desktop    bool // desktop build: browser blob-downloads don't work, save server-side
 	mu         sync.Mutex
 	undo       [][]byte // snapshots of the file before each mutation
 	redo       [][]byte
@@ -41,7 +43,7 @@ type Server struct {
 // TCP listener (`mkpk-provision serve`). The Host guard blocks DNS-rebinding
 // against that listener.
 func Handler(configPath, token string) http.Handler {
-	return loopbackOnly(mux(configPath, token))
+	return loopbackOnly(mux(configPath, token, false))
 }
 
 // EmbeddedHandler builds the same admin UI for the desktop app, where it is
@@ -49,12 +51,12 @@ func Handler(configPath, token string) http.Handler {
 // against, and the webview's Host header is platform-specific, so the loopback
 // Host guard is omitted; the per-session token still gates the API.
 func EmbeddedHandler(configPath, token string) http.Handler {
-	return mux(configPath, token)
+	return mux(configPath, token, true)
 }
 
 // mux wires the routes shared by both entry points.
-func mux(configPath, token string) *http.ServeMux {
-	s := &Server{configPath: configPath, token: token}
+func mux(configPath, token string, desktop bool) *http.ServeMux {
+	s := &Server{configPath: configPath, token: token, desktop: desktop}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.index)
 	mux.HandleFunc("/app.js", s.static("assets/app.js", "text/javascript; charset=utf-8"))
@@ -73,6 +75,7 @@ func mux(configPath, token string) *http.ServeMux {
 	mux.HandleFunc("/api/service", s.auth(s.handleService))
 	mux.HandleFunc("/api/service/enable", s.auth(s.handleServiceEnable))
 	mux.HandleFunc("/api/note", s.auth(s.handleNote))
+	mux.HandleFunc("/api/save", s.auth(s.handleSave))
 	mux.HandleFunc("/api/client", s.auth(s.handleClient))
 	mux.HandleFunc("/api/user", s.auth(s.handleUser))
 	mux.HandleFunc("/api/user/psk", s.auth(s.handleUserPSK))
@@ -156,6 +159,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	}
 	page := strings.Replace(string(data), "__MKPK_TOKEN__", s.token, 1)
 	page = strings.Replace(page, "__MKPK_VERSION__", version.String(), 1)
+	page = strings.Replace(page, "__MKPK_DESKTOP__", strconv.FormatBool(s.desktop), 1)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(page))
 }
@@ -383,6 +387,55 @@ func (s *Server) handleNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.writeConfig(w, cfg)
+}
+
+type saveReq struct {
+	Filename string `json:"filename"`
+	Content  string `json:"content"`
+}
+
+// handleSave writes a file to the user's Downloads directory. It exists for the
+// desktop build, where the webview can't perform a browser blob-download; the app
+// is local, so the in-process server writes the file directly and returns the
+// path. The browser (serve) uses a normal download and doesn't call this.
+func (s *Server) handleSave(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var req saveReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json: "+err.Error())
+		return
+	}
+	name := filepath.Base(strings.TrimSpace(req.Filename)) // strip any path — no traversal
+	if name == "" || name == "." || name == string(filepath.Separator) {
+		writeErr(w, http.StatusBadRequest, "invalid filename")
+		return
+	}
+	path := filepath.Join(downloadsDir(), name)
+	if err := os.WriteFile(path, []byte(req.Content), 0o644); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"path": path})
+}
+
+// downloadsDir returns the user's Downloads directory, falling back to home then
+// the working directory.
+func downloadsDir() string {
+	if home, err := os.UserHomeDir(); err == nil {
+		if d := filepath.Join(home, "Downloads"); dirExists(d) {
+			return d
+		}
+		return home
+	}
+	return "."
+}
+
+func dirExists(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.IsDir()
 }
 
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {

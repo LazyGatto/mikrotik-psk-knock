@@ -6,6 +6,7 @@ const I18N = {
   ru: {
     save: "Сохранить", cancel: "Отмена", close: "Закрыть", del: "Удалить", settings: "Настройки",
     add: "Добавить", copy: "Скопировать", copied: "✓ Скопировано", loading: "загрузка…", error: "ошибка",
+    "saved_to": "Сохранено: {path}",
     "note.add": "Добавить примечание", "note.title": "Примечание · {kind} {name}", "note.subtitle": "Хранится только в этом конфиге — на роутер не уходит",
     "note.placeholder": "Заметка для себя…", "note.clear": "Очистить", "note.saved": "Примечание сохранено", "note.cleared": "Примечание удалено",
     "note.kind.router": "роутер", "note.kind.service": "сервис", "note.kind.user": "юзер",
@@ -129,6 +130,7 @@ const I18N = {
     "note.placeholder": "A note to self…", "note.clear": "Clear", "note.saved": "Note saved", "note.cleared": "Note removed",
     "note.kind.router": "router", "note.kind.service": "service", "note.kind.user": "user",
     add: "Add", copy: "Copy", copied: "✓ Copied", loading: "loading…", error: "error",
+    "saved_to": "Saved: {path}",
     undo: "Undo", redo: "Redo", "toast.undone": "Undone", "toast.redone": "Redone",
     "nav.dashboard": "Overview", "nav.routers": "Routers", "nav.users": "Users",
     "nav.add_router": "+ Add router", "nav.add_user": "+ Add user",
@@ -1391,7 +1393,14 @@ function confirmDialog(title, msg, actionLabel, onOk) {
       h("button", { class: "btn danger-solid", onclick: () => { closeModal(); onOk(); } }, actionLabel))), "sm");
 }
 
-function downloadText(text, filename) {
+async function downloadText(text, filename) {
+  // The desktop webview (Wails) can't do a browser blob-download; the app is
+  // local, so save server-side to ~/Downloads and report the path.
+  if (window.MKPK_DESKTOP) {
+    try { const r = await api("POST", "/api/save", { filename, content: text }); toast(t("saved_to", { path: r.path })); }
+    catch (e) { toast(e.message, true); }
+    return;
+  }
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
   a.download = filename; a.click();

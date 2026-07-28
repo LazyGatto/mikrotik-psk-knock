@@ -324,8 +324,17 @@ func routerKeys(cfg config.Config) []string {
 
 func loadBlob(v string) (invite.Blob, error) {
 	s := v
-	if strings.HasPrefix(v, "@") {
-		data, err := os.ReadFile(v[1:])
+	if path, ok := strings.CutPrefix(v, "@"); ok {
+		// Explicit file reference.
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return invite.Blob{}, err
+		}
+		s = strings.TrimSpace(string(data))
+	} else if info, err := os.Stat(v); err == nil && !info.IsDir() {
+		// Bare path to an existing file — convenience, so `--invite laptop.mkpk`
+		// works without the @ prefix. A real blob string won't match a file.
+		data, err := os.ReadFile(v)
 		if err != nil {
 			return invite.Blob{}, err
 		}
