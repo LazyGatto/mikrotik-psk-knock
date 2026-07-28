@@ -83,13 +83,12 @@ release:
     - build:binaries
   script:
     - |
-      links=""
-      for f in dist/*; do
-        name=$(basename "$f")
-        links="$links --assets-link {\"name\":\"${name}\",\"url\":\"${PKG_REGISTRY}/${name}\"}"
-      done
-      eval release-cli create \
+      set -- create \
         --name "mkpk ${CI_COMMIT_TAG}" \
         --tag-name "${CI_COMMIT_TAG}" \
-        --description "Automated release for ${CI_COMMIT_TAG}. CLI binaries below; the desktop .app is built on macOS (make desktop) and attached separately." \
-        $links
+        --description "Automated release for ${CI_COMMIT_TAG}. CLI binaries below; the desktop .app is built on macOS (make desktop) and attached separately."
+      for f in dist/*; do
+        name=$(basename "$f")
+        set -- "$@" --assets-link "{\"name\":\"${name}\",\"url\":\"${PKG_REGISTRY}/${name}\"}"
+      done
+      release-cli "$@"
