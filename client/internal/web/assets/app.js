@@ -404,12 +404,17 @@ function renderSidebar() {
   nav.append(h("button", { class: "dashed", onclick: () => openUserModal(null) }, t("nav.add_user")));
 
   const foot = h("div", { class: "sidebar-foot row" },
-    h("button", { class: "iconbtn", disabled: !S.canUndo, title: t("undo") + " (⌘Z)", onclick: undo }, icon("undo")),
-    h("button", { class: "iconbtn", disabled: !S.canRedo, title: t("redo") + " (⇧⌘Z)", onclick: redo }, icon("redo")),
-    h("span", { class: "grow" }),
+    h("span", { class: "grow" }, location.host + " · local"),
     h("button", { class: "iconbtn", style: "width:auto;padding:0 6px;font-weight:650;font-size:11px", title: t("lang.switch"), onclick: toggleLang }, LANG.toUpperCase()),
     h("button", { class: "iconbtn", title: THEME === "light" ? t("theme.dark") : t("theme.light"), onclick: toggleTheme }, icon(THEME === "light" ? "moon" : "sun")));
   sb.append(nav, foot);
+}
+
+// undo/redo button group shown in the top bar of every view
+function histButtons() {
+  return h("div", { class: "row", style: "gap:4px" },
+    h("button", { class: "iconbtn", disabled: !S.canUndo, title: t("undo") + " (⌘Z)", onclick: undo }, icon("undo")),
+    h("button", { class: "iconbtn", disabled: !S.canRedo, title: t("redo") + " (⇧⌘Z)", onclick: redo }, icon("redo")));
 }
 function navHeader(label, onAdd) {
   return h("div", { class: "nav-eyebrow" }, h("span", null, label), h("button", { onclick: onAdd, title: t("add") }, "+"));
@@ -480,9 +485,11 @@ function dashboard() {
   if (!S.users.length) ulist.append(h("div", { class: "pad foot-note" }, t("dash.no_users")));
   wrap.append(ulist);
 
-  return h("div", null, h("div", { class: "topbar" }, h("div", { class: "grow" },
-    h("h2", null, t("dash.title")),
-    h("div", { class: "sub" }, t("dash.subtitle", { r: S.routers.length, u: S.users.length }), h("span", { class: "mono" }, S.path)))),
+  return h("div", null, h("div", { class: "topbar" },
+    h("div", { class: "grow" },
+      h("h2", null, t("dash.title")),
+      h("div", { class: "sub" }, t("dash.subtitle", { r: S.routers.length, u: S.users.length }), h("span", { class: "mono" }, S.path))),
+    histButtons()),
     h("div", { class: "content" }, wrap));
 }
 function stat(label, value, note, tone) {
@@ -533,6 +540,7 @@ function routerView(r) {
   return h("div", null,
     h("div", { class: "topbar" },
       h("div", { class: "grow" }, h("h2", null, r.name), h("div", { class: "sub" }, h("span", { class: "mono" }, r.address))),
+      histButtons(),
       pill,
       h("button", { class: "btn sm", onclick: () => openRouterModal(r.name) }, t("settings"))),
     tabbar,
@@ -755,6 +763,7 @@ function userView(u) {
     h("div", { class: "topbar" }, h("span", { class: "avatar lg" }, initials(u.name)),
       h("div", { class: "grow" }, h("h2", null, u.name),
         h("div", { class: "sub mono" }, t("user.header_id", { id: u.client_id }))),
+      histButtons(),
       h("button", { class: "btn sm", onclick: () => openUserModal(u.name) }, t("settings"))),
     h("div", { class: "content" }, wrap));
 }
