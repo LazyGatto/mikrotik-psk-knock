@@ -350,6 +350,34 @@ func TestRotateUserPSKChangesOnlyThatPair(t *testing.T) {
 	}
 }
 
+func TestRenameServiceMovesKeyAndAccess(t *testing.T) {
+	cfg := initCfg(t) // router rn, service "svc", user cli granted svc
+	cfg, err := RenameService(cfg, rn, "svc", "ssh-home")
+	if err != nil {
+		t.Fatalf("RenameService() error = %v", err)
+	}
+	r := cfg.Routers[rn]
+	if _, ok := r.Services["svc"]; ok {
+		t.Fatal("old service key should be gone")
+	}
+	sv, ok := r.Services["ssh-home"]
+	if !ok {
+		t.Fatal("service not moved to the new key")
+	}
+	if sv.ServiceName != "ssh-home" || sv.AllowedList != "mkpk-tt-allowed-ssh-home" || sv.Target.Comment != "mkpk-tt target ssh-home" {
+		t.Fatalf("name-derived fields not updated: %+v", sv)
+	}
+	if got := cfg.Users["cli"].Access[rn].Services; len(got) != 1 || got[0] != "ssh-home" {
+		t.Fatalf("user access not repointed: %v", got)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("renamed config should validate: %v", err)
+	}
+	if _, err := RenameService(cfg, rn, "ghost", "x"); err == nil {
+		t.Fatal("rename of unknown service should error")
+	}
+}
+
 func TestRenameRouterMovesKeyAndAccess(t *testing.T) {
 	cfg := initCfg(t) // router rn, user cli with access on rn
 	cfg, err := RenameRouter(cfg, rn, "kz2")

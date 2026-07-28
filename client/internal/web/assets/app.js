@@ -797,11 +797,15 @@ async function rotatePSK(user, router) {
 // ---------- modals ----------
 function closeModal() { document.getElementById("modal-root").innerHTML = ""; }
 function modal(node, size) {
+  // Close only via Esc or explicit buttons — not a backdrop click (avoids
+  // losing a half-filled form by accident).
   const root = document.getElementById("modal-root");
   root.innerHTML = "";
-  root.append(h("div", { class: "overlay", onclick: (e) => { if (e.target === e.currentTarget) closeModal(); } },
-    h("div", { class: "modal " + (size || "") }, node)));
+  root.append(h("div", { class: "overlay" }, h("div", { class: "modal " + (size || "") }, node)));
 }
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && document.querySelector(".overlay")) closeModal();
+});
 function field(label, input, note) {
   return h("div", { class: "field" }, h("label", null, label), input, note && h("div", { class: "note" }, note));
 }
@@ -906,7 +910,6 @@ function openServiceModal(router, name) {
   const s = name ? r.services.find((x) => x.name === name) : null;
   const g = {};
   g.name = h("input", { type: "text", class: "mono", value: s ? s.name : "", placeholder: "ssh-home" });
-  if (s) g.name.setAttribute("readonly", "");
   g.s1 = h("input", { type: "number", value: s ? s.stage1_port : "", placeholder: "41011" });
   g.s2 = h("input", { type: "number", value: s ? s.stage2_port : "", placeholder: "41012" });
   g.tk = h("input", { type: "number", value: s ? s.token_port : "", placeholder: "41013" });
@@ -952,7 +955,8 @@ function openServiceModal(router, name) {
 
   const save = h("button", { class: "btn pri", onclick: async () => {
     try {
-      const val = { router, name: g.name.value.trim(), stage1_port: +g.s1.value, stage2_port: +g.s2.value, token_port: +g.tk.value,
+      const nameVal = g.name.value.trim();
+      const val = { router, name: s ? s.name : nameVal, rename: s ? nameVal : "", stage1_port: +g.s1.value, stage2_port: +g.s2.value, token_port: +g.tk.value,
         target: { type: ttype, protocol: proto, port: +g.port.value, to_address: ttype === "forward" ? g.to_addr.value.trim() : "", to_port: ttype === "forward" ? +g.to_port.value : 0 } };
       closeModal(); applyConfig(await api("POST", "/api/service", val)); toast(t("toast.svc_saved"));
     } catch (e) { toast(e.message, true); }

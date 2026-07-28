@@ -368,6 +368,56 @@ func validateService(name string, svc config.Service) error {
 	return nil
 }
 
+// RenameService renames a service within a router: moves its map entry (and the
+// name-derived defaults), and repoints every user's access reference. The
+// service name is part of the token, so a rename invalidates issued invites for
+// it — the caller/UI warns about that.
+func RenameService(cfg config.Config, routerName, oldName, newName string) (config.Config, error) {
+	if newName == "" {
+		return cfg, fmt.Errorf("new service name is required")
+	}
+	r, err := getRouter(cfg, routerName)
+	if err != nil {
+		return cfg, err
+	}
+	svc, ok := r.Services[oldName]
+	if !ok {
+		return cfg, fmt.Errorf("service %q not found", oldName)
+	}
+	if oldName == newName {
+		return cfg, nil
+	}
+	if _, ok := r.Services[newName]; ok {
+		return cfg, fmt.Errorf("service %q already exists", newName)
+	}
+	if svc.ServiceName == oldName {
+		svc.ServiceName = newName
+	}
+	if svc.AllowedList == "mkpk-tt-allowed-"+oldName {
+		svc.AllowedList = "mkpk-tt-allowed-" + newName
+	}
+	if svc.Target.Comment == "mkpk-tt target "+oldName {
+		svc.Target.Comment = "mkpk-tt target " + newName
+	}
+	delete(r.Services, oldName)
+	r.Services[newName] = svc
+	cfg = putRouter(cfg, routerName, r)
+	for un, u := range cfg.Users {
+		access, ok := u.Access[routerName]
+		if !ok {
+			continue
+		}
+		for i, sn := range access.Services {
+			if sn == oldName {
+				access.Services[i] = newName
+			}
+		}
+		u.Access[routerName] = access
+		cfg.Users[un] = u
+	}
+	return cfg, nil
+}
+
 // SetServiceEnabled toggles a service on the router.
 func SetServiceEnabled(cfg config.Config, routerName, name string, enabled bool) (config.Config, error) {
 	r, err := getRouter(cfg, routerName)

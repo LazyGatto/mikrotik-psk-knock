@@ -315,6 +315,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 type serviceReq struct {
 	Router      string        `json:"router"`
 	Name        string        `json:"name"`
+	Rename      string        `json:"rename"` // on edit: new name for the service
 	ServiceName string        `json:"service_name"`
 	Disabled    bool          `json:"disabled"`
 	Stage1Port  int           `json:"stage1_port"`
@@ -338,8 +339,16 @@ func (s *Server) handleService(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "invalid json: "+err.Error())
 			return
 		}
+		target := req.Name
+		if req.Rename != "" && req.Rename != req.Name {
+			if cfg, err = admin.RenameService(cfg, req.Router, req.Name, req.Rename); err != nil {
+				writeErr(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			target = req.Rename
+		}
 		cfg, err = admin.AddService(cfg, req.Router, admin.ServiceOptions{
-			Name: req.Name, ServiceName: req.ServiceName, Disabled: req.Disabled,
+			Name: target, ServiceName: req.ServiceName, Disabled: req.Disabled,
 			Stage1Port: req.Stage1Port, Stage2Port: req.Stage2Port, TokenPort: req.TokenPort,
 			AllowedList: req.AllowedList, Target: req.Target, Force: true,
 		})
