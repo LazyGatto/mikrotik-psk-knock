@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -294,6 +295,15 @@ func (c Config) Validate() error {
 func (r Router) Validate() error {
 	if len(r.Note) > maxNoteLen {
 		return fmt.Errorf("note must be at most %d characters", maxNoteLen)
+	}
+	if r.Address == "" {
+		return fmt.Errorf("address is required")
+	}
+	if !isHostOrIP(r.Address) {
+		return fmt.Errorf("address %q must be an IPv4 address or a hostname", r.Address)
+	}
+	if r.Deploy.Address != "" && !isHostOrIP(r.Deploy.Address) {
+		return fmt.Errorf("deploy.address %q must be an IPv4 address or a hostname", r.Deploy.Address)
 	}
 	if r.Defaults.BucketSeconds <= 0 {
 		return fmt.Errorf("defaults.bucket_seconds must be positive")
@@ -673,6 +683,36 @@ func isChatID(v string) bool {
 		}
 	}
 	return v != "-"
+}
+
+// isHostOrIP reports whether s is an IP literal or a syntactically valid
+// hostname — what a router's public/deploy address may be.
+func isHostOrIP(s string) bool {
+	if net.ParseIP(s) != nil {
+		return true
+	}
+	return isHostname(s)
+}
+
+// isHostname validates a DNS hostname: 1..253 chars of dot-separated labels,
+// each 1..63 chars of [A-Za-z0-9-] not starting or ending with a hyphen.
+func isHostname(s string) bool {
+	if len(s) == 0 || len(s) > 253 {
+		return false
+	}
+	for label := range strings.SplitSeq(s, ".") {
+		n := len(label)
+		if n == 0 || n > 63 || label[0] == '-' || label[n-1] == '-' {
+			return false
+		}
+		for i := range n {
+			c := label[i]
+			if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-') {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func validatePort(name string, port int) error {

@@ -92,6 +92,7 @@ const I18N = {
     "router.ssh_address": "SSH-адрес деплоя (если отличается)",
     "router.ssh_address_note": "Пусто → деплой идёт по публичному адресу. Задайте, если провижн по локальному/management-адресу из safe-env.",
     "router.tab_general": "Общие", "router.tab_notify": "Нотификации",
+    "router.addr_required": "публичный адрес обязателен", "router.addr_bad": "адрес {addr} — не IP и не домен", "router.ssh_addr_bad": "SSH-адрес {addr} — не IP и не домен",
     "router.ssh_legend": "SSH для деплоя",
     "router.ssh_note": "Используется кнопками Status / Apply / Uninstall. Хранится в локальном секретном конфиге (0600) и не покидает эту машину.",
     "router.auth": "Аутентификация", "router.auth_note": "рекомендуется ssh-agent: секрет не попадает в конфиг", "router.auth_keyfile": "файл ключа",
@@ -210,6 +211,7 @@ const I18N = {
     "router.ssh_address": "SSH deploy address (if different)",
     "router.ssh_address_note": "Empty → deploy uses the public address. Set it if you provision over a local/management address from safe-env.",
     "router.tab_general": "General", "router.tab_notify": "Notifications",
+    "router.addr_required": "public address is required", "router.addr_bad": "address {addr} is not an IP or hostname", "router.ssh_addr_bad": "SSH address {addr} is not an IP or hostname",
     "router.ssh_legend": "SSH for deploy",
     "router.ssh_note": "Used by Status / Apply / Uninstall. Stored in the local secret config (0600) and never leaves this machine.",
     "router.auth": "Authentication", "router.auth_note": "ssh-agent recommended: the secret stays out of the config", "router.auth_keyfile": "key file",
@@ -423,6 +425,25 @@ function isIPv4(s) {
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(s);
   if (!m) return false;
   return m.slice(1).every((o) => { const n = +o; return n >= 0 && n <= 255 && String(n) === o; });
+}
+// isHostname — DNS name: dot-separated labels of [A-Za-z0-9-], 1..63 each, not
+// starting/ending with a hyphen; total ≤ 253. isHostOrIP mirrors the backend.
+function isHostname(s) {
+  if (!s || s.length > 253) return false;
+  return s.split(".").every((l) => /^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(l));
+}
+function isHostOrIP(s) { return isIPv4(s) || isHostname(s); }
+// hostInput restricts a field to host/IP characters ([A-Za-z0-9.-]) as typed.
+function hostInput(input) {
+  input.setAttribute("maxlength", 253);
+  input.addEventListener("input", () => {
+    const cleaned = input.value.replace(/[^A-Za-z0-9.-]/g, "");
+    if (cleaned === input.value) return;
+    const caret = (input.selectionStart || cleaned.length) - (input.value.length - cleaned.length);
+    input.value = cleaned;
+    try { input.setSelectionRange(caret, caret); } catch (e) { /* detached */ }
+  });
+  return input;
 }
 // small live status dot for a router (sidebar / lists)
 function routerDot(r) {
@@ -945,6 +966,33 @@ function field(label, input, note) {
   return h("div", { class: "field" }, h("label", null, label), input, note && h("div", { class: "note" }, note));
 }
 
+// nameInput constrains a text field to a RouterOS-safe identifier as the user
+// types: only [A-Za-z0-9_-], capped at MAX_NAME_LEN. Disallowed characters are
+// dropped and the caret kept stable, so invalid input never reaches the backend.
+function nameInput(input) {
+  input.setAttribute("maxlength", MAX_NAME_LEN);
+  input.addEventListener("input", () => {
+    const cleaned = input.value.replace(/[^A-Za-z0-9_-]/g, "");
+    if (cleaned === input.value) return;
+    const caret = (input.selectionStart || cleaned.length) - (input.value.length - cleaned.length);
+    input.value = cleaned;
+    try { input.setSelectionRange(caret, caret); } catch (e) { /* detached */ }
+  });
+  return input;
+}
+// portInput clamps a number field to a valid port (1..65535) on entry, so a huge
+// value can't be typed in.
+function portInput(input) {
+  input.setAttribute("max", "65535");
+  input.setAttribute("min", "1");
+  input.addEventListener("input", () => {
+    if (input.value === "") return;
+    const n = Number(input.value);
+    if (Number.isFinite(n) && n > 65535) input.value = "65535";
+  });
+  return input;
+}
+
 // noteBadge renders the local-note icon next to an entity. `always` shows a faint
 // icon even when empty (an add affordance); without it, the icon appears only when
 // a note exists (an at-a-glance indicator). Tooltip = the note; click opens the
@@ -988,11 +1036,11 @@ function openRouterModal(name) {
   const r = name ? routerOf(name) : null;
   const g = {};
   const inp = (val, attrs) => h("input", { type: "text", value: val || "", ...attrs });
-  g.name = inp(r && r.name, { placeholder: "router-a" });
-  g.address = inp(r && r.address, { placeholder: "router.example.com" });
+  g.name = nameInput(inp(r && r.name, { placeholder: "router-a" }));
+  g.address = hostInput(inp(r && r.address, { placeholder: "router.example.com" }));
   const d = (r && r.deploy) || {};
-  g.ssh_address = inp(d.address, { placeholder: "напр. 10.0.0.1 / router.lan" });
-  g.port = h("input", { type: "number", value: d.port || "", placeholder: "22" });
+  g.ssh_address = hostInput(inp(d.address, { placeholder: "напр. 10.0.0.1 / router.lan" }));
+  g.port = portInput(h("input", { type: "number", value: d.port || "", placeholder: "22" }));
   g.user = inp(d.user, { placeholder: "admin" });
   g.key_path = inp(d.key_path, { placeholder: "~/.ssh/id_ed25519" });
   let authMode = d.use_agent === false && d.key_path ? "key" : "agent";
@@ -1015,7 +1063,7 @@ function openRouterModal(name) {
   g.ne = h("input", { type: "checkbox", checked: !!n.email_enabled });
   g.email_to = inp(n.email_to); g.email_from = inp(n.email_from);
   g.email_server = inp(n.email_server, { placeholder: "smtp.example.com" });
-  g.email_port = h("input", { type: "number", value: n.email_port || "", placeholder: "587" });
+  g.email_port = portInput(h("input", { type: "number", value: n.email_port || "", placeholder: "587" }));
   g.email_tls = inp(n.email_tls, { placeholder: "starttls" });
   g.email_user = inp(n.email_user);
   g.email_pass = h("input", { type: "password", placeholder: n.email_password_set ? t("ph.unchanged") : "" });
@@ -1027,10 +1075,12 @@ function openRouterModal(name) {
     return box;
   }
 
+  const addrErr = h("div", { class: "foot-note", style: "color:var(--danger)" });
   // Two tabs keep the modal short (no scroll): general/SSH on one, notifications
   // on the other. Both panels stay in the DOM so save reads every field.
   const paneGeneral = h("div", { class: "modal-body" },
     h("div", { class: "grid2" }, field(t("field.name"), g.name), field(t("field.address"), g.address, t("router.address_note"))),
+    addrErr,
     h("fieldset", { class: "fieldset" }, h("legend", null, t("router.ssh_legend")),
       h("div", { class: "note" }, t("router.ssh_note")),
       field(t("router.ssh_address"), g.ssh_address, t("router.ssh_address_note")),
@@ -1077,6 +1127,26 @@ function openRouterModal(name) {
       closeModal(); S.view = { kind: "router", id: nameVal, tab: S.view.tab || "services" }; applyConfig(res); toast(t("toast.router_saved"));
     } catch (e) { toast(e.message, true); }
   } }, t("save"));
+  // Live address validation: public address required + IPv4/hostname; SSH deploy
+  // address optional but IPv4/hostname when set. Gates save and flags the field.
+  function checkAddr() {
+    const errs = [];
+    const pub = g.address.value.trim();
+    const badPub = pub === "" || !isHostOrIP(pub);
+    if (pub === "") errs.push(t("router.addr_required"));
+    else if (!isHostOrIP(pub)) errs.push(t("router.addr_bad", { addr: pub }));
+    const ssh = g.ssh_address.value.trim();
+    const badSsh = ssh !== "" && !isHostOrIP(ssh);
+    if (badSsh) errs.push(t("router.ssh_addr_bad", { addr: ssh }));
+    addrErr.textContent = errs.join("; ");
+    g.address.classList.toggle("err", badPub);
+    g.ssh_address.classList.toggle("err", badSsh);
+    save.disabled = errs.length > 0;
+  }
+  g.address.addEventListener("input", checkAddr);
+  g.ssh_address.addEventListener("input", checkAddr);
+  checkAddr();
+
   const foot = h("div", { class: "modal-foot" });
   if (r) foot.append(h("button", { class: "btn danger sm", onclick: () => delRouter(r.name) }, t("router.del")));
   foot.append(h("span", { class: "spacer" }), h("button", { class: "btn", onclick: closeModal }, t("cancel")), save);
@@ -1095,15 +1165,15 @@ function openServiceModal(router, name) {
   const r = routerOf(router);
   const s = name ? r.services.find((x) => x.name === name) : null;
   const g = {};
-  g.name = h("input", { type: "text", class: "mono", maxlength: 32, value: s ? s.name : "", placeholder: "ssh-home" });
-  g.s1 = h("input", { type: "number", min: 1, max: 65535, value: s ? s.stage1_port : "", placeholder: "41011" });
-  g.s2 = h("input", { type: "number", min: 1, max: 65535, value: s ? s.stage2_port : "", placeholder: "41012" });
-  g.tk = h("input", { type: "number", min: 1, max: 65535, value: s ? s.token_port : "", placeholder: "41013" });
+  g.name = nameInput(h("input", { type: "text", class: "mono", value: s ? s.name : "", placeholder: "ssh-home" }));
+  g.s1 = portInput(h("input", { type: "number", value: s ? s.stage1_port : "", placeholder: "41011" }));
+  g.s2 = portInput(h("input", { type: "number", value: s ? s.stage2_port : "", placeholder: "41012" }));
+  g.tk = portInput(h("input", { type: "number", value: s ? s.token_port : "", placeholder: "41013" }));
   let ttype = s ? s.target_type : "forward";
   let proto = s ? s.target_protocol : "tcp";
-  g.port = h("input", { type: "number", min: 1, max: 65535, value: s ? s.target_port : "", placeholder: "2022" });
+  g.port = portInput(h("input", { type: "number", value: s ? s.target_port : "", placeholder: "2022" }));
   g.to_addr = h("input", { type: "text", value: s ? s.target_to_address : "", placeholder: "192.0.2.10" });
-  g.to_port = h("input", { type: "number", min: 1, max: 65535, value: s ? s.target_to_port : "", placeholder: "22" });
+  g.to_port = portInput(h("input", { type: "number", value: s ? s.target_to_port : "", placeholder: "22" }));
   const fwdRow = h("div", { class: "grid2" }, field("to_address", g.to_addr), field("to_port", g.to_port));
   const portLabel = h("label", null, t("svc.port_ext"));
   const portNote = h("div", { class: "note hidden" }, t("svc.port_local_note"));
@@ -1188,7 +1258,7 @@ function seg2(vals, labels, cur, on) {
 
 function openUserModal(name) {
   const u = name ? userOf(name) : null;
-  const nameInp = h("input", { type: "text", value: u ? u.name : "", placeholder: "phone" });
+  const nameInp = nameInput(h("input", { type: "text", value: u ? u.name : "", placeholder: "phone" }));
   const save = h("button", { class: "btn pri", onclick: async () => {
     const val = nameInp.value.trim();
     if (!val) return;
