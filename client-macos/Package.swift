@@ -33,6 +33,7 @@ let package = Package(
         .executableTarget(
             name: "MkpkApp",
             dependencies: ["MkpkKit"],
+            resources: [.process("Resources")],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
     ]

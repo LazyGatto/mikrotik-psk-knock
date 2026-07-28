@@ -10,8 +10,43 @@ enum Palette {
     static let idle = Color(hex: 0x9A9AA2)
 }
 
+/// Brand logo — theme-matched tile (dark tile on dark, light tile on light) from
+/// bundled resources; a soft shadow gives it definition against the matching bg.
+enum Brand {
+    static func logo(_ scheme: ColorScheme) -> Image {
+        let name = scheme == .dark ? "icon-dark" : "icon-light"
+        if let url = Bundle.module.url(forResource: name, withExtension: "png"),
+           let ns = NSImage(contentsOf: url) {
+            return Image(nsImage: ns)
+        }
+        return Image(systemName: "shield.lefthalf.filled")
+    }
+}
+
+struct AccentButton: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12).padding(.vertical, 5)
+            .background(Palette.accent.opacity(configuration.isPressed ? 0.82 : 1), in: RoundedRectangle(cornerRadius: 7))
+    }
+}
+
+struct OutlineButton: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12))
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(configuration.isPressed ? 0.12 : 0.05)))
+            .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.primary.opacity(0.15)))
+    }
+}
+
 struct PopoverView: View {
     @ObservedObject var model: AppModel
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 0) {
@@ -39,10 +74,10 @@ struct PopoverView: View {
 
     private var header: some View {
         HStack(spacing: 9) {
-            RoundedRectangle(cornerRadius: 7)
-                .fill(Palette.accent)
-                .frame(width: 26, height: 26)
-                .overlay(Image(systemName: "shield.lefthalf.filled").font(.system(size: 13, weight: .semibold)).foregroundStyle(.white))
+            Brand.logo(colorScheme)
+                .resizable().interpolation(.high)
+                .frame(width: 30, height: 30)
+                .shadow(color: .black.opacity(colorScheme == .dark ? 0.55 : 0.22), radius: 3, x: 0, y: 1)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 5) {
                     Text("mkpk").font(.system(size: 13, weight: .semibold))
@@ -102,10 +137,9 @@ struct ServiceRowView: View {
             if svc.status == .knocking || svc.status == .checking {
                 ProgressView().controlSize(.small)
             } else {
-                Button("Стук") { model.knock(svc) }
-                    .buttonStyle(.borderedProminent).tint(Palette.accent).controlSize(.small)
+                Button("Стук") { model.knock(svc) }.buttonStyle(AccentButton())
                 if svc.canCheck {
-                    Button("Проверить") { model.check(svc) }.buttonStyle(.bordered).controlSize(.small)
+                    Button("Проверить") { model.check(svc) }.buttonStyle(OutlineButton())
                 }
             }
         }
