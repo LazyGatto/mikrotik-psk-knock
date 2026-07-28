@@ -9,3 +9,4 @@ routeros/generated-*.rsc
 # built Go binaries
 /client/mkpk
 /client/mkpk-provision
+/client/bin/
