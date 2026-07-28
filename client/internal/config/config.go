@@ -3,6 +3,7 @@ package config
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -187,6 +188,16 @@ type Resolved struct {
 
 // Enabled reports whether the service is active (rendered/deployed).
 func (s Service) Enabled() bool { return !s.Disabled }
+
+// LoadOrEmpty behaves like Load, except a missing file yields an empty (valid)
+// config instead of an error. This is the first-run state for the web/desktop
+// UI: it shows onboarding until the first router is added and the file is written.
+func LoadOrEmpty(path string) (Config, error) {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return Config{Routers: map[string]Router{}, Users: map[string]User{}}, nil
+	}
+	return Load(path)
+}
 
 func Load(path string) (Config, error) {
 	data, err := os.ReadFile(path)

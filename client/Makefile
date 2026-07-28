@@ -8,7 +8,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X mikrotik-psk-knock/client/internal/version.Version=$(VERSION)
 BIN := bin
 
-.PHONY: all build provision client test version clean
+.PHONY: all build provision client desktop test version clean
 
 all: build
 
@@ -21,6 +21,12 @@ provision:
 client:
 	@mkdir -p $(BIN)
 	go build -ldflags "$(LDFLAGS)" -o $(BIN)/mkpk ./cmd/mkpk
+
+# Desktop app (.app bundle) via the Wails CLI. Needs `wails` on PATH
+# (go install github.com/wailsapp/wails/v2/cmd/wails@latest) and Xcode CLT.
+# Output: cmd/mkpk-desktop/build/bin/mkpk-desktop.app
+desktop:
+	cd cmd/mkpk-desktop && wails build -s -skipbindings -ldflags "$(LDFLAGS)"
 
 test:
 	go test ./...

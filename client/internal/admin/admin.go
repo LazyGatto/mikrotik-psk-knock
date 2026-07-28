@@ -804,7 +804,9 @@ type ClientSummary struct {
 
 // Summarize builds a secret-free summary with deterministic ordering.
 func Summarize(cfg config.Config) Summary {
-	var s Summary
+	// Non-nil slices so the JSON always carries [] (never null), including the
+	// first-run empty config.
+	s := Summary{Routers: []RouterSummary{}, Users: []UserSummary{}}
 	for _, rn := range sortedKeys(cfg.Routers) {
 		r := cfg.Routers[rn]
 		// Non-nil slices so the JSON always carries [] (never null) for the frontend.

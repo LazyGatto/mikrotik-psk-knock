@@ -102,7 +102,10 @@ func querySuffix(r *http.Request) string {
 }
 
 // loopbackOnly rejects requests whose Host is not localhost, which blocks
-// DNS-rebinding attacks against the local server.
+// DNS-rebinding attacks against the local server. "wails.localhost" is the
+// origin of the embedded webview in the desktop build (Wails serves this same
+// handler); it is a .localhost name (RFC 6761, always loopback) so it cannot be
+// pointed elsewhere by an attacker, and the per-session token still gates the API.
 func loopbackOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host := r.Host
@@ -110,7 +113,7 @@ func loopbackOnly(next http.Handler) http.Handler {
 			host = h
 		}
 		switch host {
-		case "localhost", "127.0.0.1", "::1", "[::1]":
+		case "localhost", "127.0.0.1", "::1", "[::1]", "wails.localhost":
 			next.ServeHTTP(w, r)
 		default:
 			http.Error(w, "forbidden host", http.StatusForbidden)
@@ -160,7 +163,7 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 // --- config ---
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
-	cfg, err := config.Load(s.configPath)
+	cfg, err := config.LoadOrEmpty(s.configPath)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -180,7 +183,7 @@ func (s *Server) handleSecret(w http.ResponseWriter, r *http.Request) {
 // handlePortsSuggest returns free knock ports for the router so the UI can
 // random-fill stage1/stage2/token without colliding with existing services.
 func (s *Server) handlePortsSuggest(w http.ResponseWriter, r *http.Request) {
-	cfg, err := config.Load(s.configPath)
+	cfg, err := config.LoadOrEmpty(s.configPath)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -216,7 +219,7 @@ type routerReq struct {
 // handleRouterInfo returns a live health snapshot (device info + install state)
 // for the router named in ?router=. The UI polls it periodically.
 func (s *Server) handleRouterInfo(w http.ResponseWriter, r *http.Request) {
-	cfg, err := config.Load(s.configPath)
+	cfg, err := config.LoadOrEmpty(s.configPath)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -230,7 +233,7 @@ func (s *Server) handleRouterInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRouter(w http.ResponseWriter, r *http.Request) {
-	cfg, err := config.Load(s.configPath)
+	cfg, err := config.LoadOrEmpty(s.configPath)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -300,7 +303,7 @@ func (s *Server) handleServiceEnable(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	cfg, err := config.Load(s.configPath)
+	cfg, err := config.LoadOrEmpty(s.configPath)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -337,7 +340,7 @@ func (s *Server) handleNote(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	cfg, err := config.Load(s.configPath)
+	cfg, err := config.LoadOrEmpty(s.configPath)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -360,7 +363,7 @@ func (s *Server) handleNote(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
-	cfg, err := config.Load(s.configPath)
+	cfg, err := config.LoadOrEmpty(s.configPath)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -390,7 +393,7 @@ type serviceReq struct {
 }
 
 func (s *Server) handleService(w http.ResponseWriter, r *http.Request) {
-	cfg, err := config.Load(s.configPath)
+	cfg, err := config.LoadOrEmpty(s.configPath)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -442,7 +445,7 @@ type clientReq struct {
 }
 
 func (s *Server) handleClient(w http.ResponseWriter, r *http.Request) {
-	cfg, err := config.Load(s.configPath)
+	cfg, err := config.LoadOrEmpty(s.configPath)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -486,7 +489,7 @@ type userReq struct {
 // handleUser manages the top-level user entity: create, rename, delete. Per-router
 // access grants live on /api/client.
 func (s *Server) handleUser(w http.ResponseWriter, r *http.Request) {
-	cfg, err := config.Load(s.configPath)
+	cfg, err := config.LoadOrEmpty(s.configPath)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -531,7 +534,7 @@ func (s *Server) handleUserPSK(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
-	cfg, err := config.Load(s.configPath)
+	cfg, err := config.LoadOrEmpty(s.configPath)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -554,7 +557,7 @@ func (s *Server) handleUserPSK(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
-	cfg, err := config.Load(s.configPath)
+	cfg, err := config.LoadOrEmpty(s.configPath)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -584,7 +587,7 @@ func (s *Server) deployRequest(r *http.Request) (config.Config, deployReq, error
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return config.Config{}, req, err
 	}
-	cfg, err := config.Load(s.configPath)
+	cfg, err := config.LoadOrEmpty(s.configPath)
 	return cfg, req, err
 }
 
@@ -676,7 +679,7 @@ func (s *Server) step(w http.ResponseWriter, r *http.Request, from, to *[][]byte
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	cfg, err := config.Load(s.configPath)
+	cfg, err := config.LoadOrEmpty(s.configPath)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
