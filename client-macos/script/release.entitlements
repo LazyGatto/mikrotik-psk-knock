@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Release entitlements for the mkpk menu-bar client.
+  __TEAM_PREFIX__ is injected at build time (render_icloud_entitlements.sh) since
+  the team identifier prefix is only known at signing. Keep the hardened runtime
+  (codesign --options runtime) for notarization.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- iCloud Keychain sync of imported invites (secrets stay encrypted). -->
+  <key>keychain-access-groups</key>
+  <array>
+    <string>__TEAM_PREFIX__ru.eg23.mkpk.client</string>
+  </array>
+</dict>
+</plist>
