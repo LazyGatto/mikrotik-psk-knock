@@ -191,6 +191,7 @@ func (s *Server) handlePortsSuggest(w http.ResponseWriter, r *http.Request) {
 
 type routerReq struct {
 	Name          string        `json:"name"`
+	Rename        string        `json:"rename"`         // on edit: new name for the router
 	Address       string        `json:"address"`
 	DeployAddress string        `json:"deploy_address"` // optional SSH override
 	Port          int           `json:"port"`
@@ -236,7 +237,15 @@ func (s *Server) handleRouter(w http.ResponseWriter, r *http.Request) {
 				notify.Email.Password = existing.Notify.Email.Password
 			}
 		}
-		cfg, err = admin.SetRouter(cfg, admin.RouterOptions{Name: req.Name, Address: req.Address, Deploy: dep, Notify: notify})
+		target := req.Name
+		if req.Rename != "" && req.Rename != req.Name {
+			if cfg, err = admin.RenameRouter(cfg, req.Name, req.Rename); err != nil {
+				writeErr(w, http.StatusBadRequest, err.Error())
+				return
+			}
+			target = req.Rename
+		}
+		cfg, err = admin.SetRouter(cfg, admin.RouterOptions{Name: target, Address: req.Address, Deploy: dep, Notify: notify})
 	case http.MethodDelete:
 		cfg, err = admin.RemoveRouter(cfg, r.URL.Query().Get("name"))
 	default:

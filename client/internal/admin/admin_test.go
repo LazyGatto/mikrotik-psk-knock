@@ -350,6 +350,36 @@ func TestRotateUserPSKChangesOnlyThatPair(t *testing.T) {
 	}
 }
 
+func TestRenameRouterMovesKeyAndAccess(t *testing.T) {
+	cfg := initCfg(t) // router rn, user cli with access on rn
+	cfg, err := RenameRouter(cfg, rn, "kz2")
+	if err != nil {
+		t.Fatalf("RenameRouter() error = %v", err)
+	}
+	if _, ok := cfg.Routers[rn]; ok {
+		t.Fatal("old router key should be gone")
+	}
+	if _, ok := cfg.Routers["kz2"]; !ok {
+		t.Fatal("router not moved to the new key")
+	}
+	if _, ok := cfg.Users["cli"].Access["kz2"]; !ok {
+		t.Fatal("user access not repointed to the new router name")
+	}
+	if _, ok := cfg.Users["cli"].Access[rn]; ok {
+		t.Fatal("user access still references the old router name")
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("renamed config should validate: %v", err)
+	}
+	// collision + unknown
+	if _, err := RenameRouter(cfg, "kz2", "kz2"); err != nil {
+		t.Fatalf("rename to same name should be a no-op, got %v", err)
+	}
+	if _, err := RenameRouter(cfg, "ghost", "x"); err == nil {
+		t.Fatal("rename of unknown router should error")
+	}
+}
+
 func TestExportUsesPublicAddressNotDeployAddress(t *testing.T) {
 	cfg := initCfg(t) // router rn, address r.example, user cli on svc
 	// Deploy over a management address; clients must still get the public one.

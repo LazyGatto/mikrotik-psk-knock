@@ -811,7 +811,6 @@ function openRouterModal(name) {
   const g = {};
   const inp = (val, attrs) => h("input", { type: "text", value: val || "", ...attrs });
   g.name = inp(r && r.name, { placeholder: "router-a" });
-  if (r) g.name.setAttribute("readonly", "");
   g.address = inp(r && r.address, { placeholder: "router.example.com" });
   const d = (r && r.deploy) || {};
   g.ssh_address = inp(d.address, { placeholder: "напр. 10.0.0.1 / router.lan" });
@@ -869,8 +868,11 @@ function openRouterModal(name) {
 
   const save = h("button", { class: "btn pri", onclick: async () => {
     try {
+      const nameVal = g.name.value.trim();
       const val = {
-        name: g.name.value.trim(), address: g.address.value.trim(),
+        name: r ? r.name : nameVal,   // operate on the current key
+        rename: r ? nameVal : "",     // new name when editing
+        address: g.address.value.trim(),
         deploy_address: g.ssh_address.value.trim(),
         port: +g.port.value || 0, user: g.user.value.trim(),
         use_agent: authMode === "agent", key_path: authMode === "key" ? g.key_path.value.trim() : "",
@@ -882,7 +884,7 @@ function openRouterModal(name) {
         },
       };
       const res = await api("POST", "/api/router", val);
-      closeModal(); S.view = { kind: "router", id: val.name, tab: S.view.tab || "services" }; applyConfig(res); toast(t("toast.router_saved"));
+      closeModal(); S.view = { kind: "router", id: nameVal, tab: S.view.tab || "services" }; applyConfig(res); toast(t("toast.router_saved"));
     } catch (e) { toast(e.message, true); }
   } }, t("save"));
   const foot = h("div", { class: "modal-foot" });

@@ -195,6 +195,36 @@ func SetRouter(cfg config.Config, o RouterOptions) (config.Config, error) {
 	return putRouter(cfg, o.Name, r), nil
 }
 
+// RenameRouter renames a router, moving its config entry and updating every
+// user's access reference. The router name is an admin-side key only — it is not
+// part of any token or invite (those use the address) — so a rename invalidates
+// nothing and needs no redeploy of unchanged routers.
+func RenameRouter(cfg config.Config, oldName, newName string) (config.Config, error) {
+	if newName == "" {
+		return cfg, fmt.Errorf("new router name is required")
+	}
+	r, ok := cfg.Routers[oldName]
+	if !ok {
+		return cfg, fmt.Errorf("router %q not found", oldName)
+	}
+	if oldName == newName {
+		return cfg, nil
+	}
+	if _, ok := cfg.Routers[newName]; ok {
+		return cfg, fmt.Errorf("router %q already exists", newName)
+	}
+	delete(cfg.Routers, oldName)
+	cfg.Routers[newName] = r
+	for un, u := range cfg.Users {
+		if access, ok := u.Access[oldName]; ok {
+			u.Access[newName] = access
+			delete(u.Access, oldName)
+			cfg.Users[un] = u
+		}
+	}
+	return cfg, nil
+}
+
 // RemoveRouter removes a router entirely, along with every user's access to it
 // (access to a deleted router would otherwise dangle).
 func RemoveRouter(cfg config.Config, name string) (config.Config, error) {
