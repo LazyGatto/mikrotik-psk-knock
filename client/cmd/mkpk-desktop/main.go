@@ -26,7 +26,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("mkpk-desktop: %v", err)
 	}
-	handler := web.Handler(config.DefaultPath(), token)
+	handler := web.EmbeddedHandler(config.DefaultPath(), token)
 
 	err = wails.Run(&options.App{
 		Title:     "mkpk-provision " + version.String(),

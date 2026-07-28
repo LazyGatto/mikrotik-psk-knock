@@ -37,8 +37,23 @@ type Server struct {
 	redo       [][]byte
 }
 
-// Handler builds the HTTP handler for the local admin UI.
+// Handler builds the HTTP handler for the local admin UI served over a loopback
+// TCP listener (`mkpk-provision serve`). The Host guard blocks DNS-rebinding
+// against that listener.
 func Handler(configPath, token string) http.Handler {
+	return loopbackOnly(mux(configPath, token))
+}
+
+// EmbeddedHandler builds the same admin UI for the desktop app, where it is
+// mounted directly as the Wails asset server. There is no TCP listener to rebind
+// against, and the webview's Host header is platform-specific, so the loopback
+// Host guard is omitted; the per-session token still gates the API.
+func EmbeddedHandler(configPath, token string) http.Handler {
+	return mux(configPath, token)
+}
+
+// mux wires the routes shared by both entry points.
+func mux(configPath, token string) *http.ServeMux {
 	s := &Server{configPath: configPath, token: token}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.index)
@@ -68,7 +83,7 @@ func Handler(configPath, token string) http.Handler {
 	mux.HandleFunc("/api/deploy/status", s.auth(s.handleDeployStatus))
 	mux.HandleFunc("/api/deploy/apply", s.auth(s.handleDeployApply))
 	mux.HandleFunc("/api/deploy/uninstall", s.auth(s.handleDeployUninstall))
-	return loopbackOnly(mux)
+	return mux
 }
 
 // LogRequests wraps h to log each request (method, path, status, duration). API
@@ -102,10 +117,9 @@ func querySuffix(r *http.Request) string {
 }
 
 // loopbackOnly rejects requests whose Host is not localhost, which blocks
-// DNS-rebinding attacks against the local server. "wails.localhost" is the
-// origin of the embedded webview in the desktop build (Wails serves this same
-// handler); it is a .localhost name (RFC 6761, always loopback) so it cannot be
-// pointed elsewhere by an attacker, and the per-session token still gates the API.
+// DNS-rebinding attacks against the local server. Only the TCP-served mode
+// (Handler) uses it; the desktop's in-process EmbeddedHandler has no listener to
+// rebind against.
 func loopbackOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host := r.Host
@@ -113,7 +127,7 @@ func loopbackOnly(next http.Handler) http.Handler {
 			host = h
 		}
 		switch host {
-		case "localhost", "127.0.0.1", "::1", "[::1]", "wails.localhost":
+		case "localhost", "127.0.0.1", "::1", "[::1]":
 			next.ServeHTTP(w, r)
 		default:
 			http.Error(w, "forbidden host", http.StatusForbidden)
