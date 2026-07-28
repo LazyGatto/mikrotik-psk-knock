@@ -5,12 +5,28 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"time"
 
 	"gopkg.in/yaml.v3"
 )
+
+// DefaultPath is the default config location for a local install:
+// $XDG_CONFIG_HOME/mkpk/mkpk.yaml, else ~/.config/mkpk/mkpk.yaml. Falls back to
+// ./mkpk.yaml only if the home directory can't be resolved.
+func DefaultPath() string {
+	base := os.Getenv("XDG_CONFIG_HOME")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "mkpk.yaml"
+		}
+		base = filepath.Join(home, ".config")
+	}
+	return filepath.Join(base, "mkpk", "mkpk.yaml")
+}
 
 // Config is the top-level admin config. Routers and users are both top-level:
 // a user is a person (one client_id) who can be granted access on several

@@ -101,7 +101,7 @@ func configCmd(args []string) error {
 		return fmt.Errorf("usage: mkpk-provision config validate --config mkpk.yaml")
 	}
 	fs := flag.NewFlagSet("config validate", flag.ContinueOnError)
-	configPath := fs.String("config", "mkpk.yaml", "config path")
+	configPath := fs.String("config", config.DefaultPath(), "config path")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
@@ -118,7 +118,7 @@ func profileCmd(args []string) error {
 		return fmt.Errorf("usage: mkpk-provision profile init --out mkpk.yaml --router-address host")
 	}
 	fs := flag.NewFlagSet("profile init", flag.ContinueOnError)
-	outPath := fs.String("out", "mkpk.yaml", "output config path")
+	outPath := fs.String("out", config.DefaultPath(), "output config path")
 	routerName := fs.String("router-name", "mikrotik", "RouterOS identity label")
 	routerAddress := fs.String("router-address", "", "RouterOS public address")
 	serviceName := fs.String("service", "demo-service", "initial service name")
@@ -156,7 +156,7 @@ func routerCmd(args []string) error {
 	}
 	sub := args[0]
 	fs := flag.NewFlagSet("router "+sub, flag.ContinueOnError)
-	configPath := fs.String("config", "mkpk.yaml", "config path")
+	configPath := fs.String("config", config.DefaultPath(), "config path")
 	name := fs.String("name", "", "router name")
 	address := fs.String("address", "", "public router address (what clients knock)")
 	sshAddress := fs.String("ssh-address", "", "SSH deploy address override; router address when empty")
@@ -248,7 +248,7 @@ func serviceCmd(args []string) error {
 		return fmt.Errorf("usage: mkpk-provision service add --config mkpk.yaml --name ssh --stage1-port 41011 --stage2-port 41012 --token-port 41013 --nat-dst-port 2022 --nat-to-address 192.0.2.10 --nat-to-port 22")
 	}
 	fs := flag.NewFlagSet("service add", flag.ContinueOnError)
-	configPath := fs.String("config", "mkpk.yaml", "config path")
+	configPath := fs.String("config", config.DefaultPath(), "config path")
 	router := fs.String("router", "", "router name; sole router when empty")
 	name := fs.String("name", "", "service map key")
 	serviceName := fs.String("service-name", "", "service_name; --name when empty")
@@ -329,7 +329,7 @@ func clientCmd(args []string) error {
 		return fmt.Errorf("usage: mkpk-provision user [add|remove] --config mkpk.yaml --name laptop [--router r1] [--services a,b]")
 	}
 	fs := flag.NewFlagSet("user "+sub, flag.ContinueOnError)
-	configPath := fs.String("config", "mkpk.yaml", "config path")
+	configPath := fs.String("config", config.DefaultPath(), "config path")
 	router := fs.String("router", "", "router name; sole router when empty")
 	name := fs.String("name", "", "user map key")
 	clientID := fs.String("client-id", "", "client_id; --name when empty")
@@ -421,7 +421,7 @@ func pickRouter(cfg config.Config, name string) (string, error) {
 
 func tokenCmd(args []string) error {
 	fs := flag.NewFlagSet("token", flag.ContinueOnError)
-	configPath := fs.String("config", "mkpk.yaml", "config path")
+	configPath := fs.String("config", config.DefaultPath(), "config path")
 	routerName := fs.String("router", "", "router name; sole router when empty")
 	clientName := fs.String("client", "", "user name")
 	serviceName := fs.String("service", "", "service name; sole service when empty")
@@ -457,7 +457,7 @@ func routerosCmd(args []string) error {
 		return fmt.Errorf("usage: mkpk-provision routeros render --config mkpk.yaml --client laptop [--out generated.rsc]")
 	}
 	fs := flag.NewFlagSet("routeros render", flag.ContinueOnError)
-	configPath := fs.String("config", "mkpk.yaml", "config path")
+	configPath := fs.String("config", config.DefaultPath(), "config path")
 	router := fs.String("router", "", "router name; sole router when empty")
 	outPath := fs.String("out", "", "output .rsc path; stdout when empty")
 	if err := fs.Parse(args[1:]); err != nil {
@@ -484,7 +484,7 @@ func routerosCmd(args []string) error {
 
 func exportCmd(args []string) error {
 	fs := flag.NewFlagSet("export", flag.ContinueOnError)
-	configPath := fs.String("config", "mkpk.yaml", "config path")
+	configPath := fs.String("config", config.DefaultPath(), "config path")
 	router := fs.String("router", "", "single router to export; all the user's routers when empty")
 	user := fs.String("user", "", "user name")
 	outPath := fs.String("out", "", "output file; stdout when empty")
@@ -524,7 +524,7 @@ func deployCmd(args []string) error {
 		args = args[1:]
 	}
 	fs := flag.NewFlagSet("deploy", flag.ContinueOnError)
-	configPath := fs.String("config", "mkpk.yaml", "config path")
+	configPath := fs.String("config", config.DefaultPath(), "config path")
 	routerName := fs.String("router", "", "router name; sole router when empty")
 	// Connection credentials live on the router (see `router set`). These flags
 	// are optional per-call overrides; empty means "use the router's".
@@ -605,7 +605,7 @@ func deployCmd(args []string) error {
 
 func serveCmd(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
-	configPath := fs.String("config", "mkpk.yaml", "config path")
+	configPath := fs.String("config", config.DefaultPath(), "config path")
 	addr := fs.String("addr", "127.0.0.1:8765", "listen address (loopback only)")
 	if err := fs.Parse(args); err != nil {
 		return err

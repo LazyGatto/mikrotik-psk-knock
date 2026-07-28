@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -33,7 +34,10 @@ func GenerateSecret(n int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
-// SaveConfig validates cfg and writes it to path with 0600 perms.
+// SaveConfig validates cfg and writes it to path (0600), creating the parent
+// directory as needed. The write is atomic — a temp file in the same directory
+// is renamed over the target — so a crash mid-write can't corrupt the config
+// (which holds every secret).
 func SaveConfig(path string, cfg config.Config) error {
 	if err := cfg.Validate(); err != nil {
 		return err
@@ -42,7 +46,28 @@ func SaveConfig(path string, cfg config.Config) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0600)
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(dir, ".mkpk-*.yaml.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // no-op after a successful rename
+	if err := tmp.Chmod(0600); err != nil {
+		tmp.Close()
+		return err
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 func getRouter(cfg config.Config, name string) (config.Router, error) {

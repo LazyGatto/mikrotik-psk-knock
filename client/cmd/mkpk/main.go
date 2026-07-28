@@ -64,7 +64,7 @@ func usage() {
 
 func knockCmd(args []string) error {
 	fs := flag.NewFlagSet("knock", flag.ContinueOnError)
-	configPath := fs.String("config", "mkpk.yaml", "config path")
+	configPath := fs.String("config", config.DefaultPath(), "config path")
 	clientName := fs.String("client", "", "client name")
 	routerName := fs.String("router", "", "router name; sole router when empty")
 	serviceName := fs.String("service", "", "service name; sole service when empty")
@@ -147,7 +147,7 @@ func knockCmd(args []string) error {
 
 func checkCmd(args []string) error {
 	fs := flag.NewFlagSet("check", flag.ContinueOnError)
-	configPath := fs.String("config", "mkpk.yaml", "config path")
+	configPath := fs.String("config", config.DefaultPath(), "config path")
 	clientName := fs.String("client", "", "client name")
 	routerName := fs.String("router", "", "router name; sole router when empty")
 	serviceName := fs.String("service", "", "service name; sole service when empty")
