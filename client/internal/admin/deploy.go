@@ -2,7 +2,9 @@ package admin
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	"mikrotik-psk-knock/client/internal/config"
 	"mikrotik-psk-knock/client/internal/deploy"
@@ -65,7 +67,15 @@ type InfoResult struct {
 	UpToDate      bool   `json:"up_to_date"`
 	InstalledHash string `json:"installed_hash"`
 	DesiredHash   string `json:"desired_hash"`
-	Error         string `json:"error,omitempty"`
+	// Clock health: knock tokens are bucketed by time, so a router whose clock has
+	// drifted (NTP off) silently fails to match tokens. ClockSkewSeconds is
+	// local-minus-router; ClockOK is false when the skew exceeds half a bucket.
+	ClockSkewSeconds int64  `json:"clock_skew_seconds"`
+	ClockOK          bool   `json:"clock_ok"`
+	ClockChecked     bool   `json:"clock_checked"`
+	NTPEnabled       bool   `json:"ntp_enabled"`
+	NTPStatus        string `json:"ntp_status"`
+	Error            string `json:"error,omitempty"`
 }
 
 // infoSep separates the fields in the single info command's output — a sequence
@@ -87,7 +97,7 @@ func RouterInfo(cfg config.Config, routerName string, o DeployOptions) (InfoResu
 	}
 	defer c.Close()
 
-	out, err := c.Run(`:put ([/system identity get name] . "` + infoSep + `" . [/system resource get version] . "` + infoSep + `" . [/system resource get uptime] . "` + infoSep + `" . [/system resource get board-name])`)
+	out, err := c.Run(`:put ([/system identity get name] . "` + infoSep + `" . [/system resource get version] . "` + infoSep + `" . [/system resource get uptime] . "` + infoSep + `" . [/system resource get board-name] . "` + infoSep + `" . ([:timestamp]/1s) . "` + infoSep + `" . [/system ntp client get enabled] . "` + infoSep + `" . [/system ntp client get status])`)
 	if err != nil {
 		res.Error = err.Error()
 		return res, nil
@@ -101,6 +111,17 @@ func RouterInfo(cfg config.Config, routerName string, o DeployOptions) (InfoResu
 		return ""
 	}
 	res.Identity, res.Version, res.Uptime, res.Board = get(0), get(1), get(2), get(3)
+
+	// Clock check: knock tokens are time-bucketed, so a drifted router clock
+	// silently breaks knocking. Compare the router's epoch to ours and flag NTP.
+	if routerEpoch, err := strconv.ParseInt(get(4), 10, 64); err == nil && routerEpoch > 0 {
+		res.ClockChecked = true
+		res.ClockSkewSeconds = time.Now().Unix() - routerEpoch
+		tol := max(r.Defaults.BucketSeconds/2, 5)
+		res.ClockOK = res.ClockSkewSeconds <= tol && res.ClockSkewSeconds >= -tol
+	}
+	res.NTPEnabled = get(5) == "true"
+	res.NTPStatus = get(6)
 
 	if state, err := c.Detect(); err == nil {
 		res.Installed = state.Installed

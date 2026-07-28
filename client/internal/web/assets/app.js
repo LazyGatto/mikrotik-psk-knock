@@ -18,6 +18,8 @@ const I18N = {
     "nav.needs_dot": "Нужен Deploy",
     "theme.dark": "Тёмная тема", "theme.light": "Светлая тема", "lang.switch": "Сменить язык",
     "health.checking": "проверка связи…", "health.unreachable": "недоступен по SSH", "health.reachable": "доступен",
+    "clock.skew": "часы разошлись", "clock.skew_tip": "Часы роутера отличаются от локальных на {s}с. Стук привязан ко времени (30-сек bucket) — при таком расхождении токены не совпадут и стук НЕ РАБОТАЕТ. Включите NTP на роутере.",
+    "clock.ntp_off": "NTP выключен", "clock.ntp_off_tip": "На роутере выключен NTP-клиент. Сейчас время совпадает, но со временем часы уплывут и стук перестанет работать. Включите NTP: /system ntp client set enabled=yes",
     "onb.title": "Добавьте первый роутер",
     "onb.body": "Роутер — это ваш MikroTik, который приложение провижинит по SSH. Сервисы живут внутри роутера; юзеры — рядом с роутерами и могут иметь доступ к нескольким сразу.",
     "dash.title": "Обзор",
@@ -139,6 +141,8 @@ const I18N = {
     "nav.needs_dot": "Deploy needed",
     "theme.dark": "Dark theme", "theme.light": "Light theme", "lang.switch": "Switch language",
     "health.checking": "checking…", "health.unreachable": "unreachable via SSH", "health.reachable": "reachable",
+    "clock.skew": "clock drift", "clock.skew_tip": "The router clock differs from local by {s}s. Knocking is time-based (30s bucket) — at this drift tokens won't match and knocking DOES NOT WORK. Enable NTP on the router.",
+    "clock.ntp_off": "NTP off", "clock.ntp_off_tip": "The router's NTP client is off. The clock matches now, but it will drift and knocking will stop working. Enable NTP: /system ntp client set enabled=yes",
     "onb.title": "Add your first router",
     "onb.body": "A router is your MikroTik, provisioned by this app over SSH. Services live inside a router; users sit alongside routers and can have access to several at once.",
     "dash.title": "Overview",
@@ -398,7 +402,8 @@ document.addEventListener("keydown", (e) => {
 async function pollInfo(name) {
   try {
     const d = await api("GET", "/api/router/info?router=" + encodeURIComponent(name));
-    S.health[name] = { reachable: d.reachable, identity: d.identity, version: d.version, uptime: d.uptime, board: d.board, err: d.error };
+    S.health[name] = { reachable: d.reachable, identity: d.identity, version: d.version, uptime: d.uptime, board: d.board, err: d.error,
+      clock_checked: d.clock_checked, clock_ok: d.clock_ok, clock_skew_seconds: d.clock_skew_seconds, ntp_enabled: d.ntp_enabled, ntp_status: d.ntp_status };
     if (d.reachable) {
       const rec = S.deploy[name] || (S.deploy[name] = {});
       rec.checked = true; rec.err = null;
@@ -464,7 +469,21 @@ function healthMarker(r) {
   if (!hv.reachable) return h("span", { class: "row", style: "gap:6px", "data-tip": hv.err || "" }, h("span", { class: "dot grey" }), h("span", { class: "foot-note" }, t("health.unreachable")));
   return h("span", { class: "row", style: "gap:6px", "data-tip": hv.board || "" },
     h("span", { class: "dot green pulse" }),
-    h("span", { class: "mono foot-note" }, [hv.identity, shortVersion(hv.version), hv.uptime].filter(Boolean).join(" · ")));
+    h("span", { class: "mono foot-note" }, [hv.identity, shortVersion(hv.version), hv.uptime].filter(Boolean).join(" · ")),
+    clockWarn(hv));
+}
+// clockWarn surfaces a router clock problem that silently breaks knocking:
+// tokens are time-bucketed, so a drifted clock (or NTP off) means knocks never
+// match. Hard warning when the skew is out of tolerance; softer one for NTP off.
+function clockWarn(hv) {
+  if (!hv || !hv.reachable || !hv.clock_checked) return null;
+  if (!hv.clock_ok) {
+    return h("span", { class: "pill amber", "data-tip": t("clock.skew_tip", { s: hv.clock_skew_seconds }) }, icon("warn", "ic-sm"), t("clock.skew"));
+  }
+  if (!hv.ntp_enabled) {
+    return h("span", { class: "pill amber", "data-tip": t("clock.ntp_off_tip") }, icon("warn", "ic-sm"), t("clock.ntp_off"));
+  }
+  return null;
 }
 
 // ---------- render root ----------
