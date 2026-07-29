@@ -305,7 +305,7 @@ pre.term { margin: 0; padding: 12px 14px; background: var(--term-bg); color: var
 
 /* toast */
 #toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); padding: 9px 16px; border-radius: 8px; font-size: 12.5px; z-index: 80; box-shadow: 0 6px 20px rgba(0,0,0,.18); }
-#toast.ok { background: var(--text); color: #fff; }
+#toast.ok { background: var(--text); color: var(--bg); }
 #toast.err { background: var(--danger-strong); color: #fff; }
 
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
