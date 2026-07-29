@@ -140,6 +140,16 @@ page. There's also an end-to-end **knock test** from the provisioning app (it kn
 the router-side counters/log/port over SSH), and "keep open" in the client. Next up: notarizing the
 macOS builds (Developer ID) and an ICMP transport variant. Details — in [docs/roadmap.md](docs/roadmap.md).
 
+## ⚠️ Responsible use
+
+**mkpk** is a network-security tool. Use it only on systems you own or have **explicit
+authorization** to test. The authors are not responsible for misuse or any damage. The
+software is provided "as is", without any warranty — see [LICENSE](LICENSE).
+
+## License
+
+[MIT](LICENSE) © Vychegzhanin S. L.
+
 ## Docs
 
 - [docs/context.md](docs/context.md) — consolidated context and technical notes.
