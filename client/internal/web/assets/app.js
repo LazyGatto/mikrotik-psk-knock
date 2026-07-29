@@ -43,6 +43,12 @@ const I18N = {
     "svc.on_title": "Включён в конфиге. Выключить — правила не будут рендериться; применится после Deploy.",
     "svc.off_title": "Выключен в конфиге. Включить — правила появятся на роутере после Deploy.",
     "svc.edit": "Редактировать", "svc.delete": "Удалить",
+    "svc.test": "Тест стука", "svc.test_disabled": "Сервис выключен",
+    "svc.test_need_deploy": "Сначала Deploy (нужен статус synced)",
+    "svc.test_no_client": "Нет клиентов с доступом к сервису",
+    "svc.test_title": "Тест стука — {svc}",
+    "svc.test_note": "Провижнер стукнёт с этого хоста и по SSH сверит счётчики stage1/stage2/token, лог и порт. IP этого хоста временно попадёт в allowed-list роутера (истечёт по TTL). Проверяется путь провижнер→роутер, не путь конкретного юзера.",
+    "svc.test_client": "Клиент (client_id)", "svc.test_run": "Запустить тест", "svc.test_running": "Тестирую",
     "svc.foot": "Тоггл меняет состояние сервиса в конфиге. Выключенный сервис остаётся в списке, но его правила и токены юзеров не рендерятся и не деплоятся. Изменения попадут на роутер после Deploy → Apply.",
     "access.explain": "Кто имеет доступ к этому роутеру. Read-only проекция матрицы: редактирование доступа — на экране юзера.",
     "access.empty": "Ни у кого нет доступа к этому роутеру. Откройте юзера в сайдбаре и включите нужные сервисы.",
@@ -170,6 +176,12 @@ const I18N = {
     "svc.on_title": "Enabled in config. Disabling stops its rules from rendering; applies after Deploy.",
     "svc.off_title": "Disabled in config. Enabling makes its rules appear on the router after Deploy.",
     "svc.edit": "Edit", "svc.delete": "Delete",
+    "svc.test": "Test knock", "svc.test_disabled": "Service is off",
+    "svc.test_need_deploy": "Deploy first (status must be synced)",
+    "svc.test_no_client": "No clients have access to this service",
+    "svc.test_title": "Knock test — {svc}",
+    "svc.test_note": "The provisioner knocks from this host and verifies stage1/stage2/token counters, the log and the port over SSH. This host's IP is briefly added to the router allowed-list (expires by TTL). It tests the provisioner→router path, not a specific user's path.",
+    "svc.test_client": "Client (client_id)", "svc.test_run": "Run test", "svc.test_running": "Testing",
     "svc.foot": "The toggle changes the service state in the config. A disabled service stays listed, but its rules and users' tokens are not rendered or deployed. Changes reach the router after Deploy → Apply.",
     "access.explain": "Who can reach this router. A read-only projection of the matrix — edit access on the user screen.",
     "access.empty": "Nobody has access to this router. Open a user in the sidebar and enable the services.",
@@ -296,6 +308,7 @@ const ICONS = {
   redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h6"/>',
   pencil: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
   trash: '<path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/>',
+  test: '<path d="M3 12h3l2.5 7 4-15 2.5 8H21"/>',
   lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   warn: '<path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4m0 3h.01"/>',
   user: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/>',
@@ -718,6 +731,7 @@ function routerServices(r) {
           h("span", { class: "chip" }, s.stage1_port + " / " + s.stage2_port + " / " + s.token_port),
           h("span", { class: "foot-note" }, target))),
       noteBadge("service", r.name, s.name, s.note, true),
+      testButton(r, s),
       h("button", { class: "iconbtn", "data-tip": t("svc.edit"), onclick: () => openServiceModal(r.name, s.name) }, icon("pencil")),
       h("button", { class: "iconbtn", "data-tip": t("svc.delete"), onclick: () => delService(r.name, s.name) }, icon("trash"))));
   }
@@ -863,6 +877,89 @@ async function streamDeploy(routerName, body, onLine) {
   if (!result) throw new Error("stream ended without a result");
   return result;
 }
+// --- knock test (#13) ---
+// grantedClients returns the users who have access to this service on this router.
+function grantedClients(routerName, serviceName) {
+  return S.users.filter((u) => (u.access || []).some((a) => a.router === routerName && (a.services || []).includes(serviceName)));
+}
+
+// testButton renders the per-service "Test knock" button. It only lights up when
+// the router is synced (deployed == local) and at least one client has access.
+function testButton(r, s) {
+  const synced = routerState(r) === "synced";
+  const clients = grantedClients(r.name, s.name);
+  const canTest = s.enabled && synced && clients.length > 0;
+  const tip = !s.enabled ? t("svc.test_disabled")
+    : !synced ? t("svc.test_need_deploy")
+    : !clients.length ? t("svc.test_no_client")
+    : t("svc.test");
+  return h("button", { class: "iconbtn", disabled: !canTest, "data-tip": tip,
+    onclick: canTest ? () => openTestModal(r.name, s.name) : null }, icon("test"));
+}
+
+// streamTest POSTs to the test stream and reads newline-delimited JSON events
+// ({type:log|result|error}); onLine is called per log line, result is returned.
+async function streamTest(router, service, client, onLine) {
+  const resp = await fetch("/api/service/test/stream", {
+    method: "POST",
+    headers: { "X-MKPK-Token": TOKEN, "Content-Type": "application/json" },
+    body: JSON.stringify({ router, service, client }),
+  });
+  if (!resp.ok || !resp.body) throw new Error((await resp.text()) || resp.statusText);
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "", result = null;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let nl;
+    while ((nl = buf.indexOf("\n")) >= 0) {
+      const raw = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!raw) continue;
+      const ev = JSON.parse(raw);
+      if (ev.type === "log") onLine(ev.line);
+      else if (ev.type === "result") result = ev.result;
+      else if (ev.type === "error") throw new Error(ev.msg);
+    }
+  }
+  if (!result) throw new Error("stream ended without a result");
+  return result;
+}
+
+function openTestModal(routerName, serviceName) {
+  const clients = grantedClients(routerName, serviceName);
+  const sel = h("select", { class: "input" },
+    ...clients.map((c) => h("option", { value: c.name }, c.name + (c.client_id && c.client_id !== c.name ? " (" + c.client_id + ")" : ""))));
+  const logBox = h("pre", { style: "background:var(--term-bg);color:var(--text-2);border-radius:8px;padding:10px;font:11.5px/1.55 ui-monospace,Menlo,monospace;max-height:320px;overflow:auto;white-space:pre-wrap;margin:8px 0 0" }, "");
+  const verdict = h("div", { class: "foot-note", style: "margin-top:8px;font-weight:600" }, "");
+  const runBtn = h("button", { class: "btn pri" }, t("svc.test_run"));
+  const append = (line) => { logBox.textContent += (logBox.textContent ? "\n" : "") + line; logBox.scrollTop = logBox.scrollHeight; };
+  runBtn.onclick = async () => {
+    runBtn.disabled = true; sel.disabled = true; logBox.textContent = ""; verdict.textContent = ""; verdict.style.color = "";
+    append("▶ " + t("svc.test_running") + " (" + serviceName + " · " + sel.value + ") …");
+    try {
+      const res = await streamTest(routerName, serviceName, sel.value, append);
+      verdict.textContent = (res.pass ? "✓ PASS — " : "✗ FAIL — ") + (res.diagnosis || "");
+      verdict.style.color = res.pass ? "var(--ok)" : "var(--danger)";
+    } catch (e) {
+      append("! " + e.message);
+      verdict.textContent = "✗ " + e.message; verdict.style.color = "var(--danger)";
+    } finally {
+      runBtn.disabled = false; sel.disabled = false;
+    }
+  };
+  modal(h("div", null,
+    h("div", { class: "modal-head" }, h("h3", null, t("svc.test_title", { svc: serviceName }))),
+    h("div", { class: "modal-body" },
+      h("div", { class: "note" }, t("svc.test_note")),
+      field(t("svc.test_client"), sel),
+      h("div", { style: "margin-top:8px" }, runBtn),
+      logBox, verdict),
+    h("div", { class: "modal-foot" }, h("span", { class: "spacer" }), h("button", { class: "btn", onclick: closeModal }, t("cancel")))), "md");
+}
+
 // deployAction runs a non-streamed action — used by the dashboard "check all".
 async function deployAction(routerName, action, opts) {
   const body = { router: routerName, force: !!opts.force, dry_run: opts.dry_run !== undefined ? opts.dry_run : action !== "apply" };

@@ -7,6 +7,7 @@ package web
 import (
 	"embed"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -74,6 +75,7 @@ func mux(configPath, token string, desktop bool) *http.ServeMux {
 	mux.HandleFunc("/api/router/info", s.auth(s.handleRouterInfo))
 	mux.HandleFunc("/api/service", s.auth(s.handleService))
 	mux.HandleFunc("/api/service/enable", s.auth(s.handleServiceEnable))
+	mux.HandleFunc("/api/service/test/stream", s.auth(s.handleServiceTestStream))
 	mux.HandleFunc("/api/note", s.auth(s.handleNote))
 	mux.HandleFunc("/api/save", s.auth(s.handleSave))
 	mux.HandleFunc("/api/client", s.auth(s.handleClient))
@@ -230,18 +232,63 @@ func (s *Server) handlePortsSuggest(w http.ResponseWriter, r *http.Request) {
 }
 
 type routerReq struct {
-	Name          string        `json:"name"`
-	Rename        string        `json:"rename"` // on edit: new name for the router
-	Address       string        `json:"address"`
-	DeployAddress string        `json:"deploy_address"` // optional SSH override
-	Port          int           `json:"port"`
-	User          string        `json:"user"`
-	KeyPath       string        `json:"key_path"`
-	KeyPass       string        `json:"key_pass"`
-	UseAgent      bool          `json:"use_agent"`
-	Password      string        `json:"password"`
-	Notify        config.Notify `json:"notify"`
-	AllowedTimeout string       `json:"allowed_timeout"` // router-wide default allowed-list TTL
+	Name           string        `json:"name"`
+	Rename         string        `json:"rename"` // on edit: new name for the router
+	Address        string        `json:"address"`
+	DeployAddress  string        `json:"deploy_address"` // optional SSH override
+	Port           int           `json:"port"`
+	User           string        `json:"user"`
+	KeyPath        string        `json:"key_path"`
+	KeyPass        string        `json:"key_pass"`
+	UseAgent       bool          `json:"use_agent"`
+	Password       string        `json:"password"`
+	Notify         config.Notify `json:"notify"`
+	AllowedTimeout string        `json:"allowed_timeout"` // router-wide default allowed-list TTL
+}
+
+// handleServiceTestStream runs an end-to-end knock test for one (router, service,
+// client) and streams progress as newline-delimited JSON ({type:log|result|error}),
+// mirroring the deploy stream. It knocks the real router and reads its firewall
+// state over SSH.
+func (s *Server) handleServiceTestStream(w http.ResponseWriter, r *http.Request) {
+	cfg, err := config.LoadOrEmpty(s.configPath)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var req struct {
+		Router  string `json:"router"`
+		Service string `json:"service"`
+		Client  string `json:"client"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json: "+err.Error())
+		return
+	}
+	flusher, _ := w.(http.Flusher)
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	enc := json.NewEncoder(w)
+	emit := func(v any) {
+		_ = enc.Encode(v)
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+	logf := func(format string, a ...any) {
+		emit(map[string]any{"type": "log", "line": fmt.Sprintf(format, a...)})
+	}
+	opts := admin.DeployOptions{OnLog: func(line string) {
+		emit(map[string]any{"type": "log", "line": line})
+	}}
+	res, err := admin.KnockTest(cfg, req.Router, req.Service, req.Client, 0, opts, logf)
+	if err != nil {
+		emit(map[string]any{"type": "error", "msg": err.Error()})
+		return
+	}
+	emit(map[string]any{"type": "result", "result": res})
 }
 
 // handleRouterInfo returns a live health snapshot (device info + install state)
@@ -456,13 +503,13 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 }
 
 type serviceReq struct {
-	Router      string        `json:"router"`
-	Name        string        `json:"name"`
-	Rename      string        `json:"rename"` // on edit: new name for the service
-	ServiceName string        `json:"service_name"`
-	Disabled    bool          `json:"disabled"`
-	Stage1Port  int           `json:"stage1_port"`
-	Stage2Port  int           `json:"stage2_port"`
+	Router         string        `json:"router"`
+	Name           string        `json:"name"`
+	Rename         string        `json:"rename"` // on edit: new name for the service
+	ServiceName    string        `json:"service_name"`
+	Disabled       bool          `json:"disabled"`
+	Stage1Port     int           `json:"stage1_port"`
+	Stage2Port     int           `json:"stage2_port"`
 	TokenPort      int           `json:"token_port"`
 	AllowedList    string        `json:"allowed_list"`
 	AllowedTimeout string        `json:"allowed_timeout"`
