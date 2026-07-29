@@ -28,16 +28,40 @@ final class AppModel: ObservableObject {
     }
 
     struct RouterGroup: Identifiable {
-        let id: String          // router address
+        let id: String          // clientID + "\n" + router address (invites for
+        let clientID: String    // different client_ids never merge into one group)
         let address: String
         var services: [ServiceVM]
         var reachable: Bool? = nil     // derived from any open/checked service (later: health)
         var clockWarn: Bool = false    // reserved for a future clock hint from the router
     }
 
-    @Published var clientID: String = ""
+    /// A client_id and its routers — the outer visual block and the unit of
+    /// deletion (an imported invite is atomic: it carries one client_id).
+    struct ClientGroup: Identifiable {
+        let id: String          // clientID
+        let clientID: String
+        var routers: [RouterGroup]
+    }
+
+    /// The router groups folded by client_id, preserving import order. Derived
+    /// from `groups`, so status mutations there flow through to the UI.
+    var clientGroups: [ClientGroup] {
+        var byClient: [String: [RouterGroup]] = [:]
+        var order: [String] = []
+        for g in groups {
+            if byClient[g.clientID] == nil { order.append(g.clientID) }
+            byClient[g.clientID, default: []].append(g)
+        }
+        return order.map { ClientGroup(id: $0, clientID: $0, routers: byClient[$0] ?? []) }
+    }
+
+    @Published var clientID: String = ""            // shown in the header when a single client_id
+    @Published var multipleClients: Bool = false    // ≥2 distinct client_ids imported
     @Published var groups: [RouterGroup] = []
-    @Published var lastError: String?
+    @Published var lastError: String? {
+        didSet { if (oldValue == nil) != (lastError == nil) { onContentChanged?() } }
+    }
     @Published var now: Date = Date()   // ticks while a service countdown is live
 
     private var countdownTimer: Timer?
@@ -46,6 +70,18 @@ final class AppModel: ObservableObject {
     /// while a modal (the open panel, which runs out-of-process) is up, so the
     /// popover doesn't hide when the user clicks inside that dialog.
     var onSuspendDismissal: ((Bool) -> Void)?
+
+    /// Set by the menu-bar controller: keep the popover open (pinned) so the user
+    /// can switch to Finder and drag a file in without the panel dismissing.
+    var onPinChanged: ((Bool) -> Void)?
+
+    /// Set by the menu-bar controller: refit the panel to its content after the
+    /// groups change (import, error banner appearing/disappearing).
+    var onContentChanged: (() -> Void)?
+
+    @Published var pinned: Bool = false {
+        didSet { onPinChanged?(pinned) }
+    }
 
     private var store: InviteStore?
 
@@ -107,13 +143,13 @@ final class AppModel: ObservableObject {
         Task { _ = await importBlob(s) }
     }
 
-    func remove(routerAddress: String) async {
-        // Remove any stored invite that contains only this router; for shared
-        // multi-router invites we remove the whole invite (simple, matches the
-        // "trash on the router group" affordance for now).
+    /// Remove an entire client_id block — every imported invite carrying it.
+    /// An invite is atomic (one client_id, its routers), so this is the natural
+    /// unit of deletion.
+    func remove(clientID: String) async {
         guard let store else { return }
         for stored in await store.invites {
-            if let inv = try? stored.decoded(), inv.routers.contains(where: { $0.router == routerAddress }) {
+            if let inv = try? stored.decoded(), inv.clientID == clientID {
                 try? await store.remove(id: stored.id)
             }
         }
@@ -123,23 +159,36 @@ final class AppModel: ObservableObject {
     private func rebuild() async {
         guard let store else { return }
         let pairs = await store.routers()
-        clientID = (try? pairs.first?.invite.decoded().clientID) ?? ""
-        var byRouter: [String: RouterGroup] = [:]
+
+        // Group by (client_id, router): invites for different client_ids must not
+        // merge into one router card even when they share the same address.
+        var byKey: [String: RouterGroup] = [:]
         var order: [String] = []
+        var seenServiceIDs: Set<String> = []
+        var distinctClients: Set<String> = []
+
         for (stored, router) in pairs {
-            let cid = (try? stored.decoded().clientID) ?? clientID
-            if byRouter[router.router] == nil {
-                byRouter[router.router] = RouterGroup(id: router.router, address: router.router, services: [])
-                order.append(router.router)
+            let cid = (try? stored.decoded().clientID) ?? ""
+            distinctClients.insert(cid)
+            let key = cid + "\n" + router.router
+            if byKey[key] == nil {
+                byKey[key] = RouterGroup(id: key, clientID: cid, address: router.router, services: [])
+                order.append(key)
             }
             for svc in router.services {
-                let vm = ServiceVM(id: "\(router.router)/\(svc.name)", name: svc.name,
+                let sid = "\(cid)/\(router.router)/\(svc.name)"
+                guard seenServiceIDs.insert(sid).inserted else { continue }   // dedup
+                let vm = ServiceVM(id: sid, name: svc.name,
                                    routerAddress: router.router, checkPort: svc.checkPort,
                                    router: router, service: svc, clientID: cid)
-                byRouter[router.router]?.services.append(vm)
+                byKey[key]?.services.append(vm)
             }
         }
-        groups = order.compactMap { byRouter[$0] }
+
+        multipleClients = distinctClients.count > 1
+        clientID = distinctClients.count == 1 ? (distinctClients.first ?? "") : ""
+        groups = order.compactMap { byKey[$0] }
+        onContentChanged?()
     }
 
     // MARK: actions

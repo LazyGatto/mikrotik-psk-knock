@@ -48,6 +48,7 @@ struct OutlineButton: ButtonStyle {
 struct PopoverView: View {
     @ObservedObject var model: AppModel
     @Environment(\.colorScheme) private var colorScheme
+    @State private var dropTargeted = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -63,13 +64,13 @@ struct PopoverView: View {
             if model.isEmpty {
                 emptyState
             } else {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 14) {
-                        ForEach(model.groups) { group in
-                            RouterGroupView(model: model, group: group)
-                        }
-                    }
-                    .padding(12)
+                // ViewThatFits sizes the panel to the content's natural height and
+                // only falls back to a scroll view when it exceeds the height cap.
+                // A plain ScrollView reports a minimal (flexible) height, which is
+                // why the panel didn't grow and showed a scrollbar instead.
+                ViewThatFits(in: .vertical) {
+                    groupsContent
+                    ScrollView { groupsContent }
                 }
             }
             Divider()
@@ -82,7 +83,15 @@ struct PopoverView: View {
         .frame(width: 380)
         .frame(minHeight: 200, maxHeight: 640)
         .background(.regularMaterial)
-        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+        .overlay {
+            if dropTargeted {
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(Palette.accent, style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
+                    .padding(2)
+                    .allowsHitTesting(false)
+            }
+        }
+        .onDrop(of: [.fileURL], isTargeted: $dropTargeted) { providers in
             for p in providers {
                 _ = p.loadObject(ofClass: URL.self) { url, _ in
                     if let url { Task { @MainActor in await model.importFile(url) } }
@@ -90,6 +99,15 @@ struct PopoverView: View {
             }
             return true
         }
+    }
+
+    private var groupsContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(model.clientGroups) { client in
+                ClientGroupView(model: model, client: client)
+            }
+        }
+        .padding(12)
     }
 
     private var emptyState: some View {
@@ -117,11 +135,8 @@ struct PopoverView: View {
                 .frame(width: 30, height: 30)
                 .shadow(color: .black.opacity(colorScheme == .dark ? 0.55 : 0.22), radius: 3, x: 0, y: 1)
             VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 5) {
-                    Text("mkpk").font(.system(size: 13, weight: .semibold))
-                    Text("· Knock first").font(.system(size: 11)).foregroundStyle(.secondary)
-                }
-                Text("client_id: \(model.clientID)").font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
+                Text("mkpk").font(.system(size: 13, weight: .semibold))
+                Text("Knock first").font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Spacer()
             Menu {
@@ -131,9 +146,46 @@ struct PopoverView: View {
                 Image(systemName: "plus")
             }
             .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            Button { model.pinned.toggle() } label: {
+                Image(systemName: model.pinned ? "pin.fill" : "pin")
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(model.pinned ? Palette.accent : .secondary)
+            .help("Закрепить окно, чтобы перетащить файл из Finder")
             Button { /* settings — next */ } label: { Image(systemName: "gearshape") }.buttonStyle(.borderless)
         }
         .padding(.horizontal, 14).padding(.vertical, 11)
+    }
+}
+
+/// One client_id block: its identity header (with the trash that removes the
+/// whole invite) and its router cards nested inside a subtly framed container,
+/// so multiple identities read as visually distinct blocks.
+struct ClientGroupView: View {
+    @ObservedObject var model: AppModel
+    let client: AppModel.ClientGroup
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "person.text.rectangle").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text(client.clientID)
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .lineLimit(1).truncationMode(.middle)
+                Spacer()
+                Button { Task { await model.remove(clientID: client.clientID) } } label: {
+                    Image(systemName: "trash").font(.system(size: 11))
+                }
+                .buttonStyle(.borderless).foregroundStyle(.secondary)
+                .help("Удалить инвайт (client_id \(client.clientID))")
+            }
+            ForEach(client.routers) { group in
+                RouterGroupView(model: model, group: group)
+            }
+        }
+        .padding(11)
+        .background(RoundedRectangle(cornerRadius: 11).fill(Color.primary.opacity(0.04)))
+        .overlay(RoundedRectangle(cornerRadius: 11).stroke(Color.primary.opacity(0.10)))
     }
 }
 
@@ -152,9 +204,6 @@ struct RouterGroupView: View {
                         .background(Palette.warn.opacity(0.2)).foregroundStyle(Palette.warn).clipShape(Capsule())
                 }
                 Spacer()
-                Button { Task { await model.remove(routerAddress: group.address) } } label: {
-                    Image(systemName: "trash").font(.system(size: 11))
-                }.buttonStyle(.borderless).foregroundStyle(.secondary)
             }
             VStack(spacing: 8) {
                 ForEach(group.services) { svc in

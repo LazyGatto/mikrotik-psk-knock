@@ -1,6 +1,16 @@
 import AppKit
 import SwiftUI
 
+/// NSHostingView subclass that reports every SwiftUI relayout, so the panel can
+/// refit its height when the content grows or shrinks (import, error banner…).
+final class PanelHostingView<Content: View>: NSHostingView<Content> {
+    var onLayout: (() -> Void)?
+    override func layout() {
+        super.layout()
+        onLayout?()
+    }
+}
+
 /// Owns the menu-bar status item and the click-to-open popover panel.
 /// Pattern: AppKit NSStatusItem + a borderless non-activating NSPanel hosting
 /// SwiftUI, dismissed on outside click (see .agents/skills/macos-menubar-app).
@@ -9,7 +19,9 @@ final class MenuBarController: NSObject {
     private let statusItem: NSStatusItem
     private let panel: NSPanel
     private var outsideClickMonitor: Any?
-    private var dismissalSuspended = false
+    private var modalSuspended = false   // an out-of-process modal (open panel) is up
+    private var pinned = false           // user pinned the popover (to drag a file in)
+    private var isRefitting = false      // re-entrancy guard for the layout-driven refit
 
     init(model: AppModel) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -33,8 +45,9 @@ final class MenuBarController: NSObject {
         panel.backgroundColor = .clear
         panel.hasShadow = true
 
-        let host = NSHostingView(rootView: PopoverView(model: model))
+        let host = PanelHostingView(rootView: PopoverView(model: model))
         host.autoresizingMask = [.width, .height]
+        host.onLayout = { [weak self] in self?.refitIfNeeded() }
         panel.contentView = host
         panel.contentView?.wantsLayer = true
         panel.contentView?.layer?.cornerRadius = 12
@@ -43,8 +56,17 @@ final class MenuBarController: NSObject {
         // Let the model pause outside-click dismissal while a modal (open panel)
         // is up — those run out-of-process and would otherwise hide the popover.
         model.onSuspendDismissal = { [weak self] suspend in
-            self?.setDismissalSuspended(suspend)
+            self?.modalSuspended = suspend
+            self?.updateSuspension()
         }
+        // Pin keeps the popover open so the user can switch to Finder and drag a
+        // file onto the drop zone without the panel dismissing.
+        model.onPinChanged = { [weak self] pinned in
+            self?.pinned = pinned
+            self?.updateSuspension()
+        }
+        // Refit the panel to its content after the groups/error change.
+        model.onContentChanged = { [weak self] in self?.refitIfNeeded() }
     }
 
     private func installMonitor() {
@@ -61,9 +83,10 @@ final class MenuBarController: NSObject {
         }
     }
 
-    private func setDismissalSuspended(_ suspended: Bool) {
-        dismissalSuspended = suspended
-        if suspended {
+    private var dismissalSuspended: Bool { modalSuspended || pinned }
+
+    private func updateSuspension() {
+        if dismissalSuspended {
             removeMonitor()
         } else if panel.isVisible {
             installMonitor()
@@ -85,17 +108,46 @@ final class MenuBarController: NSObject {
     }
 
     private func hide() {
+        // Never hide while pinned; unpin first to dismiss.
+        guard !pinned else { return }
         panel.orderOut(nil)
         removeMonitor()
     }
 
-    private func positionPanel() {
-        guard let button = statusItem.button, let buttonWindow = button.window else { return }
-        let buttonFrame = buttonWindow.convertToScreen(button.frame)
+    /// The content's ideal size, clamped to the panel's width and height bounds.
+    private func fittingPanelSize() -> NSSize {
         panel.layoutIfNeeded()
         var size = panel.contentView?.fittingSize ?? NSSize(width: 380, height: 480)
-        if size.width < 320 { size.width = 380 }
+        size.width = 380
         size.height = min(max(size.height, 200), 640)
+        return size
+    }
+
+    /// Re-run positioning if the content's ideal height no longer matches the
+    /// panel. Called from the hosting view's layout pass and on content changes.
+    private func refitIfNeeded() {
+        guard panel.isVisible, !isRefitting else { return }
+        let target = fittingPanelSize()
+        guard abs(target.height - panel.frame.height) > 0.5 else { return }
+        isRefitting = true
+        // Only resize: keep the current on-screen X and pin the TOP edge, so the
+        // panel grows/shrinks in place. Recomputing X from the status item here
+        // is unsafe — during a layout pass its frame can be momentarily invalid,
+        // which flung the panel to the left edge.
+        var frame = panel.frame
+        let top = frame.maxY
+        frame.size = target
+        frame.origin.y = top - target.height
+        panel.setFrame(frame, display: true)
+        isRefitting = false
+    }
+
+    private func positionPanel(size preset: NSSize? = nil) {
+        guard let button = statusItem.button, let buttonWindow = button.window else { return }
+        let buttonFrame = buttonWindow.convertToScreen(button.frame)
+        let size = preset ?? fittingPanelSize()
+        // Anchor the TOP edge just under the status item so growth extends
+        // downward (the panel doesn't jump when content resizes).
         var origin = NSPoint(x: buttonFrame.midX - size.width / 2, y: buttonFrame.minY - size.height - 6)
         let screen = buttonWindow.screen ?? NSScreen.main
         if let vf = screen?.visibleFrame {
