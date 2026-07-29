@@ -155,10 +155,11 @@ func InitConfig(o InitOptions) (config.Config, error) {
 // RouterOptions describes a router to create or update: its address, the SSH
 // deploy credentials, and the per-router notification config.
 type RouterOptions struct {
-	Name    string
-	Address string        // public knock address (also default SSH target)
-	Deploy  config.Deploy // Deploy.Address optionally overrides the SSH target
-	Notify  config.Notify
+	Name           string
+	Address        string        // public knock address (also default SSH target)
+	Deploy         config.Deploy // Deploy.Address optionally overrides the SSH target
+	Notify         config.Notify
+	AllowedTimeout string        // router-wide default allowed-list TTL; empty → keep existing (3m for a new router)
 }
 
 // SetRouter creates the router when absent (default timeouts, empty services) or
@@ -192,6 +193,9 @@ func SetRouter(cfg config.Config, o RouterOptions) (config.Config, error) {
 	r.Address = o.Address
 	r.Deploy = o.Deploy
 	r.Notify = notify
+	if o.AllowedTimeout != "" {
+		r.Defaults.AllowedTimeout = o.AllowedTimeout
+	}
 	return putRouter(cfg, o.Name, r), nil
 }
 

@@ -179,6 +179,7 @@ func routerCmd(args []string) error {
 	configPath := fs.String("config", config.DefaultPath(), "config path")
 	name := fs.String("name", "", "router name")
 	address := fs.String("address", "", "public router address (what clients knock)")
+	allowedTimeout := fs.String("allowed-timeout", "", "router-wide default allowed-list TTL (e.g. 3m); empty keeps current")
 	sshAddress := fs.String("ssh-address", "", "SSH deploy address override; router address when empty")
 	sshUser := fs.String("ssh-user", "", "SSH username for deploy")
 	sshKey := fs.String("ssh-key", "", "SSH private key path for deploy")
@@ -250,7 +251,7 @@ func routerCmd(args []string) error {
 			notify.Email.Password = existing.Notify.Email.Password
 		}
 	}
-	cfg, err = admin.SetRouter(cfg, admin.RouterOptions{Name: *name, Address: *address, Deploy: dep, Notify: notify})
+	cfg, err = admin.SetRouter(cfg, admin.RouterOptions{Name: *name, Address: *address, Deploy: dep, Notify: notify, AllowedTimeout: *allowedTimeout})
 	if err != nil {
 		return err
 	}

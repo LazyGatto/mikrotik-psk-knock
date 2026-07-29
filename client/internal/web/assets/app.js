@@ -94,6 +94,8 @@ const I18N = {
     "psk.rotate.btn": "Ротировать",
     "router.new": "Новый роутер", "field.name": "Имя", "field.address": "Публичный адрес (стук клиента)", "field.port": "Порт", "field.user": "Пользователь",
     "router.address_note": "Домен/IP, по которому конечный юзер стучит из недоверенной сети. Именно он попадает в инвайт.",
+    "router.allowed_timeout": "Таймаут доступа по умолчанию",
+    "router.allowed_timeout_note": "На сколько открывается порт после стука (TTL записи в allowed-list). По умолчанию 3m. Можно переопределить на конкретном сервисе.",
     "router.ssh_address": "SSH-адрес деплоя (если отличается)",
     "router.ssh_address_note": "Пусто → деплой идёт по публичному адресу. Задайте, если провижн по локальному/management-адресу из safe-env.",
     "router.tab_general": "Общие", "router.tab_notify": "Нотификации",
@@ -219,6 +221,8 @@ const I18N = {
     "psk.rotate.btn": "Rotate",
     "router.new": "New router", "field.name": "Name", "field.address": "Public address (client knock)", "field.port": "Port", "field.user": "User",
     "router.address_note": "The domain/IP end users knock from an untrusted network. This is what goes into the invite.",
+    "router.allowed_timeout": "Default access timeout",
+    "router.allowed_timeout_note": "How long the port stays open after a knock (allowed-list entry TTL). Defaults to 3m. Can be overridden per service.",
     "router.ssh_address": "SSH deploy address (if different)",
     "router.ssh_address_note": "Empty → deploy uses the public address. Set it if you provision over a local/management address from safe-env.",
     "router.tab_general": "General", "router.tab_notify": "Notifications",
@@ -1131,6 +1135,7 @@ function openRouterModal(name) {
   const inp = (val, attrs) => h("input", { type: "text", value: val || "", ...attrs });
   g.name = nameInput(inp(r && r.name, { placeholder: "router-a" }));
   g.address = hostInput(inp(r && r.address, { placeholder: "router.example.com" }));
+  g.allowed_timeout = inp(r && r.defaults && r.defaults.allowed_timeout, { placeholder: "3m" });
   const d = (r && r.deploy) || {};
   g.ssh_address = hostInput(inp(d.address, { placeholder: "напр. 10.0.0.1 / router.lan" }));
   g.port = portInput(h("input", { type: "number", value: d.port || "", placeholder: "22" }));
@@ -1174,6 +1179,7 @@ function openRouterModal(name) {
   const paneGeneral = h("div", { class: "modal-body" },
     h("div", { class: "grid2" }, field(t("field.name"), g.name), field(t("field.address"), g.address, t("router.address_note"))),
     addrErr,
+    field(t("router.allowed_timeout"), g.allowed_timeout, t("router.allowed_timeout_note")),
     h("fieldset", { class: "fieldset" }, h("legend", null, t("router.ssh_legend")),
       h("div", { class: "note" }, t("router.ssh_note")),
       field(t("router.ssh_address"), g.ssh_address, t("router.ssh_address_note")),
@@ -1206,6 +1212,7 @@ function openRouterModal(name) {
         name: r ? r.name : nameVal,   // operate on the current key
         rename: r ? nameVal : "",     // new name when editing
         address: g.address.value.trim(),
+        allowed_timeout: g.allowed_timeout.value.trim(),
         deploy_address: g.ssh_address.value.trim(),
         port: +g.port.value || 0, user: g.user.value.trim(),
         use_agent: authMode === "agent", key_path: authMode === "key" ? g.key_path.value.trim() : "",

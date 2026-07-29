@@ -241,6 +241,7 @@ type routerReq struct {
 	UseAgent      bool          `json:"use_agent"`
 	Password      string        `json:"password"`
 	Notify        config.Notify `json:"notify"`
+	AllowedTimeout string       `json:"allowed_timeout"` // router-wide default allowed-list TTL
 }
 
 // handleRouterInfo returns a live health snapshot (device info + install state)
@@ -301,7 +302,7 @@ func (s *Server) handleRouter(w http.ResponseWriter, r *http.Request) {
 			}
 			target = req.Rename
 		}
-		cfg, err = admin.SetRouter(cfg, admin.RouterOptions{Name: target, Address: req.Address, Deploy: dep, Notify: notify})
+		cfg, err = admin.SetRouter(cfg, admin.RouterOptions{Name: target, Address: req.Address, Deploy: dep, Notify: notify, AllowedTimeout: req.AllowedTimeout})
 	case http.MethodDelete:
 		cfg, err = admin.RemoveRouter(cfg, r.URL.Query().Get("name"))
 	default:
