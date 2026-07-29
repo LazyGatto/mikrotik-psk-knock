@@ -376,10 +376,13 @@ struct ServiceRowView: View {
                 .padding(10)
             if inlineExpanded {
                 Divider()
-                KnockLogView(model: model, entries: model.logs[svc.id] ?? [])
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
-                    .background(Color.primary.opacity(0.04))
+                VStack(alignment: .leading, spacing: 12) {
+                    KeepOpenToggle(model: model, svc: svc)
+                    KnockLogView(model: model, entries: model.logs[svc.id] ?? [])
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(Color.primary.opacity(0.04))
             }
         }
         .background(RoundedRectangle(cornerRadius: 9).fill(Color(.textBackgroundColor).opacity(0.5)))
@@ -406,6 +409,10 @@ struct ServiceRowView: View {
                     } else {
                         Text("без проверки").font(.system(size: 10)).foregroundStyle(.secondary).fixedSize()
                     }
+                    if model.isKeepOpen(svc.id) {
+                        Image(systemName: "infinity").font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Palette.accent).help("Держать открытым включён").fixedSize()
+                    }
                 }
                 Text(StatusUI.line(svc, now: model.now))
                     .font(.system(size: 11)).foregroundStyle(svc.status == .open ? Palette.open : .secondary)
@@ -426,6 +433,35 @@ struct ServiceRowView: View {
             }
             .buttonStyle(.borderless)
             .help("Детали и лог")
+        }
+    }
+}
+
+/// "Keep open" toggle: re-knock shortly before the access expires. Needs the
+/// invite's allowed_timeout (else disabled with a hint).
+struct KeepOpenToggle: View {
+    @ObservedObject var model: AppModel
+    let svc: AppModel.ServiceVM
+
+    var body: some View {
+        let can = model.canKeepOpen(svc)
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 5) {
+                    Image(systemName: "infinity").font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(can ? Palette.accent : .secondary)
+                    Text("Держать открытым").font(.system(size: 12.5, weight: .medium))
+                }
+                Text(can ? "Автоматически перестукивать незадолго до истечения доступа."
+                         : "Недоступно: инвайт без таймаута — перевыпустите инвайт.")
+                    .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Toggle("", isOn: Binding(get: { model.isKeepOpen(svc.id) },
+                                     set: { model.setKeepOpen(svc, $0) }))
+                .labelsHidden().toggleStyle(.switch).tint(Palette.accent)
+                .disabled(!can)
         }
     }
 }
@@ -496,6 +532,12 @@ struct ServiceDetailView: View {
                             }
                         }
                     }
+
+                    KeepOpenToggle(model: model, svc: svc)
+                        .padding(11)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 9).fill(Color(.textBackgroundColor).opacity(0.5)))
+                        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.primary.opacity(0.08)))
 
                     KnockLogView(model: model, entries: model.logs[svc.id] ?? [])
                 }

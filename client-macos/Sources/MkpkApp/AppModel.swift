@@ -8,6 +8,7 @@ import MkpkKit
 private let kDetailVariantKey = "mkpk.detailVariant"
 private let kNotificationsKey = "mkpk.notifications"
 private let kICloudSyncKey = "mkpk.iCloudSync"
+private let kKeepOpenKey = "mkpk.keepOpen"
 
 /// The app's observable state: the imported invites projected into router groups
 /// with per-service status, plus the knock/check actions. @MainActor so SwiftUI
@@ -143,6 +144,15 @@ final class AppModel: ObservableObject {
         }
     }
     private var syncingStorage = false
+
+    // MARK: keep-open (#1)
+
+    /// Services the user asked to hold open — re-knocked shortly before the
+    /// allowed_timeout expires. Persisted by service id.
+    @Published var keepOpenIDs: Set<String> =
+        Set(UserDefaults.standard.stringArray(forKey: kKeepOpenKey) ?? [])
+    private var renewingIDs: Set<String> = []          // renew in flight (no overlap)
+    private var renewFailures: [String: Int] = [:]     // consecutive keep-open failures
 
     private var countdownTimer: Timer?
 
@@ -365,6 +375,12 @@ final class AppModel: ObservableObject {
         multipleClients = distinctClients.count > 1
         clientID = distinctClients.count == 1 ? (distinctClients.first ?? "") : ""
         groups = order.compactMap { byKey[$0] }
+
+        // Prune keep-open ids whose service is gone, and (re)start the timer so
+        // persisted keep-open services get re-opened after a launch.
+        let present = Set(groups.flatMap { $0.services.map(\.id) })
+        keepOpenIDs.formIntersection(present)
+        ensureCountdownTimer()
         onContentChanged?()
     }
 
@@ -420,6 +436,88 @@ final class AppModel: ObservableObject {
         logs[id] = arr
     }
 
+    // MARK: keep-open (#1)
+
+    /// Keep-open needs the allowed_timeout so it knows when to re-knock. Invites
+    /// issued before that export lack it → the toggle is unavailable.
+    func canKeepOpen(_ vm: ServiceVM) -> Bool { vm.service.allowedTimeout != nil }
+    func isKeepOpen(_ id: String) -> Bool { keepOpenIDs.contains(id) }
+
+    func setKeepOpen(_ vm: ServiceVM, _ on: Bool) {
+        if on { keepOpenIDs.insert(vm.id) } else { keepOpenIDs.remove(vm.id) }
+        renewFailures[vm.id] = 0
+        UserDefaults.standard.set(Array(keepOpenIDs), forKey: kKeepOpenKey)
+        if on, vm.status != .open { renew(vm) }   // open it now; timer renews near expiry
+        ensureCountdownTimer()
+        onContentChanged?()
+    }
+
+    /// Silent re-knock to hold a service open (or re-open it). Verifies via the
+    /// TCP check when available; gives up after 3 consecutive failures.
+    private func renew(_ vm: ServiceVM) {
+        guard keepOpenIDs.contains(vm.id), !renewingIDs.contains(vm.id) else { return }
+        renewingIDs.insert(vm.id)
+        Task {
+            defer { renewingIDs.remove(vm.id) }
+            do {
+                try await Knock.perform(Knock.options(router: vm.router, service: vm.service, clientID: vm.clientID))
+            } catch {
+                recordRenewFailure(vm); return
+            }
+            let until = vm.service.allowedTimeout.flatMap(GoDuration.seconds).map { Date().addingTimeInterval($0) }
+            if vm.canCheck {
+                let res = await Check.run(CheckOptions(host: vm.routerAddress, port: vm.checkPort, timeout: 1, attempts: 6, interval: 0.5))
+                if res.status == .open {
+                    update(vm.id, .open, openUntil: until)
+                    appendLog(vm.id, .open, "keep-open")
+                    renewFailures[vm.id] = 0
+                    ensureCountdownTimer()
+                } else {
+                    recordRenewFailure(vm)
+                }
+            } else {
+                update(vm.id, .open, openUntil: until)   // no check → trust the re-knock
+                appendLog(vm.id, .sent, "keep-open")
+                renewFailures[vm.id] = 0
+                ensureCountdownTimer()
+            }
+        }
+    }
+
+    private func recordRenewFailure(_ vm: ServiceVM) {
+        let n = (renewFailures[vm.id] ?? 0) + 1
+        renewFailures[vm.id] = n
+        appendLog(vm.id, .error, "keep-open")
+        if n >= 3 {
+            keepOpenIDs.remove(vm.id)
+            renewFailures[vm.id] = 0
+            UserDefaults.standard.set(Array(keepOpenIDs), forKey: kKeepOpenKey)
+            update(vm.id, .error)   // amber attention
+            notify("Keep-open остановлен", "\(vm.name) · \(vm.routerAddress) — 3 неудачи подряд")
+            onContentChanged?()
+        }
+    }
+
+    /// Per keep-open service: re-knock when approaching expiry, or re-open when
+    /// closed (e.g. after sleep). Skips while a user action or a renew is running.
+    private func maintainKeepOpen() {
+        for g in groups {
+            for svc in g.services where keepOpenIDs.contains(svc.id) && !renewingIDs.contains(svc.id) {
+                switch svc.status {
+                case .open:
+                    if let until = svc.openUntil {
+                        let lead = min(max(TimeInterval(svc.router.bucketSeconds), 15), 30)
+                        if now >= until.addingTimeInterval(-lead) { renew(svc) }
+                    }
+                case .closed, .error, .unknown:
+                    renew(svc)   // re-open
+                case .knocking, .checking:
+                    break        // user action in flight
+                }
+            }
+        }
+    }
+
     // MARK: navigation + detail helpers
 
     func service(id: String) -> ServiceVM? {
@@ -471,14 +569,21 @@ final class AppModel: ObservableObject {
         groups.contains { $0.services.contains { $0.status == .open && $0.openUntil != nil } }
     }
 
+    /// The timer runs while any countdown is live OR any keep-open service exists
+    /// (so keep-open can re-knock even when a held service has momentarily closed).
+    private var timerNeeded: Bool {
+        if anyOpenWithCountdown { return true }
+        return groups.contains { $0.services.contains { keepOpenIDs.contains($0.id) } }
+    }
+
     private func ensureCountdownTimer() {
-        if anyOpenWithCountdown, countdownTimer == nil {
+        if timerNeeded, countdownTimer == nil {
             let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
                 Task { @MainActor in self?.tickCountdowns() }
             }
             RunLoop.main.add(t, forMode: .common)
             countdownTimer = t
-        } else if !anyOpenWithCountdown {
+        } else if !timerNeeded {
             countdownTimer?.invalidate()
             countdownTimer = nil
         }
@@ -492,10 +597,14 @@ final class AppModel: ObservableObject {
                     let svc = groups[gi].services[si]
                     groups[gi].services[si].status = .closed
                     groups[gi].services[si].openUntil = nil
-                    notify("Доступ закрыт", "\(svc.name) · \(svc.routerAddress)")
+                    // keep-open will re-open it below — only notify a real close.
+                    if !keepOpenIDs.contains(svc.id) {
+                        notify("Доступ закрыт", "\(svc.name) · \(svc.routerAddress)")
+                    }
                 }
             }
         }
+        maintainKeepOpen()
         ensureCountdownTimer()
     }
 }
