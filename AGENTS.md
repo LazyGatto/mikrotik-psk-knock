@@ -58,7 +58,17 @@ the Go reference, the Swift client, and the rendered RouterOS rules.
    glab release upload vX.Y.Z mkpk-provision-desktop_vX.Y.Z_darwin.zip
    ```
    Needs `wails` (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`) + Xcode CLT.
-   (The separate `client-macos/` recipient app is a different artifact — see its AGENTS.md / issue for signed distribution.)
+6. **Manual, macOS-only — the `client-macos/` recipient app.** Also built by hand
+   and attached to the same Release:
+
+   ```sh
+   cd client-macos && MKPK_VERSION=vX.Y.Z script/build_app.sh   # → .build/mkpk.app (ad-hoc signed)
+   ditto -c -k --keepParent client-macos/.build/mkpk.app mkpk-client_vX.Y.Z_darwin_arm64.zip
+   glab release upload vX.Y.Z mkpk-client_vX.Y.Z_darwin_arm64.zip
+   ```
+   Both macOS bundles are ad-hoc signed (arm64), so downloaders hit Gatekeeper
+   quarantine — clear it with `xattr -cr <app>.app`; a real Developer ID signature
+   + notarization is the proper fix (tracked in the issues).
 
 `main` is protected; push over HTTPS via the `glab` credential helper. Pushing a
 tag is separate from pushing to protected `main`.
