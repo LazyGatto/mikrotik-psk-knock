@@ -42,6 +42,21 @@ CLI и веб-UI (`serve`, открывается в браузере) рабо�
 просто удобная обёртка того же UI и собирается только под macOS. Криптографический рантайм
 полностью на стороне клиента; SSH — только канал развёртывания.
 
+## Скриншоты
+
+**Провижн — десктоп-приложение** (обзор и редактор сервиса):
+
+<p align="center">
+  <img src="docs/screenshots/provision-overview.png" width="760" alt="Provision — обзор"><br>
+  <img src="docs/screenshots/provision-service.png" width="760" alt="Provision — сервис">
+</p>
+
+**Клиент** — меню-бар приложение для macOS (импорт инвайтов, стук, «держать открытым»):
+
+<p align="center">
+  <img src="docs/screenshots/client.png" width="330" alt="Клиент — попап">
+</p>
+
 ## Возможности
 
 - **Port-knock по PSK-time-token** — staged UDP как дешёвый фильтр + `sha512`-токен с привязкой

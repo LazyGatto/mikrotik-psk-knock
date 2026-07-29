@@ -42,6 +42,21 @@ The CLI and the web UI (`serve`, opens in a browser) run on **any OS**; the nati
 just a convenient wrapper around the same UI and is built for macOS only. The cryptographic
 runtime is entirely client-side; SSH is only the deployment channel.
 
+## Screenshots
+
+**Provisioning — desktop app** (overview and the service editor):
+
+<p align="center">
+  <img src="docs/screenshots/provision-overview.png" width="760" alt="Provision — overview"><br>
+  <img src="docs/screenshots/provision-service.png" width="760" alt="Provision — service">
+</p>
+
+**Client** — the macOS menu-bar app (import invites, knock, "keep open"):
+
+<p align="center">
+  <img src="docs/screenshots/client.png" width="330" alt="Client — popover">
+</p>
+
 ## Features
 
 - **Port-knock via a PSK-time-token** — staged UDP as a cheap filter + a `sha512` token bound
