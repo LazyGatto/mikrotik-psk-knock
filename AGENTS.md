@@ -45,7 +45,20 @@ the Go reference, the Swift client, and the rendered RouterOS rules.
 ## Release flow
 
 1. Update `CHANGELOG.md` (Keep-a-Changelog).
-2. Commit. 3. `git tag vX.Y.Z`. 4. Push the tag → CI builds & releases.
+2. Commit. 3. `git tag vX.Y.Z`. 4. Push the tag → CI builds & releases the Go
+   binaries (`mkpk`, `mkpk-provision`) and creates the GitLab Release.
+5. **Manual, macOS-only — the Wails provision-desktop app.** CI can't build it
+   (needs macOS + `wails` CLI + Xcode CLT), so build and attach it to the same
+   Release by hand:
+
+   ```sh
+   cd client && make desktop          # VERSION auto-resolves from the tag via git describe
+   # → cmd/mkpk-provision-desktop/build/bin/mkpk-provision-desktop.app
+   # zip the .app, then attach it to the release:
+   glab release upload vX.Y.Z mkpk-provision-desktop_vX.Y.Z_darwin.zip
+   ```
+   Needs `wails` (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`) + Xcode CLT.
+   (The separate `client-macos/` recipient app is a different artifact — see its AGENTS.md / issue for signed distribution.)
 
 `main` is protected; push over HTTPS via the `glab` credential helper. Pushing a
 tag is separate from pushing to protected `main`.
