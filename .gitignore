@@ -5,6 +5,10 @@ secrets/
 *.secret
 *.key
 *.pem
+# invite blobs (carry the PSK) and real configs — never commit; testdata is synthetic
+*.mkpk
+mkpk.yaml
+!client/testdata/mkpk.yaml
 routeros/generated-*.rsc
 # built Go binaries
 /client/mkpk
