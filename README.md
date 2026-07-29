@@ -13,7 +13,8 @@
 <p align="center">
   <a href="https://gitlab.eg23.ru/lazygatto/mikrotik-psk-knock/-/releases">Releases</a> ·
   <a href="docs/roadmap.md">Roadmap</a> ·
-  <a href="docs/man/">Man pages</a>
+  <a href="docs/man/">Man pages</a> ·
+  <a href="README.en.md">English</a>
 </p>
 
 ---
