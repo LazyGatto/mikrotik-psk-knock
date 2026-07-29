@@ -5,6 +5,8 @@ const TOKEN = window.MKPK_TOKEN;
 const I18N = {
   ru: {
     save: "Сохранить", cancel: "Отмена", close: "Закрыть", del: "Удалить", settings: "Настройки",
+    "offline.msg": "⚠ Нет связи с serve — бэкенд не запущен. Изменения не сохраняются. Перезапустите: mkpk-provision serve",
+    "offline.short": "нет связи с бэкендом (serve не запущен)",
     add: "Добавить", copy: "Скопировать", copied: "✓ Скопировано", loading: "загрузка…", error: "ошибка",
     "saved_to": "Сохранено: {path}",
     "note.add": "Добавить примечание", "note.title": "Примечание · {kind} {name}", "note.subtitle": "Хранится только в этом конфиге — на роутер не уходит",
@@ -138,6 +140,8 @@ const I18N = {
   },
   en: {
     save: "Save", cancel: "Cancel", close: "Close", del: "Delete", settings: "Settings",
+    "offline.msg": "⚠ No connection to serve — the backend is down. Changes aren't saved. Restart: mkpk-provision serve",
+    "offline.short": "backend is down (serve not running)",
     "note.add": "Add note", "note.title": "Note · {kind} {name}", "note.subtitle": "Stored in this config only — never sent to the router",
     "note.placeholder": "A note to self…", "note.clear": "Clear", "note.saved": "Note saved", "note.cleared": "Note removed",
     "note.kind.router": "router", "note.kind.service": "service", "note.kind.user": "user",
@@ -345,7 +349,10 @@ function toast(msg, isErr) {
 async function api(method, path, body) {
   const opts = { method, headers: { "X-MKPK-Token": TOKEN } };
   if (body !== undefined) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
-  const res = await fetch(path, opts);
+  let res;
+  try { res = await fetch(path, opts); }
+  catch (e) { setOnline(false); throw new Error(t("offline.short")); } // serve is down / unreachable
+  setOnline(true);
   const ct = res.headers.get("content-type") || "";
   if (ct.includes("application/json")) {
     const data = await res.json();
@@ -1550,5 +1557,33 @@ async function downloadText(text, filename) {
   a.download = filename; a.click();
 }
 
+// ---------- backend liveness ----------
+// The page keeps running after `serve` is killed; without this it silently stops
+// saving / checking. A heartbeat + a red bottom banner make the dead backend
+// obvious, and recovery auto-resyncs.
+let ONLINE = true;
+let offlineBanner = null;
+function ensureBanner() {
+  if (!offlineBanner) {
+    offlineBanner = h("div", { style: "position:fixed;bottom:0;left:0;right:0;z-index:300;background:var(--danger-strong);color:#fff;font-size:12.5px;font-weight:600;text-align:center;padding:8px 12px;box-shadow:0 -2px 12px rgba(0,0,0,.28);display:none" });
+    document.body.appendChild(offlineBanner);
+  }
+  return offlineBanner;
+}
+function setOnline(v) {
+  ensureBanner();
+  if (v === ONLINE) return;
+  ONLINE = v;
+  if (!v) offlineBanner.textContent = t("offline.msg");
+  offlineBanner.style.display = v ? "none" : "block";
+  if (v) reload().then(render).catch(() => {}); // recovered → resync
+}
+async function heartbeat() {
+  try { const r = await fetch("/ping", { cache: "no-store" }); setOnline(r.ok); }
+  catch { setOnline(false); }
+}
+function startHeartbeat() { ensureBanner(); heartbeat(); setInterval(heartbeat, 5000); }
+
 // ---------- boot ----------
+startHeartbeat();
 reload().then(startPolling).catch((e) => toast(e.message, true));

@@ -60,6 +60,13 @@ func mux(configPath, token string, desktop bool) *http.ServeMux {
 	s := &Server{configPath: configPath, token: token, desktop: desktop}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.index)
+	// Liveness probe for the UI heartbeat: no auth, no request-log noise (path is
+	// outside /api/), so the loaded page can tell when serve is gone.
+	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	})
 	mux.HandleFunc("/app.js", s.static("assets/app.js", "text/javascript; charset=utf-8"))
 	mux.HandleFunc("/style.css", s.static("assets/style.css", "text/css; charset=utf-8"))
 	mux.HandleFunc("/favicon.ico", s.static("assets/favicon-32.png", "image/png"))
