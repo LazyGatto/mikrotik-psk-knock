@@ -1,9 +1,13 @@
 import Foundation
 import AppKit
+import ServiceManagement
+import UserNotifications
 import UniformTypeIdentifiers
 import MkpkKit
 
 private let kDetailVariantKey = "mkpk.detailVariant"
+private let kNotificationsKey = "mkpk.notifications"
+private let kICloudSyncKey = "mkpk.iCloudSync"
 
 /// The app's observable state: the imported invites projected into router groups
 /// with per-service status, plus the knock/check actions. @MainActor so SwiftUI
@@ -112,6 +116,34 @@ final class AppModel: ObservableObject {
         didSet { UserDefaults.standard.set(detailVariant.rawValue, forKey: kDetailVariantKey) }
     }
 
+    // MARK: settings (#5)
+
+    /// Launch at login — truth lives in SMAppService; the stored value mirrors it.
+    @Published var launchAtLogin: Bool = (SMAppService.mainApp.status == .enabled) {
+        didSet { if !syncingLaunch { applyLaunchAtLogin() } }
+    }
+    private var syncingLaunch = false
+
+    /// Post a notification when a service opens / auto-closes.
+    @Published var notificationsEnabled: Bool = UserDefaults.standard.bool(forKey: kNotificationsKey) {
+        didSet {
+            UserDefaults.standard.set(notificationsEnabled, forKey: kNotificationsKey)
+            if notificationsEnabled { requestNotificationAuthorization() }
+        }
+    }
+    private var notificationsAuthorized = false
+
+    /// Sync imported invites via iCloud Keychain (needs a signed build to really
+    /// sync; the toggle swaps the storage backend and migrates existing invites).
+    @Published var iCloudSync: Bool = UserDefaults.standard.bool(forKey: kICloudSyncKey) {
+        didSet {
+            guard !syncingStorage, oldValue != iCloudSync else { return }
+            UserDefaults.standard.set(iCloudSync, forKey: kICloudSyncKey)
+            Task { await reconfigureStorage() }
+        }
+    }
+    private var syncingStorage = false
+
     private var countdownTimer: Timer?
 
     private static let hhmm: DateFormatter = {
@@ -140,12 +172,98 @@ final class AppModel: ObservableObject {
     var isEmpty: Bool { groups.isEmpty }
 
     func load() async {
-        // Persistent file backend (works unsigned; the signed build can add the
-        // Keychain/iCloud backend). Falls back to in-memory if it can't be created.
-        let storage: any InviteStorage = (try? FileInviteStorage()) ?? InMemoryInviteStorage()
-        store = try? InviteStore(storage: storage)
+        store = (try? InviteStore(storage: makeStorage()))
+             ?? (try? InviteStore(storage: (try? FileInviteStorage()) ?? InMemoryInviteStorage()))
         await rebuild()
         refreshPublicIP()
+        refreshNotificationAuthorization()
+    }
+
+    /// The invite storage backend for the current sync preference. File backend
+    /// works unsigned; the Keychain backend (synchronizable = iCloud Keychain)
+    /// really syncs only in a signed build.
+    private func makeStorage() -> any InviteStorage {
+        if iCloudSync {
+            return KeychainInviteStorage(synchronizable: true)
+        }
+        return (try? FileInviteStorage()) ?? InMemoryInviteStorage()
+    }
+
+    /// Swap the storage backend (on the iCloud toggle) and migrate existing
+    /// invites. Reverts the toggle if the new backend can't be written.
+    private func reconfigureStorage() async {
+        let existing = await store?.invites ?? []
+        do {
+            let newStore = try InviteStore(storage: makeStorage())
+            let have = Set(await newStore.invites.map { $0.id })
+            for inv in existing where !have.contains(inv.id) {
+                _ = try await newStore.importBlob(inv.blob)
+            }
+            store = newStore
+            lastError = nil
+            await rebuild()
+        } catch {
+            syncingStorage = true
+            iCloudSync.toggle()
+            UserDefaults.standard.set(iCloudSync, forKey: kICloudSyncKey)
+            syncingStorage = false
+            lastError = "Не удалось переключить хранилище (для iCloud нужна подписанная сборка)."
+        }
+    }
+
+    // MARK: autostart / notifications
+
+    private func applyLaunchAtLogin() {
+        let svc = SMAppService.mainApp
+        do {
+            if launchAtLogin {
+                if svc.status != .enabled { try svc.register() }
+            } else if svc.status == .enabled {
+                try svc.unregister()
+            }
+        } catch {
+            lastError = "Не удалось изменить автозапуск (нужна собранная .app)."
+            syncingLaunch = true
+            launchAtLogin = (svc.status == .enabled)
+            syncingLaunch = false
+        }
+    }
+
+    private func requestNotificationAuthorization() {
+        guard Bundle.main.bundleIdentifier != nil else {
+            lastError = "Уведомления доступны только в собранной .app."
+            notificationsEnabled = false
+            return
+        }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { [weak self] granted, error in
+            let message = error?.localizedDescription
+            Task { @MainActor in
+                guard let self else { return }
+                self.notificationsAuthorized = granted
+                if !granted {
+                    self.notificationsEnabled = false
+                    self.lastError = message
+                        ?? "Уведомления не разрешены — включите их в Системных настройках (или нужна подписанная сборка)."
+                }
+            }
+        }
+    }
+
+    private func refreshNotificationAuthorization() {
+        guard Bundle.main.bundleIdentifier != nil else { return }
+        UNUserNotificationCenter.current().getNotificationSettings { [weak self] s in
+            let authorized = (s.authorizationStatus == .authorized)
+            Task { @MainActor in self?.notificationsAuthorized = authorized }
+        }
+    }
+
+    private func notify(_ title: String, _ body: String) {
+        guard notificationsEnabled, notificationsAuthorized, Bundle.main.bundleIdentifier != nil else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        UNUserNotificationCenter.current().add(
+            UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
     }
 
     /// Best-effort public-IP lookup (DNS→OpenDNS with HTTP fallbacks), cached in
@@ -283,6 +401,7 @@ final class AppModel: ObservableObject {
                 let until = vm.service.allowedTimeout.flatMap(GoDuration.seconds).map { Date().addingTimeInterval($0) }
                 update(vm.id, .open, openUntil: until)
                 appendLog(vm.id, .open, note)
+                notify("Доступ открыт", "\(vm.name) · \(vm.routerAddress)")
                 ensureCountdownTimer()
             case .closed:
                 update(vm.id, .closed, openUntil: nil)
@@ -370,8 +489,10 @@ final class AppModel: ObservableObject {
         for gi in groups.indices {
             for si in groups[gi].services.indices where groups[gi].services[si].status == .open {
                 if let until = groups[gi].services[si].openUntil, until <= now {
+                    let svc = groups[gi].services[si]
                     groups[gi].services[si].status = .closed
                     groups[gi].services[si].openUntil = nil
+                    notify("Доступ закрыт", "\(svc.name) · \(svc.routerAddress)")
                 }
             }
         }

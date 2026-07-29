@@ -85,5 +85,17 @@ PLIST
 
 printf 'APPL????' > "$CONTENTS/PkgInfo"
 
+# Ad-hoc sign (free, no Apple account): gives a stable code identity so local
+# notifications / Keychain accept the app. Real distribution/iCloud needs a
+# Developer ID signature (sign.sh). Override the identity with MKPK_SIGN_ID.
+SIGN_ID="${MKPK_SIGN_ID:--}"   # "-" = ad-hoc
+if command -v codesign >/dev/null; then
+  if codesign --force --sign "$SIGN_ID" --timestamp=none "$APP" >/dev/null 2>&1; then
+    echo "✓ Signed ($([ "$SIGN_ID" = "-" ] && echo ad-hoc || echo "$SIGN_ID"))"
+  else
+    echo "⚠︎ codesign failed — notifications/Keychain may reject the app"
+  fi
+fi
+
 echo "✓ Built $APP  (id=$BUNDLE_ID version=$VERSION build=$BUILD_NUM)"
 echo "  open \"$APP\"   # launch the bundled app"

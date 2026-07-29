@@ -137,11 +137,20 @@ struct PopoverView: View {
     @State private var dropTargeted = false
 
     var body: some View {
-        Group {
-            switch model.screen {
-            case .main: mainScreen
-            case .detail(let id): detailScreen(id)
-            case .settings: SettingsView(model: model)
+        VStack(spacing: 0) {
+            if let err = model.lastError {
+                Text(err).font(.system(size: 11)).foregroundStyle(Palette.error)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 14).padding(.vertical, 6)
+                    .background(Palette.error.opacity(0.12))
+                    .onTapGesture { model.lastError = nil }
+            }
+            Group {
+                switch model.screen {
+                case .main: mainScreen
+                case .detail(let id): detailScreen(id)
+                case .settings: SettingsView(model: model)
+                }
             }
         }
         .frame(width: 380)
@@ -171,13 +180,6 @@ struct PopoverView: View {
         VStack(spacing: 0) {
             header
             Divider()
-            if let err = model.lastError {
-                Text(err).font(.system(size: 11)).foregroundStyle(Palette.error)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 14).padding(.vertical, 6)
-                    .background(Palette.error.opacity(0.1))
-                    .onTapGesture { model.lastError = nil }
-            }
             if model.isEmpty {
                 emptyState
             } else {
@@ -535,21 +537,39 @@ struct SettingsView: View {
             Divider()
             FittingScroll {
                 VStack(alignment: .leading, spacing: 14) {
-                    section("ДЕТАЛИ СЕРВИСА") {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Picker("", selection: $model.detailVariant) {
-                                Text("Инлайн").tag(AppModel.DetailVariant.inline)
-                                Text("Экран").tag(AppModel.DetailVariant.screen)
-                            }
-                            .pickerStyle(.segmented).labelsHidden()
-                            Text("Как открывать детали и лог сервиса: раскрытием строки на месте или отдельным экраном.")
-                                .font(.system(size: 10.5)).foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
+                    section("ОБЩЕЕ") {
+                        card {
+                            toggleRow("Автозапуск при входе",
+                                      "Запускать mkpk при входе в систему.",
+                                      isOn: $model.launchAtLogin)
+                            Divider()
+                            toggleRow("Уведомления",
+                                      "Сообщать, когда доступ открылся или закрылся.",
+                                      isOn: $model.notificationsEnabled)
                         }
-                        .padding(11)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(RoundedRectangle(cornerRadius: 9).fill(Color(.textBackgroundColor).opacity(0.5)))
-                        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.primary.opacity(0.08)))
+                    }
+
+                    section("СИНХРОНИЗАЦИЯ") {
+                        card {
+                            toggleRow("iCloud",
+                                      "Синхронизировать инвайты через iCloud Keychain. Реальная синхронизация — в подписанной сборке.",
+                                      isOn: $model.iCloudSync)
+                        }
+                    }
+
+                    section("ДЕТАЛИ СЕРВИСА") {
+                        card {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Picker("", selection: $model.detailVariant) {
+                                    Text("Инлайн").tag(AppModel.DetailVariant.inline)
+                                    Text("Экран").tag(AppModel.DetailVariant.screen)
+                                }
+                                .pickerStyle(.segmented).labelsHidden()
+                                Text("Как открывать детали и лог сервиса: раскрытием строки на месте или отдельным экраном.")
+                                    .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
                     }
 
                     HStack(spacing: 8) {
@@ -570,6 +590,27 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title).font(.system(size: 10, weight: .semibold)).tracking(0.6).foregroundStyle(.secondary)
             content()
+        }
+    }
+
+    @ViewBuilder
+    private func card<C: View>(@ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 8) { content() }
+            .padding(11)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 9).fill(Color(.textBackgroundColor).opacity(0.5)))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.primary.opacity(0.08)))
+    }
+
+    private func toggleRow(_ title: String, _ subtitle: String, isOn: Binding<Bool>) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.system(size: 12.5, weight: .medium))
+                Text(subtitle).font(.system(size: 10.5)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Toggle("", isOn: isOn).labelsHidden().toggleStyle(.switch).tint(Palette.accent)
         }
     }
 }
