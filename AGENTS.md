@@ -54,8 +54,9 @@ the Go reference, the Swift client, and the rendered RouterOS rules.
    ```sh
    cd client && make desktop          # VERSION auto-resolves from the tag via git describe
    # → cmd/mkpk-provision-desktop/build/bin/mkpk-provision-desktop.app
-   # zip the .app, then attach it to the release:
-   glab release upload vX.Y.Z mkpk-provision-desktop_vX.Y.Z_darwin.zip
+   ../client-macos/script/make_dmg.sh cmd/mkpk-provision-desktop/build/bin/mkpk-provision-desktop.app \
+     /tmp/mkpk-provision-desktop_vX.Y.Z_darwin_arm64.dmg mkpk-provision
+   glab release upload vX.Y.Z /tmp/mkpk-provision-desktop_vX.Y.Z_darwin_arm64.dmg
    ```
    Needs `wails` (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`) + Xcode CLT.
 6. **Manual, macOS-only — the `client-macos/` recipient app.** Also built by hand
@@ -63,12 +64,13 @@ the Go reference, the Swift client, and the rendered RouterOS rules.
 
    ```sh
    cd client-macos && MKPK_VERSION=vX.Y.Z script/build_app.sh   # → .build/mkpk.app (ad-hoc signed)
-   ditto -c -k --keepParent client-macos/.build/mkpk.app mkpk-client_vX.Y.Z_darwin_arm64.zip
-   glab release upload vX.Y.Z mkpk-client_vX.Y.Z_darwin_arm64.zip
+   script/make_dmg.sh .build/mkpk.app /tmp/mkpk-client_vX.Y.Z_darwin_arm64.dmg mkpk
+   glab release upload vX.Y.Z /tmp/mkpk-client_vX.Y.Z_darwin_arm64.dmg
    ```
-   Both macOS bundles are ad-hoc signed (arm64), so downloaders hit Gatekeeper
-   quarantine — clear it with `xattr -cr <app>.app`; a real Developer ID signature
-   + notarization is the proper fix (tracked in the issues).
+   Both macOS apps ship as **drag-to-Applications DMGs** (`client-macos/script/make_dmg.sh`,
+   no deps — hdiutil + an /Applications symlink), ad-hoc signed arm64. Downloaders
+   hit Gatekeeper quarantine — clear it with `xattr -cr <app>.app`; a real Developer
+   ID signature + notarization is the proper fix (tracked in the issues).
 
 `main` is protected; push over HTTPS via the `glab` credential helper. Pushing a
 tag is separate from pushing to protected `main`.
