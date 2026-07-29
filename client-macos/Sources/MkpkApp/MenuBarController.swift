@@ -18,12 +18,15 @@ final class PanelHostingView<Content: View>: NSHostingView<Content> {
 final class MenuBarController: NSObject {
     private let statusItem: NSStatusItem
     private let panel: NSPanel
+    private let model: AppModel
     private var outsideClickMonitor: Any?
     private var modalSuspended = false   // an out-of-process modal (open panel) is up
     private var pinned = false           // user pinned the popover (to drag a file in)
     private var isRefitting = false      // re-entrancy guard for the layout-driven refit
+    private var maxPanelHeight: CGFloat = 640
 
     init(model: AppModel) {
+        self.model = model
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 380, height: 480),
                         styleMask: [.borderless, .nonactivatingPanel],
@@ -102,9 +105,19 @@ final class MenuBarController: NSObject {
     func openForDev() { show() }
 
     private func show() {
+        updateMaxHeight()
         positionPanel()
         panel.makeKeyAndOrderFront(nil)
         if !dismissalSuspended { installMonitor() }
+    }
+
+    /// Cap the popover at the screen's visible height (minus small margins) so it
+    /// grows nearly full-height before falling back to an internal scroll view.
+    private func updateMaxHeight() {
+        let screen = statusItem.button?.window?.screen ?? NSScreen.main
+        guard let vf = screen?.visibleFrame else { return }
+        maxPanelHeight = max(300, vf.height - 24)
+        if model.maxPanelHeight != maxPanelHeight { model.maxPanelHeight = maxPanelHeight }
     }
 
     private func hide() {
@@ -119,7 +132,7 @@ final class MenuBarController: NSObject {
         panel.layoutIfNeeded()
         var size = panel.contentView?.fittingSize ?? NSSize(width: 380, height: 480)
         size.width = 380
-        size.height = min(max(size.height, 200), 640)
+        size.height = min(max(size.height, 200), maxPanelHeight)
         return size
     }
 

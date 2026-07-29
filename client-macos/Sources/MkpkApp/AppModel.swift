@@ -3,6 +3,8 @@ import AppKit
 import UniformTypeIdentifiers
 import MkpkKit
 
+private let kDetailVariantKey = "mkpk.detailVariant"
+
 /// The app's observable state: the imported invites projected into router groups
 /// with per-service status, plus the knock/check actions. @MainActor so SwiftUI
 /// can bind directly.
@@ -11,6 +13,33 @@ final class AppModel: ObservableObject {
     enum ServiceStatus: Equatable {
         case unknown, checking, knocking, open, closed, error
     }
+
+    /// Outcome of a knock/check attempt, recorded in the per-service log.
+    enum LogResult: String {
+        case open, closed, timeout, error, sent
+        var label: String {
+            switch self {
+            case .open: return "open"
+            case .closed: return "closed"
+            case .timeout: return "timeout"
+            case .error: return "ошибка"
+            case .sent: return "отправлено"
+            }
+        }
+    }
+
+    struct LogEntry: Identifiable {
+        let id = UUID()
+        let time: Date
+        let result: LogResult
+        let note: String        // "knock+check" / "check" / "knock"
+    }
+
+    /// How per-service details are presented (persisted; chosen in Settings).
+    enum DetailVariant: String { case inline, screen }
+
+    /// Which screen the popover shows.
+    enum Screen: Equatable { case main, detail(String), settings }
 
     struct ServiceVM: Identifiable {
         let id: String
@@ -64,7 +93,30 @@ final class AppModel: ObservableObject {
     }
     @Published var now: Date = Date()   // ticks while a service countdown is live
 
+    /// Max popover height before it scrolls — set by the controller from the
+    /// screen's visible height, so the panel grows almost full-height first.
+    @Published var maxPanelHeight: CGFloat = 640
+
+    /// The client's public egress IP — the address the router will open access
+    /// for (best-effort; shown in the footer). nil until fetched / on failure.
+    @Published var publicIP: String?
+
+    // Per-service attempt log (newest first), keyed by service id.
+    @Published var logs: [String: [LogEntry]] = [:]
+
+    // Navigation / presentation.
+    @Published var screen: Screen = .main
+    @Published var expandedServiceID: String?   // inline-expanded row (nil = none)
+    @Published var detailVariant: DetailVariant =
+        (UserDefaults.standard.string(forKey: kDetailVariantKey).flatMap(DetailVariant.init(rawValue:))) ?? .inline {
+        didSet { UserDefaults.standard.set(detailVariant.rawValue, forKey: kDetailVariantKey) }
+    }
+
     private var countdownTimer: Timer?
+
+    private static let hhmm: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "HH:mm"; return f
+    }()
 
     /// Set by the menu-bar controller: pause/resume the outside-click dismissal
     /// while a modal (the open panel, which runs out-of-process) is up, so the
@@ -93,6 +145,13 @@ final class AppModel: ObservableObject {
         let storage: any InviteStorage = (try? FileInviteStorage()) ?? InMemoryInviteStorage()
         store = try? InviteStore(storage: storage)
         await rebuild()
+        refreshPublicIP()
+    }
+
+    /// Best-effort public-IP lookup (DNS→OpenDNS with HTTP fallbacks), cached in
+    /// `publicIP`. Failures are silent — the footer falls back to generic wording.
+    func refreshPublicIP() {
+        Task { if let ip = await PublicIP.resolve() { publicIP = ip } }
     }
 
     @discardableResult
@@ -198,27 +257,83 @@ final class AppModel: ObservableObject {
         Task {
             do {
                 try await Knock.perform(Knock.options(router: vm.router, service: vm.service, clientID: vm.clientID))
-                if vm.canCheck { check(vm) } else { update(vm.id, .unknown) }
+                if vm.canCheck {
+                    runCheck(vm, note: "knock+check")
+                } else {
+                    appendLog(vm.id, .sent, "knock")   // no check_port → can't verify
+                    update(vm.id, .unknown)
+                }
             } catch {
+                appendLog(vm.id, .error, "knock")
                 update(vm.id, .error)
             }
         }
     }
 
-    func check(_ vm: ServiceVM) {
+    func check(_ vm: ServiceVM) { runCheck(vm, note: "check") }
+
+    private func runCheck(_ vm: ServiceVM, note: String) {
         guard vm.canCheck else { return }
         update(vm.id, .checking)
         Task {
             let res = await Check.run(CheckOptions(host: vm.routerAddress, port: vm.checkPort, timeout: 1, attempts: 6, interval: 0.5))
-            if res.status == .open {
+            switch res.status {
+            case .open:
                 // Arm the countdown from the service's allowed timeout, if known.
                 let until = vm.service.allowedTimeout.flatMap(GoDuration.seconds).map { Date().addingTimeInterval($0) }
                 update(vm.id, .open, openUntil: until)
+                appendLog(vm.id, .open, note)
                 ensureCountdownTimer()
-            } else {
+            case .closed:
                 update(vm.id, .closed, openUntil: nil)
+                appendLog(vm.id, .closed, note)
+            case .error:
+                update(vm.id, .closed, openUntil: nil)
+                appendLog(vm.id, .timeout, note)   // refused/timeout — refined by diagnostics later
             }
         }
+    }
+
+    private func appendLog(_ id: String, _ result: LogResult, _ note: String) {
+        var arr = logs[id] ?? []
+        arr.insert(LogEntry(time: Date(), result: result, note: note), at: 0)
+        if arr.count > 20 { arr.removeLast(arr.count - 20) }
+        logs[id] = arr
+    }
+
+    // MARK: navigation + detail helpers
+
+    func service(id: String) -> ServiceVM? {
+        for g in groups { if let s = g.services.first(where: { $0.id == id }) { return s } }
+        return nil
+    }
+
+    /// Chevron tap: expand inline, or navigate to the detail screen.
+    func openDetails(_ vm: ServiceVM) {
+        switch detailVariant {
+        case .inline: expandedServiceID = (expandedServiceID == vm.id) ? nil : vm.id
+        case .screen: screen = .detail(vm.id)
+        }
+    }
+
+    func showMain() { screen = .main }
+    func showSettings() { screen = .settings }
+
+    func lastKnockText(for id: String) -> String {
+        guard let d = logs[id]?.first?.time else { return "—" }
+        return Self.hhmm.string(from: d)
+    }
+
+    func timeLabel(_ d: Date) -> String { Self.hhmm.string(from: d) }
+
+    /// Friendly TTL from the service's allowed_timeout (e.g. "8 мин", "1 ч 30 мин").
+    func ttlText(_ vm: ServiceVM) -> String {
+        guard let s = vm.service.allowedTimeout, let secs = GoDuration.seconds(s), secs > 0 else { return "—" }
+        let total = Int(secs.rounded())
+        let h = total / 3600, m = (total % 3600) / 60, sec = total % 60
+        if h > 0 { return m > 0 ? "\(h) ч \(m) мин" : "\(h) ч" }
+        if m > 0 { return sec > 0 ? "\(m) мин \(sec) с" : "\(m) мин" }
+        return "\(sec) с"
     }
 
     private func update(_ id: String, _ status: ServiceStatus, openUntil: Date?? = nil) {
