@@ -156,46 +156,53 @@ func knockCmd(args []string) error {
 	}); err != nil {
 		return err
 	}
+	// Optionally verify the target port opened. We always compute a Result (not
+	// servicecheck.Run) so the outcome can be reported in both JSON and text.
+	var chk *servicecheck.Result
+	var host string
+	var port int
+	if *check {
+		host, port = resolveCheckTarget(res, router, *checkHost, *checkPort)
+		if *debug {
+			fmt.Printf("check_host=%s check_port=%d check_timeout=%s check_attempts=%d check_interval=%s\n",
+				host, port, *checkTimeout, *checkAttempts, *checkInterval)
+		}
+		r := servicecheck.Check(servicecheck.Options{
+			Host: host, Port: port, Timeout: *checkTimeout, Attempts: *checkAttempts, Interval: *checkInterval, Logf: logf,
+		})
+		chk = &r
+	}
+
 	if *jsonOut {
 		out := map[string]any{
 			"router": router, "service": res.Service.ServiceName,
 			"client_id": res.ClientID, "bucket": bucket, "knocked": true,
 		}
-		var checkErr error
-		if *check {
-			host, port := resolveCheckTarget(res, router, *checkHost, *checkPort)
-			r := servicecheck.Check(servicecheck.Options{
-				Host: host, Port: port, Timeout: *checkTimeout, Attempts: *checkAttempts, Interval: *checkInterval,
-			})
+		if chk != nil {
 			out["check"] = map[string]any{
-				"status": r.Status, "host": host, "port": port,
-				"attempts": r.Attempts, "duration_ms": r.Duration.Milliseconds(),
-			}
-			if r.Status != "open" {
-				checkErr = silentError{fmt.Errorf("port %s", r.Status)} // exit non-zero, JSON already printed
+				"status": chk.Status, "host": host, "port": port,
+				"attempts": chk.Attempts, "duration_ms": chk.Duration.Milliseconds(),
 			}
 		}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		_ = enc.Encode(out)
-		return checkErr
+	} else {
+		// A concise result line so success isn't silent (useful in Ansible etc.).
+		line := fmt.Sprintf("knock sent: router=%s service=%s client=%s bucket=%d",
+			router, res.Service.ServiceName, res.ClientID, bucket)
+		if chk != nil {
+			line += fmt.Sprintf("; check %s (port %d, %dms)", chk.Status, port, chk.Duration.Milliseconds())
+		}
+		fmt.Println(line)
 	}
-	if !*check {
-		return nil
+
+	// Non-zero exit when the check ran and the port isn't open (output already
+	// printed, so don't add an "error:" line on top).
+	if chk != nil && chk.Status != "open" {
+		return silentError{fmt.Errorf("port %s", chk.Status)}
 	}
-	host, port := resolveCheckTarget(res, router, *checkHost, *checkPort)
-	if *debug {
-		fmt.Printf("check_host=%s check_port=%d check_timeout=%s check_attempts=%d check_interval=%s\n",
-			host, port, *checkTimeout, *checkAttempts, *checkInterval)
-	}
-	return servicecheck.Run(servicecheck.Options{
-		Host:     host,
-		Port:     port,
-		Timeout:  *checkTimeout,
-		Attempts: *checkAttempts,
-		Interval: *checkInterval,
-		Logf:     logf,
-	})
+	return nil
 }
 
 func checkCmd(args []string) error {
@@ -245,14 +252,19 @@ func checkCmd(args []string) error {
 		if err := printCheckJSON(result); err != nil {
 			return err
 		}
+	} else {
+		// Don't stay silent on success — print a concise result line.
+		line := fmt.Sprintf("check %s: %s:%d (%dms)", result.Status, host, port, result.Duration.Milliseconds())
+		if result.Status != "open" && result.LastError != "" {
+			line += " — " + result.LastError
+		}
+		fmt.Println(line)
 	}
-	if result.Status == "open" {
-		return nil
-	}
-	if *jsonOutput {
+	if result.Status != "open" {
+		// Output already printed above, so don't add an "error:" line on top.
 		return silentError{err: fmt.Errorf("%s", result.LastError)}
 	}
-	return fmt.Errorf("%s", result.LastError)
+	return nil
 }
 
 type checkJSON struct {
