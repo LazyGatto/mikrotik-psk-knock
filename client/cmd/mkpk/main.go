@@ -111,6 +111,7 @@ func knockCmd(args []string) error {
 	checkAttempts := fs.Int("check-attempts", 10, "TCP check attempts after knock")
 	checkInterval := fs.Duration("check-interval", 500*time.Millisecond, "delay between TCP check attempts")
 	debug := fs.Bool("debug", false, "print knock metadata")
+	jsonOut := fs.Bool("json", false, "print the result as JSON (includes the check when --check)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -154,6 +155,30 @@ func knockCmd(args []string) error {
 		Logf:          logf,
 	}); err != nil {
 		return err
+	}
+	if *jsonOut {
+		out := map[string]any{
+			"router": router, "service": res.Service.ServiceName,
+			"client_id": res.ClientID, "bucket": bucket, "knocked": true,
+		}
+		var checkErr error
+		if *check {
+			host, port := resolveCheckTarget(res, router, *checkHost, *checkPort)
+			r := servicecheck.Check(servicecheck.Options{
+				Host: host, Port: port, Timeout: *checkTimeout, Attempts: *checkAttempts, Interval: *checkInterval,
+			})
+			out["check"] = map[string]any{
+				"status": r.Status, "host": host, "port": port,
+				"attempts": r.Attempts, "duration_ms": r.Duration.Milliseconds(),
+			}
+			if r.Status != "open" {
+				checkErr = silentError{fmt.Errorf("port %s", r.Status)} // exit non-zero, JSON already printed
+			}
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(out)
+		return checkErr
 	}
 	if !*check {
 		return nil
