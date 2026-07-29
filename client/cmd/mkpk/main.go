@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -17,12 +18,33 @@ import (
 )
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
-		if !isSilentError(err) {
-			fmt.Fprintln(os.Stderr, "error:", err)
-		}
-		os.Exit(1)
+	err := run(os.Args[1:])
+	if err == nil {
+		return
 	}
+	// `-h`/`--help` surfaces as flag.ErrHelp after the flag package already
+	// printed the usage — it's not a real error, so don't tack on "error: …".
+	if errors.Is(err, flag.ErrHelp) {
+		os.Exit(0)
+	}
+	if !isSilentError(err) {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		if cmd := subcommand(os.Args[1:]); cmd != "" {
+			fmt.Fprintf(os.Stderr, "run `mkpk %s -h` for all options\n", cmd)
+		} else {
+			fmt.Fprintln(os.Stderr, "run `mkpk help` for usage")
+		}
+	}
+	os.Exit(1)
+}
+
+// subcommand returns knock/check when that's what was invoked, so an error can
+// point at the right `-h`.
+func subcommand(args []string) string {
+	if len(args) > 0 && (args[0] == "knock" || args[0] == "check") {
+		return args[0]
+	}
+	return ""
 }
 
 type silentError struct {
@@ -63,6 +85,8 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `Usage:
   mkpk knock (--invite @laptop.mkpk | --config mkpk.yaml --client laptop [--router name]) [--service name] [--check] [--debug]
   mkpk check (--invite @laptop.mkpk | --config mkpk.yaml --client laptop [--router name]) [--service name] [--host host] [--port port] [--json] [--debug]
+
+Run `+"`mkpk knock -h`"+` or `+"`mkpk check -h`"+` for all options (e.g. --noise, --min-bucket-age, --stage-duration).
 `)
 }
 
