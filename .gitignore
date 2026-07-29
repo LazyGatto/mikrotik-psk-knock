@@ -18,3 +18,7 @@ routeros/generated-*.rsc
 /client/cmd/mkpk-provision-desktop/build/bin/
 # Wails auto-generated JS runtime bindings (unused — frontend is served by our handler)
 /client/cmd/mkpk-provision-desktop/frontend/wailsjs/
+
+# local scratch (raw screenshots, etc.)
+/tmp/
+tmp/
