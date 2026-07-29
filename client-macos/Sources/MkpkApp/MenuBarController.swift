@@ -34,12 +34,10 @@ final class MenuBarController: NSObject {
         super.init()
 
         if let button = statusItem.button {
-            let image = NSImage(systemSymbolName: "shield.lefthalf.filled", accessibilityDescription: "mkpk")
-            image?.isTemplate = true
-            button.image = image
             button.action = #selector(togglePanel)
             button.target = self
         }
+        applyMenuState(.idle)
 
         panel.isFloatingPanel = true
         panel.level = .statusBar
@@ -70,6 +68,31 @@ final class MenuBarController: NSObject {
         }
         // Refit the panel to its content after the groups/error change.
         model.onContentChanged = { [weak self] in self?.refitIfNeeded() }
+        // Reflect the aggregated state in the menu-bar icon.
+        model.onMenuStateChanged = { [weak self] state in self?.applyMenuState(state) }
+    }
+
+    /// Menu-bar icon by state: neutral shield (idle, template/adaptive), a green
+    /// "access open" shield, or an amber attention shield.
+    private func applyMenuState(_ state: AppModel.MenuBarState) {
+        guard let button = statusItem.button else { return }
+        let symbol: String
+        let tint: NSColor?
+        switch state {
+        case .idle:      symbol = "shield.lefthalf.filled"; tint = nil
+        case .open:      symbol = "checkmark.shield.fill";  tint = .systemGreen
+        case .attention: symbol = "exclamationmark.shield.fill"; tint = .systemOrange
+        }
+        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "mkpk")
+        if let tint {
+            let cfg = NSImage.SymbolConfiguration(paletteColors: [tint])
+            let colored = image?.withSymbolConfiguration(cfg)
+            colored?.isTemplate = false
+            button.image = colored
+        } else {
+            image?.isTemplate = true   // adapts to the menu-bar appearance
+            button.image = image
+        }
     }
 
     private func installMonitor() {

@@ -46,6 +46,9 @@ final class AppModel: ObservableObject {
     /// Which screen the popover shows.
     enum Screen: Equatable { case main, detail(String), settings }
 
+    /// Aggregated menu-bar icon state.
+    enum MenuBarState: Equatable { case idle, open, attention }
+
     struct ServiceVM: Identifiable {
         let id: String
         let name: String
@@ -172,6 +175,28 @@ final class AppModel: ObservableObject {
     /// Set by the menu-bar controller: refit the panel to its content after the
     /// groups change (import, error banner appearing/disappearing).
     var onContentChanged: (() -> Void)?
+
+    /// Set by the menu-bar controller: reflect the aggregated state in the icon.
+    var onMenuStateChanged: ((MenuBarState) -> Void)?
+    private var lastMenuState: MenuBarState = .idle
+
+    /// idle / open (something is open) / attention (a service errored or keep-open gave up).
+    var menuBarState: MenuBarState {
+        var open = false, attention = false
+        for g in groups {
+            for s in g.services {
+                if s.status == .error { attention = true }
+                if s.status == .open { open = true }
+            }
+        }
+        if attention { return .attention }
+        return open ? .open : .idle
+    }
+
+    private func refreshMenuState() {
+        let s = menuBarState
+        if s != lastMenuState { lastMenuState = s; onMenuStateChanged?(s) }
+    }
 
     @Published var pinned: Bool = false {
         didSet { onPinChanged?(pinned) }
@@ -381,6 +406,7 @@ final class AppModel: ObservableObject {
         let present = Set(groups.flatMap { $0.services.map(\.id) })
         keepOpenIDs.formIntersection(present)
         ensureCountdownTimer()
+        refreshMenuState()
         onContentChanged?()
     }
 
@@ -558,6 +584,7 @@ final class AppModel: ObservableObject {
             if let si = groups[gi].services.firstIndex(where: { $0.id == id }) {
                 groups[gi].services[si].status = status
                 if let openUntil { groups[gi].services[si].openUntil = openUntil }
+                refreshMenuState()
                 return
             }
         }
@@ -606,5 +633,6 @@ final class AppModel: ObservableObject {
         }
         maintainKeepOpen()
         ensureCountdownTimer()
+        refreshMenuState()
     }
 }
