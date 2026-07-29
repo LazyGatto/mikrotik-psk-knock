@@ -63,6 +63,8 @@ func run(args []string) error {
 		return exportCmd(args[1:])
 	case "deploy":
 		return deployCmd(args[1:])
+	case "test":
+		return testCmd(args[1:])
 	case "serve":
 		return serveCmd(args[1:])
 	case "version", "--version", "-v":
@@ -91,6 +93,7 @@ func usage() {
   mkpk-provision routeros render --config mkpk.yaml [--router r1] [--out generated.rsc]
   mkpk-provision export --config mkpk.yaml --user laptop [--router r1] [--out laptop.mkpk]   # all routers when --router omitted
   mkpk-provision deploy [status|uninstall] --config mkpk.yaml [--router r1] [--json]   # creds come from the router
+  mkpk-provision test --config mkpk.yaml [--router r1] --client laptop [--service ssh] [--wait 4s]   # end-to-end knock test over SSH
   mkpk-provision serve --config mkpk.yaml [--addr 127.0.0.1:8765]
 `)
 }
@@ -634,6 +637,41 @@ func deployCmd(args []string) error {
 		}
 		return nil
 	}
+}
+
+func testCmd(args []string) error {
+	fs := flag.NewFlagSet("test", flag.ContinueOnError)
+	configPath := fs.String("config", config.DefaultPath(), "config path")
+	routerName := fs.String("router", "", "router name; sole router when empty")
+	clientName := fs.String("client", "", "user name to knock as")
+	serviceName := fs.String("service", "", "service name; sole service when empty")
+	wait := fs.Duration("wait", 4*time.Second, "wait after knocking before reading router state")
+	asJSON := fs.Bool("json", false, "print the result as JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *clientName == "" {
+		return fmt.Errorf("--client is required")
+	}
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	rn, err := pickRouter(cfg, *routerName)
+	if err != nil {
+		return err
+	}
+	logf := func(format string, a ...any) { fmt.Printf(format+"\n", a...) }
+	res, err := admin.KnockTest(cfg, rn, *serviceName, *clientName, *wait,
+		admin.DeployOptions{OnLog: func(line string) { fmt.Println("  " + line) }}, logf)
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return json.NewEncoder(os.Stdout).Encode(res)
+	}
+	fmt.Printf("\n%s: %s\n", map[bool]string{true: "PASS", false: "FAIL"}[res.Pass], res.Diagnosis)
+	return nil
 }
 
 func serveCmd(args []string) error {
