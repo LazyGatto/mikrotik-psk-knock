@@ -514,6 +514,15 @@ struct ServiceDetailView: View {
 struct SettingsView: View {
     @ObservedObject var model: AppModel
 
+    /// "mkpk · Knock first · <version>" — version present only in the .app bundle.
+    static var aboutLine: String {
+        let base = "mkpk · Knock first"
+        if let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String, !v.isEmpty {
+            return base + " · " + v
+        }
+        return base
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
@@ -546,7 +555,7 @@ struct SettingsView: View {
                     HStack(spacing: 8) {
                         Brand.logo(.dark)
                             .resizable().interpolation(.high).frame(width: 16, height: 16)
-                        Text("mkpk · Knock first").font(.system(size: 11)).foregroundStyle(.secondary)
+                        Text(Self.aboutLine).font(.system(size: 11)).foregroundStyle(.secondary)
                         Spacer()
                     }
                     .padding(.top, 2)
