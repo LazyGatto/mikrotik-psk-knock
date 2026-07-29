@@ -37,8 +37,13 @@ mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 
 cp "$BIN_DIR/$EXE" "$CONTENTS/MacOS/$EXE"
 
-# SwiftPM resource bundle (icons via Bundle.module).
+# SwiftPM resource bundle (icons via Bundle.module). The generated Bundle.module
+# accessor for the executable resolves it at Bundle.main.bundleURL/<bundle> — i.e.
+# the .app ROOT, not Contents/Resources — so it MUST live there or the app crashes
+# on any machine other than the one it was built on (which falls back to the
+# baked-in .build path). Copy to both to be safe.
 if [[ -d "$BIN_DIR/$RES_BUNDLE" ]]; then
+  cp -R "$BIN_DIR/$RES_BUNDLE" "$APP/"
   cp -R "$BIN_DIR/$RES_BUNDLE" "$CONTENTS/Resources/"
 else
   echo "⚠︎ resource bundle $RES_BUNDLE not found in $BIN_DIR — icons will fall back to SF Symbol"
