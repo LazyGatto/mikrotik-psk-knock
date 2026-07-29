@@ -367,8 +367,17 @@ add name="mkpk-tt-poller" policy=read,write,test source={
         :local tokenPort ($c->"tokenPort")
         :local nowMsg ($psk . "|v1|" . $service . "|" . $clientId . "|" . $nb . "|" . $psk)
         :local prevMsg ($psk . "|v1|" . $service . "|" . $clientId . "|" . $pb . "|" . $psk)
-        /ip firewall filter set $nowRule content=[:convert $nowMsg from=raw to=hex transform=sha512] disabled=no dst-port=$tokenPort
-        /ip firewall filter set $prevRule content=[:convert $prevMsg from=raw to=hex transform=sha512] disabled=no dst-port=$tokenPort
+        :local nowTok [:convert $nowMsg from=raw to=hex transform=sha512]
+        :local prevTok [:convert $prevMsg from=raw to=hex transform=sha512]
+        # Only set when the bucket actually rolled — RouterOS logs every rule
+        # change, and the poller runs every 1s while the token changes every
+        # bucket, so an unconditional set floods system,info.
+        :if ([/ip firewall filter get $nowRule content] != $nowTok) do={
+            /ip firewall filter set $nowRule content=$nowTok disabled=no dst-port=$tokenPort
+        }
+        :if ([/ip firewall filter get $prevRule content] != $prevTok) do={
+            /ip firewall filter set $prevRule content=$prevTok disabled=no dst-port=$tokenPort
+        }
         :return 0
     }
 

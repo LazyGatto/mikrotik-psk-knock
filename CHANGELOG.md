@@ -4,6 +4,15 @@ Notable changes to this project. Format: [Keep a Changelog](https://keepachangel
 Versions are the **Go CLI / provisioner** release tags (`mkpk`, `mkpk-provision`);
 the native macOS recipient app in `client-macos/` ships separately.
 
+## [0.4.1] — 2026-07-29
+
+### Fixed
+- RouterOS poller no longer rewrites the token rule `content=` every second — it
+  updates only when the bucket rolls. The unconditional `set` made RouterOS log a
+  "filter rule changed by scheduler" line each second per token rule, flooding the
+  device log (worsened by keep-open re-knocks). Existing routers need a redeploy
+  (uninstall → install) for the fix to take effect.
+
 ## [0.4.0] — 2026-07-29
 
 ### Added
