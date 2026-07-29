@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://gitlab.eg23.ru/lazygatto/mikrotik-psk-knock/-/releases">Releases</a> ·
+  <a href="https://github.com/LazyGatto/mikrotik-psk-knock/releases">Releases</a> ·
   <a href="docs/roadmap.md">Roadmap</a> ·
   <a href="docs/man/">Man pages</a> ·
   <a href="README.md">Русский</a>
@@ -101,14 +101,14 @@ MikroTik
 
 ## Installation
 
-Prebuilt binaries are on the [Releases](https://gitlab.eg23.ru/lazygatto/mikrotik-psk-knock/-/releases)
+Prebuilt binaries are on the [Releases](https://github.com/LazyGatto/mikrotik-psk-knock/releases)
 page (built by CI on a tag). Each CLI ships in a per-platform `.zip` — inside is the binary under
 its plain name, with the executable bit preserved (no `chmod +x` needed).
 
 For **macOS** there are also two native apps as **DMGs** (drag-to-Applications):
 `mkpk-provision-desktop` (admin) and `mkpk-client` (the recipient menu-bar app).
 
-> **macOS — Gatekeeper quarantine.** While the builds aren't notarized ([#12](https://gitlab.eg23.ru/lazygatto/mikrotik-psk-knock/-/issues/12)),
+> **macOS — Gatekeeper quarantine.** While the builds aren't notarized ([#12](https://github.com/LazyGatto/mikrotik-psk-knock/issues/12)),
 > downloaded binaries/apps are quarantined. Clear it manually:
 > - CLI: `xattr -d com.apple.quarantine ./mkpk`
 > - app: `xattr -cr /Applications/mkpk.app` (likewise for `mkpk-provision-desktop.app`)
@@ -150,7 +150,7 @@ mkpk knock --invite @laptop.mkpk --service ssh --check # on the client side
 A working ROS-only implementation with a CLI, a local web UI, a desktop admin app, and a
 **native macOS client** for invite recipients, plus SSH provisioning and streamed deploy
 progress; all verified end-to-end on live routers (RouterOS 7.x). Versioning is semver, pre-1.0;
-the current version and binaries are on the [Releases](https://gitlab.eg23.ru/lazygatto/mikrotik-psk-knock/-/releases)
+the current version and binaries are on the [Releases](https://github.com/LazyGatto/mikrotik-psk-knock/releases)
 page. There's also an end-to-end **knock test** from the provisioning app (it knocks and verifies
 the router-side counters/log/port over SSH), and "keep open" in the client. Next up: notarizing the
 macOS builds (Developer ID) and an ICMP transport variant. Details — in [docs/roadmap.md](docs/roadmap.md).

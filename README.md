@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://gitlab.eg23.ru/lazygatto/mikrotik-psk-knock/-/releases">Releases</a> ·
+  <a href="https://github.com/LazyGatto/mikrotik-psk-knock/releases">Releases</a> ·
   <a href="docs/roadmap.md">Roadmap</a> ·
   <a href="docs/man/">Man pages</a> ·
   <a href="README.en.md">English</a>
@@ -101,14 +101,14 @@ MikroTik
 
 ## Установка
 
-Готовые бинари — во вкладке [Releases](https://gitlab.eg23.ru/lazygatto/mikrotik-psk-knock/-/releases)
+Готовые бинари — во вкладке [Releases](https://github.com/LazyGatto/mikrotik-psk-knock/releases)
 (собираются CI на теге). Каждый CLI лежит в per-платформенном `.zip` — внутри бинарь с обычным
 именем, бит исполняемости сохранён (`chmod +x` не нужен).
 
 Для **macOS** дополнительно есть два нативных приложения — **DMG** (drag-to-Applications):
 `mkpk-provision-desktop` (админка) и `mkpk-client` (клиент-получатель, меню-бар).
 
-> **macOS — карантин Gatekeeper.** Пока сборки **не нотаризованы** ([#12](https://gitlab.eg23.ru/lazygatto/mikrotik-psk-knock/-/issues/12)),
+> **macOS — карантин Gatekeeper.** Пока сборки **не нотаризованы** ([#12](https://github.com/LazyGatto/mikrotik-psk-knock/issues/12)),
 > скачанные бинари/приложения помечаются карантином. Снять вручную:
 > - CLI: `xattr -d com.apple.quarantine ./mkpk`
 > - приложение: `xattr -cr /Applications/mkpk.app` (аналогично для `mkpk-provision-desktop.app`)
@@ -149,7 +149,7 @@ machine-readable результат доступности. Полный спр�
 
 Рабочая ROS-only реализация с CLI, локальным веб-UI, десктоп-админкой и **нативным macOS-клиентом**
 для получателей инвайта, плюс SSH-провижининг и стриминг прогресса деплоя; всё проверено end-to-end
-на живых роутерах (RouterOS 7.x). Версионирование — semver, пре-1.0; актуальная версия и бинари — во вкладке [Releases](https://gitlab.eg23.ru/lazygatto/mikrotik-psk-knock/-/releases). Есть также
+на живых роутерах (RouterOS 7.x). Версионирование — semver, пре-1.0; актуальная версия и бинари — во вкладке [Releases](https://github.com/LazyGatto/mikrotik-psk-knock/releases). Есть также
 end-to-end **тест стука** из провижн-приложения (стучит и по SSH сверяет счётчики/лог/порт роутера)
 и «держать открытым» в клиенте. Дальше по плану: нотаризация macOS-сборок (Developer ID), ICMP-вариант
 транспорта. Подробности — в [docs/roadmap.md](docs/roadmap.md).
