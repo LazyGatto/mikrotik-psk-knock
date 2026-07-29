@@ -34,8 +34,9 @@ final class MenuBarController: NSObject {
         super.init()
 
         if let button = statusItem.button {
-            button.action = #selector(togglePanel)
+            button.action = #selector(handleClick)
             button.target = self
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
         applyMenuState(.idle)
 
@@ -119,7 +120,29 @@ final class MenuBarController: NSObject {
         }
     }
 
-    @objc private func togglePanel() {
+    /// Left-click toggles the popover; right-click shows a small menu (Quit).
+    @objc private func handleClick() {
+        if NSApp.currentEvent?.type == .rightMouseUp {
+            showContextMenu()
+        } else {
+            togglePanel()
+        }
+    }
+
+    private func showContextMenu() {
+        if !pinned { hide() }
+        let menu = NSMenu()
+        let quit = NSMenuItem(title: "Выйти из mkpk", action: #selector(quitApp), keyEquivalent: "q")
+        quit.target = self
+        menu.addItem(quit)
+        if let button = statusItem.button {
+            menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
+        }
+    }
+
+    @objc private func quitApp() { NSApp.terminate(nil) }
+
+    private func togglePanel() {
         panel.isVisible ? hide() : show()
     }
 

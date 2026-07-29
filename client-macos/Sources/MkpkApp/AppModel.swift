@@ -561,6 +561,7 @@ final class AppModel: ObservableObject {
 
     func showMain() { screen = .main }
     func showSettings() { screen = .settings }
+    func quit() { NSApp.terminate(nil) }
 
     func lastKnockText(for id: String) -> String {
         guard let d = logs[id]?.first?.time else { return "—" }

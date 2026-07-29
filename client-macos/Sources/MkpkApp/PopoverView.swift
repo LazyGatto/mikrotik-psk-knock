@@ -619,6 +619,9 @@ struct SettingsView: View {
                             .resizable().interpolation(.high).frame(width: 16, height: 16)
                         Text(Self.aboutLine).font(.system(size: 11)).foregroundStyle(.secondary)
                         Spacer()
+                        Button("Выйти") { model.quit() }
+                            .buttonStyle(OutlineButton())
+                            .help("Завершить mkpk (или правый клик по иконке)")
                     }
                     .padding(.top, 2)
                 }
