@@ -11,10 +11,11 @@ import Network
 /// outbound-UDP the app already requires.
 public enum PublicIP {
     public static func resolve() async -> String? {
-        if let ip = await dnsOpenDNS() { return ip }
+        if let ip = await dnsOpenDNS() { MkpkLog.ip("resolve via OpenDNS -> \(ip)"); return ip }
         for url in ["https://v4.ident.me/", "https://ipv4.icanhazip.com/"] {
-            if let ip = await http(url) { return ip }
+            if let ip = await http(url) { MkpkLog.ip("resolve via \(url) -> \(ip)"); return ip }
         }
+        MkpkLog.ip("resolve failed (all methods)")
         return nil
     }
 

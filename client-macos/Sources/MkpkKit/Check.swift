@@ -65,9 +65,20 @@ public enum Check {
             waiter.set(cont)
             conn.stateUpdateHandler = { state in
                 switch state {
-                case .ready: waiter.finish(nil)
-                case .failed(let e): waiter.finish(e)
-                case .waiting(let e): waiter.finish(e) // refused / no route → treat as closed
+                case .ready:
+                    if MkpkLog.verbose {
+                        let p = conn.currentPath
+                        let ifs = p?.availableInterfaces.map { "\($0.name)(\($0.type))" }.joined(separator: ",") ?? "?"
+                        let local = p?.localEndpoint.map { "\($0)" } ?? "?"
+                        MkpkLog.net("check→\(host):\(port.rawValue) READY via [\(ifs)] local=\(local)")
+                    }
+                    waiter.finish(nil)
+                case .failed(let e):
+                    MkpkLog.net("check→\(host):\(port.rawValue) failed: \(String(describing: e))")
+                    waiter.finish(e)
+                case .waiting(let e): // refused / no route → treat as closed
+                    MkpkLog.net("check→\(host):\(port.rawValue) waiting: \(String(describing: e))")
+                    waiter.finish(e)
                 default: break
                 }
             }

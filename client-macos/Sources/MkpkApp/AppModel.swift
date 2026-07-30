@@ -10,6 +10,7 @@ private let kDetailVariantKey = "mkpk.detailVariant"
 private let kNotificationsKey = "mkpk.notifications"
 private let kICloudSyncKey = "mkpk.iCloudSync"
 private let kKeepOpenKey = "mkpk.keepOpen"
+private let kVerboseLogKey = "mkpk.verboseLog"
 
 /// The app's observable state: the imported invites projected into router groups
 /// with per-service status, plus the knock/check actions. @MainActor so SwiftUI
@@ -152,6 +153,16 @@ final class AppModel: ObservableObject {
     }
     private var syncingStorage = false
 
+    /// Verbose diagnostic logging to the unified log (off by default). When on,
+    /// per-attempt check paths/interfaces, IP resolution and network-path changes
+    /// are logged under subsystem "ru.eg23.mkpk.client".
+    @Published var verboseLogging: Bool = UserDefaults.standard.bool(forKey: kVerboseLogKey) {
+        didSet {
+            UserDefaults.standard.set(verboseLogging, forKey: kVerboseLogKey)
+            MkpkLog.verbose = verboseLogging
+        }
+    }
+
     // MARK: keep-open (#1)
 
     /// Services the user asked to hold open — re-knocked shortly before the
@@ -193,7 +204,7 @@ final class AppModel: ObservableObject {
                 if s.status == .error { attention = true }
                 if s.status == .open {
                     open = true
-                    if let opened = s.openedForIP, let cur = publicIP, opened != cur { attention = true }
+                    if ipStale(s) { attention = true }
                 }
             }
         }
@@ -203,6 +214,13 @@ final class AppModel: ObservableObject {
 
     /// A service is open but the router opened it for an egress IP that no longer
     /// matches ours (reconnect / switched network) — traffic won't pass until re-knock.
+    ///
+    /// NOTE: both client-side signals are imperfect — the public-IP probe measures
+    /// the general internet path (can differ from the source the router sees under a
+    /// split-tunnel VPN), and the TCP check only proves *something* answers on
+    /// `router:checkPort` (an unrelated dst-nat/router service can answer). We keep
+    /// this IP heuristic as the safe-side warning; `mkpk-provision test` (over SSH)
+    /// remains the only authoritative check. Under investigation — see the logs.
     func ipStale(_ vm: ServiceVM) -> Bool {
         guard vm.status == .open, let opened = vm.openedForIP, let cur = publicIP else { return false }
         return opened != cur
@@ -210,8 +228,7 @@ final class AppModel: ObservableObject {
 
     /// Any open service whose opening IP no longer matches — drives the footer warning.
     var hasStaleOpenIP: Bool {
-        guard let cur = publicIP else { return false }
-        return groups.contains { $0.services.contains { $0.status == .open && ($0.openedForIP.map { $0 != cur } ?? false) } }
+        groups.contains { $0.services.contains { ipStale($0) } }
     }
 
     private func refreshMenuState() {
@@ -230,6 +247,7 @@ final class AppModel: ObservableObject {
     func load() async {
         store = (try? InviteStore(storage: makeStorage()))
              ?? (try? InviteStore(storage: (try? FileInviteStorage()) ?? InMemoryInviteStorage()))
+        MkpkLog.verbose = verboseLogging
         await rebuild()
         refreshPublicIP()
         startPathMonitor()
@@ -351,8 +369,11 @@ final class AppModel: ObservableObject {
         Task {
             let resolved = await PublicIP.resolve()
             resolvingIP = false
-            guard let ip = resolved else { return }
+            guard let ip = resolved else { MkpkLog.ip("public IP resolve failed"); return }
             let previous = publicIP
+            if previous != ip {
+                MkpkLog.ip("public IP: \(previous ?? "—") -> \(ip)")
+            }
             publicIP = ip
             for gi in groups.indices {
                 for si in groups[gi].services.indices
@@ -371,6 +392,7 @@ final class AppModel: ObservableObject {
         let stale = groups.flatMap { $0.services }.filter {
             $0.status == .open && ($0.openedForIP ?? new) != new
         }
+        MkpkLog.ip("IP changed \(old)->\(new); open-but-stale by IP: \(stale.map(\.name).joined(separator: ", "))")
         guard !stale.isEmpty else { return }
         let names = stale.map { $0.name }.joined(separator: ", ")
         notify(L("External IP changed", "Внешний IP изменился"),
@@ -385,6 +407,8 @@ final class AppModel: ObservableObject {
         guard !pathMonitorStarted else { return }
         pathMonitorStarted = true
         pathMonitor.pathUpdateHandler = { [weak self] path in
+            let ifaces = path.availableInterfaces.map { "\($0.name)(\($0.type))" }.joined(separator: ",")
+            MkpkLog.net("network path: \(String(describing: path.status)) interfaces=[\(ifaces)]")
             guard path.status == .satisfied else { return }
             Task { @MainActor in self?.refreshPublicIP() }
         }
@@ -497,6 +521,7 @@ final class AppModel: ObservableObject {
     // MARK: actions
 
     func knock(_ vm: ServiceVM) {
+        MkpkLog.net("knock \(vm.routerAddress) service=\(vm.name) (publicIP=\(self.publicIP ?? "—"))")
         refreshPublicIP()
         update(vm.id, .knocking)
         Task {
@@ -517,11 +542,12 @@ final class AppModel: ObservableObject {
 
     func check(_ vm: ServiceVM) { runCheck(vm, note: "check") }
 
-    private func runCheck(_ vm: ServiceVM, note: String) {
+    private func runCheck(_ vm: ServiceVM, note: String, notifyOpen: Bool = true) {
         guard vm.canCheck else { return }
         update(vm.id, .checking)
         Task {
             let res = await Check.run(CheckOptions(host: vm.routerAddress, port: vm.checkPort, timeout: 1, attempts: 6, interval: 0.5))
+            MkpkLog.net("check \(vm.routerAddress):\(vm.checkPort) [\(note)] -> \(String(describing: res.status)) (publicIP=\(self.publicIP ?? "—"), openedFor=\(vm.openedForIP ?? "—"))")
             switch res.status {
             case .open:
                 // Arm the countdown from the service's allowed timeout, if known.
@@ -530,7 +556,7 @@ final class AppModel: ObservableObject {
                 setOpenedIP(vm.id, nil)   // backfilled with the true egress IP by the resolve below
                 refreshPublicIP()
                 appendLog(vm.id, .open, note)
-                notify(L("Access open", "Доступ открыт"), "\(vm.name) · \(vm.routerAddress)")
+                if notifyOpen { notify(L("Access open", "Доступ открыт"), "\(vm.name) · \(vm.routerAddress)") }
                 ensureCountdownTimer()
             case .closed:
                 update(vm.id, .closed, openUntil: nil)

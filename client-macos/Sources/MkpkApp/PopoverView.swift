@@ -672,6 +672,15 @@ struct SettingsView: View {
                         }
                     }
 
+                    section(L("DIAGNOSTICS", "ДИАГНОСТИКА")) {
+                        card {
+                            toggleRow(L("Verbose logging", "Подробное логирование"),
+                                      L("Log checks, IP resolution and network changes to the system log (Console.app · subsystem ru.eg23.mkpk.client). For troubleshooting.",
+                                        "Писать проверки, резолв IP и смену сети в системный лог (Console.app · subsystem ru.eg23.mkpk.client). Для диагностики."),
+                                      isOn: $model.verboseLogging)
+                        }
+                    }
+
                     section(L("SERVICE DETAILS", "ДЕТАЛИ СЕРВИСА")) {
                         card {
                             VStack(alignment: .leading, spacing: 8) {
