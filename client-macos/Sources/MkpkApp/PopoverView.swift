@@ -42,34 +42,35 @@ enum StatusUI {
         case .error: return "exclamationmark.triangle.fill"
         }
     }
-    static func shortLabel(_ s: AppModel.ServiceStatus) -> String {
+    @MainActor static func shortLabel(_ s: AppModel.ServiceStatus) -> String {
         switch s {
-        case .unknown: return "не проверено"
-        case .checking: return "проверка…"
-        case .knocking: return "стук…"
-        case .open: return "открыто"
-        case .closed: return "закрыто"
-        case .error: return "ошибка"
+        case .unknown: return L("not checked", "не проверено")
+        case .checking: return L("checking…", "проверка…")
+        case .knocking: return L("knocking…", "стук…")
+        case .open: return L("open", "открыто")
+        case .closed: return L("closed", "закрыто")
+        case .error: return L("error", "ошибка")
         }
     }
-    static func line(_ svc: AppModel.ServiceVM, now: Date) -> String {
+    @MainActor static func line(_ svc: AppModel.ServiceVM, now: Date) -> String {
         switch svc.status {
-        case .unknown: return "Не проверялось"
-        case .checking: return "Проверяем…"
-        case .knocking: return "Стучимся…"
+        case .unknown: return L("Not checked", "Не проверялось")
+        case .checking: return L("Checking…", "Проверяем…")
+        case .knocking: return L("Knocking…", "Стучимся…")
         case .open:
             if let until = svc.openUntil {
-                return "Открыто · ещё \(formatRemaining(max(0, until.timeIntervalSince(now))))"
+                let rem = formatRemaining(max(0, until.timeIntervalSince(now)))
+                return L("Open · \(rem) left", "Открыто · ещё \(rem)")
             }
-            return "Открыто"
-        case .closed: return "Закрыто"
-        case .error: return "Ошибка"
+            return L("Open", "Открыто")
+        case .closed: return L("Closed", "Закрыто")
+        case .error: return L("Error", "Ошибка")
         }
     }
-    static func formatRemaining(_ seconds: TimeInterval) -> String {
+    @MainActor static func formatRemaining(_ seconds: TimeInterval) -> String {
         let total = Int(seconds.rounded())
         let m = total / 60, s = total % 60
-        return m > 0 ? "\(m)м \(s)с" : "\(s)с"
+        return m > 0 ? L("\(m)m \(s)s", "\(m)м \(s)с") : L("\(s)s", "\(s)с")
     }
 }
 
@@ -143,6 +144,7 @@ struct FittingScroll<C: View>: View {
 
 struct PopoverView: View {
     @ObservedObject var model: AppModel
+    @ObservedObject private var loc = L10n.shared   // re-render the tree on language change
     @Environment(\.colorScheme) private var colorScheme
     @State private var dropTargeted = false
 
@@ -200,29 +202,35 @@ struct PopoverView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "network").font(.system(size: 11)).foregroundStyle(.secondary)
                     if let ip = model.publicIP {
-                        (Text("Открывается для ").foregroundColor(.secondary)
+                        (Text(L("Opens for ", "Открывается для ")).foregroundColor(.secondary)
                          + Text(ip).font(.system(size: 11, weight: .semibold, design: .monospaced)).foregroundColor(.primary))
                             .font(.system(size: 11))
                     } else {
-                        Text("Открывается для вашего текущего IP")
+                        Text(L("Opens for your current IP", "Открывается для вашего текущего IP"))
                             .font(.system(size: 11)).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 0)
                     Button { model.refreshPublicIP() } label: {
-                        if model.resolvingIP {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Image(systemName: "arrow.clockwise").font(.system(size: 11, weight: .semibold))
+                        // Fixed-size slot so swapping the spinner for the glyph
+                        // (on refresh) doesn't nudge the footer layout.
+                        ZStack {
+                            if model.resolvingIP {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "arrow.clockwise").font(.system(size: 11, weight: .semibold))
+                            }
                         }
+                        .frame(width: 16, height: 16)
                     }
                     .buttonStyle(.plain).foregroundStyle(.secondary)
-                    .help("Перепроверить внешний IP").disabled(model.resolvingIP)
+                    .help(L("Re-check external IP", "Перепроверить внешний IP")).disabled(model.resolvingIP)
                 }
                 if model.hasStaleOpenIP {
                     HStack(alignment: .top, spacing: 6) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.system(size: 10)).foregroundStyle(Palette.error)
-                        Text("IP изменился — открытый доступ действует для старого адреса. Перестучите.")
+                        Text(L("IP changed — the open access is for your old address. Re-knock.",
+                               "IP изменился — открытый доступ действует для старого адреса. Перестучите."))
                             .font(.system(size: 10)).foregroundStyle(Palette.error)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -246,13 +254,14 @@ struct PopoverView: View {
         VStack(spacing: 12) {
             Image(systemName: "tray.and.arrow.down")
                 .font(.system(size: 30)).foregroundStyle(.secondary)
-            Text("Импортируйте инвайт").font(.system(size: 14, weight: .semibold))
-            Text("Перетащите .mkpk сюда, откройте файл или вставьте блоб из буфера.")
+            Text(L("Import an invite", "Импортируйте инвайт")).font(.system(size: 14, weight: .semibold))
+            Text(L("Drop a .mkpk here, open a file, or paste a blob from the clipboard.",
+                   "Перетащите .mkpk сюда, откройте файл или вставьте блоб из буфера."))
                 .font(.system(size: 11)).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
-                Button("Открыть файл…") { model.openFilePanel() }.buttonStyle(AccentButton())
-                Button("Вставить блоб") { model.pasteBlob() }.buttonStyle(OutlineButton())
+                Button(L("Open file…", "Открыть файл…")) { model.openFilePanel() }.buttonStyle(AccentButton())
+                Button(L("Paste blob", "Вставить блоб")) { model.pasteBlob() }.buttonStyle(OutlineButton())
             }
             .padding(.top, 2)
         }
@@ -272,8 +281,8 @@ struct PopoverView: View {
             }
             Spacer()
             Menu {
-                Button("Открыть файл…") { model.openFilePanel() }
-                Button("Вставить из буфера") { model.pasteBlob() }
+                Button(L("Open file…", "Открыть файл…")) { model.openFilePanel() }
+                Button(L("Paste from clipboard", "Вставить из буфера")) { model.pasteBlob() }
             } label: {
                 Image(systemName: "plus")
             }
@@ -283,7 +292,7 @@ struct PopoverView: View {
             }
             .buttonStyle(.borderless)
             .foregroundStyle(model.pinned ? Palette.accent : .secondary)
-            .help("Закрепить окно, чтобы перетащить файл из Finder")
+            .help(L("Pin the window to drag a file in from Finder", "Закрепить окно, чтобы перетащить файл из Finder"))
             Button { model.showSettings() } label: { Image(systemName: "gearshape") }.buttonStyle(.borderless)
         }
         .padding(.horizontal, 14).padding(.vertical, 11)
@@ -332,7 +341,7 @@ struct ClientGroupView: View {
                     Image(systemName: "trash").font(.system(size: 11))
                 }
                 .buttonStyle(.borderless).foregroundStyle(.secondary)
-                .help("Удалить инвайт")
+                .help(L("Delete invite", "Удалить инвайт"))
             }
             ForEach(client.routers) { group in
                 RouterGroupView(model: model, group: group)
@@ -344,19 +353,20 @@ struct ClientGroupView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: "trash").font(.system(size: 12)).foregroundStyle(Palette.error)
-                Text("Удалить инвайт?").font(.system(size: 13, weight: .semibold))
+                Text(L("Delete invite?", "Удалить инвайт?")).font(.system(size: 13, weight: .semibold))
                 Spacer()
             }
             Text(verbatim: "client_id \(client.clientID)")
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .lineLimit(1).truncationMode(.middle)
-            Text(verbatim: "Инвайт и все его роутеры (\(client.routers.count)) будут удалены.")
+            Text(L("The invite and all its routers (\(client.routers.count)) will be removed.",
+                   "Инвайт и все его роутеры (\(client.routers.count)) будут удалены."))
                 .font(.system(size: 11)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 8) {
                 Spacer()
-                Button("Отмена") { confirmingDelete = false }.buttonStyle(OutlineButton())
-                Button("Удалить") {
+                Button(L("Cancel", "Отмена")) { confirmingDelete = false }.buttonStyle(OutlineButton())
+                Button(L("Delete", "Удалить")) {
                     Task { await model.remove(clientID: client.clientID) }
                 }.buttonStyle(DangerButton())
             }
@@ -374,7 +384,7 @@ struct RouterGroupView: View {
                 Circle().fill(group.reachable == false ? Palette.error : Palette.open).frame(width: 7, height: 7)
                 Text(group.address).font(.system(size: 12, weight: .semibold, design: .monospaced))
                 if group.clockWarn {
-                    Text("часы").font(.system(size: 10, weight: .medium))
+                    Text(L("clock", "часы")).font(.system(size: 10, weight: .medium))
                         .padding(.horizontal, 5).padding(.vertical, 1)
                         .background(Palette.warn.opacity(0.2)).foregroundStyle(Palette.warn).clipShape(Capsule())
                 }
@@ -437,15 +447,15 @@ struct ServiceRowView: View {
                         Text(verbatim: ":\(svc.checkPort)").font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(.secondary).fixedSize()
                     } else {
-                        Text("без проверки").font(.system(size: 10)).foregroundStyle(.secondary).fixedSize()
+                        Text(L("no check", "без проверки")).font(.system(size: 10)).foregroundStyle(.secondary).fixedSize()
                     }
                     if model.isKeepOpen(svc.id) {
                         Image(systemName: "infinity").font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(Palette.accent).help("Держать открытым включён").fixedSize()
+                            .foregroundStyle(Palette.accent).help(L("Keep-open is on", "Держать открытым включён")).fixedSize()
                     }
                 }
                 if model.ipStale(svc) {
-                    Text("Открыто для старого IP — перестучите")
+                    Text(L("Open for the old IP — re-knock", "Открыто для старого IP — перестучите"))
                         .font(.system(size: 11)).foregroundStyle(Palette.error)
                 } else {
                     Text(StatusUI.line(svc, now: model.now))
@@ -457,17 +467,17 @@ struct ServiceRowView: View {
                 ProgressView().controlSize(.small)
             } else {
                 Button { model.knock(svc) } label: { Image(systemName: "hand.tap.fill").font(.system(size: 13, weight: .semibold)) }
-                    .buttonStyle(AccentButton()).help("Стукнуть и проверить")
+                    .buttonStyle(AccentButton()).help(L("Knock and check", "Стукнуть и проверить"))
                 if svc.canCheck {
                     Button { model.check(svc) } label: { Image(systemName: "arrow.clockwise").font(.system(size: 13, weight: .semibold)) }
-                        .buttonStyle(OutlineButton()).help("Только проверить порт, без стука")
+                        .buttonStyle(OutlineButton()).help(L("Check the port only, no knock", "Только проверить порт, без стука"))
                 }
             }
             Button { model.openDetails(svc) } label: {
                 Image(systemName: chevron).font(.system(size: 11)).foregroundStyle(.secondary)
             }
             .buttonStyle(.borderless)
-            .help("Детали и лог")
+            .help(L("Details and log", "Детали и лог"))
         }
     }
 }
@@ -485,10 +495,12 @@ struct KeepOpenToggle: View {
                 HStack(spacing: 5) {
                     Image(systemName: "infinity").font(.system(size: 11, weight: .bold))
                         .foregroundStyle(can ? Palette.accent : .secondary)
-                    Text("Держать открытым").font(.system(size: 12.5, weight: .medium))
+                    Text(L("Keep open", "Держать открытым")).font(.system(size: 12.5, weight: .medium))
                 }
-                Text(can ? "Автоматически перестукивать незадолго до истечения доступа."
-                         : "Недоступно: инвайт без таймаута — перевыпустите инвайт.")
+                Text(can ? L("Automatically re-knock shortly before access expires.",
+                             "Автоматически перестукивать незадолго до истечения доступа.")
+                         : L("Unavailable: the invite has no timeout — re-issue it.",
+                             "Недоступно: инвайт без таймаута — перевыпустите инвайт."))
                     .font(.system(size: 10.5)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -508,16 +520,16 @@ struct KnockLogView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text("ПОСЛЕДНИЕ СТУКИ")
+            Text(L("RECENT KNOCKS", "ПОСЛЕДНИЕ СТУКИ"))
                 .font(.system(size: 10, weight: .semibold)).tracking(0.6).foregroundStyle(.secondary)
             if entries.isEmpty {
-                Text("Пока нет попыток").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text(L("No attempts yet", "Пока нет попыток")).font(.system(size: 11)).foregroundStyle(.secondary)
             } else {
                 ForEach(entries) { e in
                     HStack(spacing: 8) {
                         Text(model.timeLabel(e.time))
                             .font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary)
-                        Text(e.result.label)
+                        Text(model.logLabel(e.result))
                             .font(.system(size: 11, weight: .semibold)).foregroundStyle(Palette.logColor(e.result))
                         Text(e.note).font(.system(size: 11)).foregroundStyle(.secondary)
                     }
@@ -550,7 +562,8 @@ struct ServiceDetailView: View {
                         HStack(alignment: .top, spacing: 6) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .font(.system(size: 11)).foregroundStyle(Palette.error)
-                            Text("Внешний IP изменился — доступ открыт для старого адреса. Стукните заново.")
+                            Text(L("Your external IP changed — access is open for the old address. Knock again.",
+                                   "Внешний IP изменился — доступ открыт для старого адреса. Стукните заново."))
                                 .font(.system(size: 11)).foregroundStyle(Palette.error)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -559,10 +572,10 @@ struct ServiceDetailView: View {
                         .background(RoundedRectangle(cornerRadius: 9).fill(Palette.error.opacity(0.12)))
                     }
                     Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 5) {
-                        detailRow("Роутер", svc.routerAddress, mono: true)
-                        detailRow("Проверка", svc.checkPort > 0 ? "\(svc.checkPort)" : "check off", mono: true)
-                        detailRow("Доступ на", model.ttlText(svc))
-                        detailRow("Последний стук", model.lastKnockText(for: svc.id))
+                        detailRow(L("Router", "Роутер"), svc.routerAddress, mono: true)
+                        detailRow(L("Check", "Проверка"), svc.checkPort > 0 ? "\(svc.checkPort)" : L("check off", "выкл"), mono: true)
+                        detailRow(L("Access for", "Доступ на"), model.ttlText(svc))
+                        detailRow(L("Last knock", "Последний стук"), model.lastKnockText(for: svc.id))
                     }
                     .padding(11)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -573,9 +586,9 @@ struct ServiceDetailView: View {
                         if svc.status == .knocking || svc.status == .checking {
                             ProgressView().controlSize(.small).frame(maxWidth: .infinity)
                         } else {
-                            Button("Стук") { model.knock(svc) }.buttonStyle(AccentButton()).frame(maxWidth: .infinity)
+                            Button(L("Knock", "Стук")) { model.knock(svc) }.buttonStyle(AccentButton()).frame(maxWidth: .infinity)
                             if svc.canCheck {
-                                Button("Проверить") { model.check(svc) }.buttonStyle(OutlineButton()).frame(maxWidth: .infinity)
+                                Button(L("Check", "Проверить")) { model.check(svc) }.buttonStyle(OutlineButton()).frame(maxWidth: .infinity)
                             }
                         }
                     }
@@ -604,6 +617,7 @@ struct ServiceDetailView: View {
 
 struct SettingsView: View {
     @ObservedObject var model: AppModel
+    @ObservedObject private var loc = L10n.shared
 
     /// "mkpk · Knock first · <version>" — version present only in the .app bundle.
     static var aboutLine: String {
@@ -619,42 +633,55 @@ struct SettingsView: View {
             HStack(spacing: 8) {
                 Button { model.showMain() } label: { Image(systemName: "chevron.left").font(.system(size: 13, weight: .semibold)) }
                     .buttonStyle(.borderless).foregroundStyle(.secondary)
-                Text("Настройки").font(.system(size: 14.5, weight: .bold))
+                Text(L("Settings", "Настройки")).font(.system(size: 14.5, weight: .bold))
                 Spacer()
             }
             .padding(.horizontal, 14).padding(.vertical, 11)
             Divider()
             FittingScroll {
                 VStack(alignment: .leading, spacing: 14) {
-                    section("ОБЩЕЕ") {
+                    section(L("LANGUAGE", "ЯЗЫК")) {
                         card {
-                            toggleRow("Автозапуск при входе",
-                                      "Запускать mkpk при входе в систему.",
+                            Picker("", selection: $loc.language) {
+                                ForEach(AppLanguage.allCases) { lang in
+                                    Text(lang.title).tag(lang)
+                                }
+                            }
+                            .pickerStyle(.segmented).labelsHidden()
+                        }
+                    }
+
+                    section(L("GENERAL", "ОБЩЕЕ")) {
+                        card {
+                            toggleRow(L("Launch at login", "Автозапуск при входе"),
+                                      L("Start mkpk when you log in.", "Запускать mkpk при входе в систему."),
                                       isOn: $model.launchAtLogin)
                             Divider()
-                            toggleRow("Уведомления",
-                                      "Сообщать, когда доступ открылся или закрылся.",
+                            toggleRow(L("Notifications", "Уведомления"),
+                                      L("Notify when access opens or closes.", "Сообщать, когда доступ открылся или закрылся."),
                                       isOn: $model.notificationsEnabled)
                         }
                     }
 
-                    section("СИНХРОНИЗАЦИЯ") {
+                    section(L("SYNC", "СИНХРОНИЗАЦИЯ")) {
                         card {
                             toggleRow("iCloud",
-                                      "Синхронизировать инвайты через iCloud Keychain. Реальная синхронизация — в подписанной сборке.",
+                                      L("Sync invites via iCloud Keychain. Requires a provisioning profile (not yet available).",
+                                        "Синхронизировать инвайты через iCloud Keychain. Требуется provisioning profile (пока недоступно)."),
                                       isOn: $model.iCloudSync)
                         }
                     }
 
-                    section("ДЕТАЛИ СЕРВИСА") {
+                    section(L("SERVICE DETAILS", "ДЕТАЛИ СЕРВИСА")) {
                         card {
                             VStack(alignment: .leading, spacing: 8) {
                                 Picker("", selection: $model.detailVariant) {
-                                    Text("Инлайн").tag(AppModel.DetailVariant.inline)
-                                    Text("Экран").tag(AppModel.DetailVariant.screen)
+                                    Text(L("Inline", "Инлайн")).tag(AppModel.DetailVariant.inline)
+                                    Text(L("Screen", "Экран")).tag(AppModel.DetailVariant.screen)
                                 }
                                 .pickerStyle(.segmented).labelsHidden()
-                                Text("Как открывать детали и лог сервиса: раскрытием строки на месте или отдельным экраном.")
+                                Text(L("How to open a service's details and log: expand the row in place, or a separate screen.",
+                                       "Как открывать детали и лог сервиса: раскрытием строки на месте или отдельным экраном."))
                                     .font(.system(size: 10.5)).foregroundStyle(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
@@ -666,9 +693,9 @@ struct SettingsView: View {
                             .resizable().interpolation(.high).frame(width: 16, height: 16)
                         Text(Self.aboutLine).font(.system(size: 11)).foregroundStyle(.secondary)
                         Spacer()
-                        Button("Выйти") { model.quit() }
+                        Button(L("Quit", "Выйти")) { model.quit() }
                             .buttonStyle(OutlineButton())
-                            .help("Завершить mkpk (или правый клик по иконке)")
+                            .help(L("Quit mkpk (or right-click the icon)", "Завершить mkpk (или правый клик по иконке)"))
                     }
                     .padding(.top, 2)
                 }

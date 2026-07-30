@@ -23,14 +23,16 @@ final class AppModel: ObservableObject {
     /// Outcome of a knock/check attempt, recorded in the per-service log.
     enum LogResult: String {
         case open, closed, timeout, error, sent
-        var label: String {
-            switch self {
-            case .open: return "open"
-            case .closed: return "closed"
-            case .timeout: return "timeout"
-            case .error: return "ошибка"
-            case .sent: return "отправлено"
-            }
+    }
+
+    /// Localized label for a log result (called from the log view).
+    func logLabel(_ r: LogResult) -> String {
+        switch r {
+        case .open: return L("open", "открыто")
+        case .closed: return L("closed", "закрыто")
+        case .timeout: return L("timeout", "таймаут")
+        case .error: return L("error", "ошибка")
+        case .sent: return L("sent", "отправлено")
         }
     }
 
@@ -271,7 +273,8 @@ final class AppModel: ObservableObject {
             iCloudSync.toggle()
             UserDefaults.standard.set(iCloudSync, forKey: kICloudSyncKey)
             syncingStorage = false
-            lastError = "iCloud-синхронизация пока недоступна (нужен provisioning profile для keychain-доступа)."
+            lastError = L("iCloud sync isn't available yet (needs a provisioning profile for keychain access).",
+                          "iCloud-синхронизация пока недоступна (нужен provisioning profile для keychain-доступа).")
         }
     }
 
@@ -286,7 +289,8 @@ final class AppModel: ObservableObject {
                 try svc.unregister()
             }
         } catch {
-            lastError = "Не удалось изменить автозапуск (нужна собранная .app)."
+            lastError = L("Couldn't change launch-at-login (needs a built .app).",
+                          "Не удалось изменить автозапуск (нужна собранная .app).")
             syncingLaunch = true
             launchAtLogin = (svc.status == .enabled)
             syncingLaunch = false
@@ -295,7 +299,7 @@ final class AppModel: ObservableObject {
 
     private func requestNotificationAuthorization() {
         guard Bundle.main.bundleIdentifier != nil else {
-            lastError = "Уведомления доступны только в собранной .app."
+            lastError = L("Notifications work only in a built .app.", "Уведомления доступны только в собранной .app.")
             notificationsEnabled = false
             return
         }
@@ -307,7 +311,8 @@ final class AppModel: ObservableObject {
                 if !granted {
                     self.notificationsEnabled = false
                     self.lastError = message
-                        ?? "Уведомления не разрешены — включите их в Системных настройках (или нужна подписанная сборка)."
+                        ?? L("Notifications aren't allowed — enable them in System Settings (or a signed build is needed).",
+                              "Уведомления не разрешены — включите их в Системных настройках (или нужна подписанная сборка).")
                 }
             }
         }
@@ -368,7 +373,8 @@ final class AppModel: ObservableObject {
         }
         guard !stale.isEmpty else { return }
         let names = stale.map { $0.name }.joined(separator: ", ")
-        notify("Внешний IP изменился", "Открыто для \(old) — перестучите для \(new): \(names)")
+        notify(L("External IP changed", "Внешний IP изменился"),
+               L("Open for \(old) — re-knock for \(new): \(names)", "Открыто для \(old) — перестучите для \(new): \(names)"))
     }
 
     // Re-resolve the egress IP when the network path changes (reconnect, Wi-Fi↔
@@ -393,7 +399,7 @@ final class AppModel: ObservableObject {
             await rebuild()
             return true
         } catch {
-            lastError = "Не удалось импортировать инвайт: неверный формат."
+            lastError = L("Couldn't import the invite: invalid format.", "Не удалось импортировать инвайт: неверный формат.")
             return false
         }
     }
@@ -403,7 +409,7 @@ final class AppModel: ObservableObject {
             let text = try String(contentsOf: url, encoding: .utf8)
             _ = await importBlob(text)
         } catch {
-            lastError = "Не удалось прочитать файл."
+            lastError = L("Couldn't read the file.", "Не удалось прочитать файл.")
         }
     }
 
@@ -427,7 +433,7 @@ final class AppModel: ObservableObject {
     func pasteBlob() {
         guard let s = NSPasteboard.general.string(forType: .string),
               !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            lastError = "В буфере обмена нет текста."
+            lastError = L("No text in the clipboard.", "В буфере обмена нет текста.")
             return
         }
         Task { _ = await importBlob(s) }
@@ -524,7 +530,7 @@ final class AppModel: ObservableObject {
                 setOpenedIP(vm.id, nil)   // backfilled with the true egress IP by the resolve below
                 refreshPublicIP()
                 appendLog(vm.id, .open, note)
-                notify("Доступ открыт", "\(vm.name) · \(vm.routerAddress)")
+                notify(L("Access open", "Доступ открыт"), "\(vm.name) · \(vm.routerAddress)")
                 ensureCountdownTimer()
             case .closed:
                 update(vm.id, .closed, openUntil: nil)
@@ -602,7 +608,8 @@ final class AppModel: ObservableObject {
             renewFailures[vm.id] = 0
             UserDefaults.standard.set(Array(keepOpenIDs), forKey: kKeepOpenKey)
             update(vm.id, .error)   // amber attention
-            notify("Keep-open остановлен", "\(vm.name) · \(vm.routerAddress) — 3 неудачи подряд")
+            notify(L("Keep-open stopped", "Keep-open остановлен"),
+                   L("\(vm.name) · \(vm.routerAddress) — 3 failures in a row", "\(vm.name) · \(vm.routerAddress) — 3 неудачи подряд"))
             onContentChanged?()
         }
     }
@@ -658,9 +665,9 @@ final class AppModel: ObservableObject {
         guard let s = vm.service.allowedTimeout, let secs = GoDuration.seconds(s), secs > 0 else { return "—" }
         let total = Int(secs.rounded())
         let h = total / 3600, m = (total % 3600) / 60, sec = total % 60
-        if h > 0 { return m > 0 ? "\(h) ч \(m) мин" : "\(h) ч" }
-        if m > 0 { return sec > 0 ? "\(m) мин \(sec) с" : "\(m) мин" }
-        return "\(sec) с"
+        if h > 0 { return m > 0 ? L("\(h) h \(m) min", "\(h) ч \(m) мин") : L("\(h) h", "\(h) ч") }
+        if m > 0 { return sec > 0 ? L("\(m) min \(sec) s", "\(m) мин \(sec) с") : L("\(m) min", "\(m) мин") }
+        return L("\(sec) s", "\(sec) с")
     }
 
     private func update(_ id: String, _ status: ServiceStatus, openUntil: Date?? = nil) {
@@ -710,7 +717,7 @@ final class AppModel: ObservableObject {
                     groups[gi].services[si].openUntil = nil
                     // keep-open will re-open it below — only notify a real close.
                     if !keepOpenIDs.contains(svc.id) {
-                        notify("Доступ закрыт", "\(svc.name) · \(svc.routerAddress)")
+                        notify(L("Access closed", "Доступ закрыт"), "\(svc.name) · \(svc.routerAddress)")
                     }
                 }
             }

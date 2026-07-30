@@ -132,7 +132,7 @@ final class MenuBarController: NSObject {
     private func showContextMenu() {
         if !pinned { hide() }
         let menu = NSMenu()
-        let quit = NSMenuItem(title: "Выйти из mkpk", action: #selector(quitApp), keyEquivalent: "q")
+        let quit = NSMenuItem(title: L("Quit mkpk", "Выйти из mkpk"), action: #selector(quitApp), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
         if let button = statusItem.button {
