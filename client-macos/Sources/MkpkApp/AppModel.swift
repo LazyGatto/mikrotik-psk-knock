@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import Network
 import ServiceManagement
 import UserNotifications
 import UniformTypeIdentifiers
@@ -56,6 +57,7 @@ final class AppModel: ObservableObject {
         let checkPort: Int      // 0 → check unavailable ("check off")
         var status: ServiceStatus = .unknown
         var openUntil: Date? = nil     // set after a knock opens the port (countdown)
+        var openedForIP: String? = nil // egress IP the port was opened for (stale-IP detection)
         // Runtime inputs for actions:
         let router: RouterInvite
         let service: ServiceInvite
@@ -180,17 +182,34 @@ final class AppModel: ObservableObject {
     var onMenuStateChanged: ((MenuBarState) -> Void)?
     private var lastMenuState: MenuBarState = .idle
 
-    /// idle / open (something is open) / attention (a service errored or keep-open gave up).
+    /// idle / open (something is open) / attention (a service errored, keep-open
+    /// gave up, or a port is open for a now-stale egress IP).
     var menuBarState: MenuBarState {
         var open = false, attention = false
         for g in groups {
             for s in g.services {
                 if s.status == .error { attention = true }
-                if s.status == .open { open = true }
+                if s.status == .open {
+                    open = true
+                    if let opened = s.openedForIP, let cur = publicIP, opened != cur { attention = true }
+                }
             }
         }
         if attention { return .attention }
         return open ? .open : .idle
+    }
+
+    /// A service is open but the router opened it for an egress IP that no longer
+    /// matches ours (reconnect / switched network) — traffic won't pass until re-knock.
+    func ipStale(_ vm: ServiceVM) -> Bool {
+        guard vm.status == .open, let opened = vm.openedForIP, let cur = publicIP else { return false }
+        return opened != cur
+    }
+
+    /// Any open service whose opening IP no longer matches — drives the footer warning.
+    var hasStaleOpenIP: Bool {
+        guard let cur = publicIP else { return false }
+        return groups.contains { $0.services.contains { $0.status == .open && ($0.openedForIP.map { $0 != cur } ?? false) } }
     }
 
     private func refreshMenuState() {
@@ -211,7 +230,17 @@ final class AppModel: ObservableObject {
              ?? (try? InviteStore(storage: (try? FileInviteStorage()) ?? InMemoryInviteStorage()))
         await rebuild()
         refreshPublicIP()
+        startPathMonitor()
         refreshNotificationAuthorization()
+    }
+
+    /// Set (or clear) the egress IP a service was opened for.
+    private func setOpenedIP(_ id: String, _ ip: String?) {
+        for gi in groups.indices {
+            if let si = groups[gi].services.firstIndex(where: { $0.id == id }) {
+                groups[gi].services[si].openedForIP = ip; return
+            }
+        }
     }
 
     /// The invite storage backend for the current sync preference. File backend
@@ -242,7 +271,7 @@ final class AppModel: ObservableObject {
             iCloudSync.toggle()
             UserDefaults.standard.set(iCloudSync, forKey: kICloudSyncKey)
             syncingStorage = false
-            lastError = "Не удалось переключить хранилище (для iCloud нужна подписанная сборка)."
+            lastError = "iCloud-синхронизация пока недоступна (нужен provisioning profile для keychain-доступа)."
         }
     }
 
@@ -301,10 +330,59 @@ final class AppModel: ObservableObject {
             UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
     }
 
+    /// True while a public-IP lookup is in flight (drives the footer spinner and
+    /// prevents overlapping resolves).
+    @Published var resolvingIP = false
+
     /// Best-effort public-IP lookup (DNS→OpenDNS with HTTP fallbacks), cached in
-    /// `publicIP`. Failures are silent — the footer falls back to generic wording.
+    /// `publicIP`. Detects an egress-IP change: open ports were opened for the old
+    /// address and won't pass traffic from the new one until re-knocked. Backfills
+    /// the opening IP for services that opened before we knew it (so the true,
+    /// post-knock egress IP is recorded — not a possibly-stale cache). Failures are
+    /// silent — the footer falls back to generic wording.
     func refreshPublicIP() {
-        Task { if let ip = await PublicIP.resolve() { publicIP = ip } }
+        guard !resolvingIP else { return }
+        resolvingIP = true
+        Task {
+            let resolved = await PublicIP.resolve()
+            resolvingIP = false
+            guard let ip = resolved else { return }
+            let previous = publicIP
+            publicIP = ip
+            for gi in groups.indices {
+                for si in groups[gi].services.indices
+                where groups[gi].services[si].status == .open && groups[gi].services[si].openedForIP == nil {
+                    groups[gi].services[si].openedForIP = ip   // record the current egress IP
+                }
+            }
+            if let previous, previous != ip { handleIPChanged(from: previous, to: ip) }
+            refreshMenuState()
+        }
+    }
+
+    /// Egress IP changed while ports were open — warn once (the visual stale badges
+    /// update live off `publicIP`).
+    private func handleIPChanged(from old: String, to new: String) {
+        let stale = groups.flatMap { $0.services }.filter {
+            $0.status == .open && ($0.openedForIP ?? new) != new
+        }
+        guard !stale.isEmpty else { return }
+        let names = stale.map { $0.name }.joined(separator: ", ")
+        notify("Внешний IP изменился", "Открыто для \(old) — перестучите для \(new): \(names)")
+    }
+
+    // Re-resolve the egress IP when the network path changes (reconnect, Wi-Fi↔
+    // cellular) — the most direct signal that the address may have moved.
+    private let pathMonitor = NWPathMonitor()
+    private var pathMonitorStarted = false
+    private func startPathMonitor() {
+        guard !pathMonitorStarted else { return }
+        pathMonitorStarted = true
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            guard path.status == .satisfied else { return }
+            Task { @MainActor in self?.refreshPublicIP() }
+        }
+        pathMonitor.start(queue: DispatchQueue.global(qos: .utility))
     }
 
     @discardableResult
@@ -413,6 +491,7 @@ final class AppModel: ObservableObject {
     // MARK: actions
 
     func knock(_ vm: ServiceVM) {
+        refreshPublicIP()
         update(vm.id, .knocking)
         Task {
             do {
@@ -442,6 +521,8 @@ final class AppModel: ObservableObject {
                 // Arm the countdown from the service's allowed timeout, if known.
                 let until = vm.service.allowedTimeout.flatMap(GoDuration.seconds).map { Date().addingTimeInterval($0) }
                 update(vm.id, .open, openUntil: until)
+                setOpenedIP(vm.id, nil)   // backfilled with the true egress IP by the resolve below
+                refreshPublicIP()
                 appendLog(vm.id, .open, note)
                 notify("Доступ открыт", "\(vm.name) · \(vm.routerAddress)")
                 ensureCountdownTimer()
@@ -495,6 +576,7 @@ final class AppModel: ObservableObject {
                 let res = await Check.run(CheckOptions(host: vm.routerAddress, port: vm.checkPort, timeout: 1, attempts: 6, interval: 0.5))
                 if res.status == .open {
                     update(vm.id, .open, openUntil: until)
+                    setOpenedIP(vm.id, nil); refreshPublicIP()   // re-record the egress IP
                     appendLog(vm.id, .open, "keep-open")
                     renewFailures[vm.id] = 0
                     ensureCountdownTimer()
@@ -503,6 +585,7 @@ final class AppModel: ObservableObject {
                 }
             } else {
                 update(vm.id, .open, openUntil: until)   // no check → trust the re-knock
+                setOpenedIP(vm.id, nil); refreshPublicIP()   // re-record the egress IP
                 appendLog(vm.id, .sent, "keep-open")
                 renewFailures[vm.id] = 0
                 ensureCountdownTimer()
@@ -633,7 +716,10 @@ final class AppModel: ObservableObject {
             }
         }
         maintainKeepOpen()
+        ipTick += 1
+        if ipTick >= 60 { ipTick = 0; refreshPublicIP() }   // backstop re-resolve while open
         ensureCountdownTimer()
         refreshMenuState()
     }
+    private var ipTick = 0
 }

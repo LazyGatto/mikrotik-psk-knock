@@ -78,11 +78,21 @@ enum StatusUI {
 enum Brand {
     static func logo(_ scheme: ColorScheme) -> Image {
         let name = scheme == .dark ? "icon-dark" : "icon-light"
-        if let url = Bundle.module.url(forResource: name, withExtension: "png"),
-           let ns = NSImage(contentsOf: url) {
-            return Image(nsImage: ns)
-        }
+        if let ns = loadPNG(name) { return Image(nsImage: ns) }
         return Image(systemName: "shield.lefthalf.filled")
+    }
+
+    /// Resolve a bundled PNG. In the packaged .app the icons are flattened into
+    /// Contents/Resources (so the bundle has no unsealed content in its root and
+    /// can be codesigned); `swift run` falls back to the SwiftPM resource bundle.
+    private static func loadPNG(_ name: String) -> NSImage? {
+        if let url = Bundle.main.url(forResource: name, withExtension: "png"),
+           let ns = NSImage(contentsOf: url) { return ns }
+        #if DEBUG
+        if let url = Bundle.module.url(forResource: name, withExtension: "png"),
+           let ns = NSImage(contentsOf: url) { return ns }
+        #endif
+        return nil
     }
 }
 
@@ -186,17 +196,37 @@ struct PopoverView: View {
                 FittingScroll { groupsContent }
             }
             Divider()
-            HStack(spacing: 6) {
-                Image(systemName: "network").font(.system(size: 11)).foregroundStyle(.secondary)
-                if let ip = model.publicIP {
-                    (Text("Открывается для ").foregroundColor(.secondary)
-                     + Text(ip).font(.system(size: 11, weight: .semibold, design: .monospaced)).foregroundColor(.primary))
-                        .font(.system(size: 11))
-                } else {
-                    Text("Открывается для вашего текущего IP")
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 6) {
+                    Image(systemName: "network").font(.system(size: 11)).foregroundStyle(.secondary)
+                    if let ip = model.publicIP {
+                        (Text("Открывается для ").foregroundColor(.secondary)
+                         + Text(ip).font(.system(size: 11, weight: .semibold, design: .monospaced)).foregroundColor(.primary))
+                            .font(.system(size: 11))
+                    } else {
+                        Text("Открывается для вашего текущего IP")
+                            .font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 0)
+                    Button { model.refreshPublicIP() } label: {
+                        if model.resolvingIP {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.clockwise").font(.system(size: 11, weight: .semibold))
+                        }
+                    }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                    .help("Перепроверить внешний IP").disabled(model.resolvingIP)
                 }
-                Spacer(minLength: 0)
+                if model.hasStaleOpenIP {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 10)).foregroundStyle(Palette.error)
+                        Text("IP изменился — открытый доступ действует для старого адреса. Перестучите.")
+                            .font(.system(size: 10)).foregroundStyle(Palette.error)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 14).padding(.vertical, 9)
@@ -392,9 +422,9 @@ struct ServiceRowView: View {
 
     private var row: some View {
         HStack(spacing: 10) {
-            Image(systemName: StatusUI.icon(svc.status))
+            Image(systemName: model.ipStale(svc) ? "exclamationmark.triangle.fill" : StatusUI.icon(svc.status))
                 .font(.system(size: 12))
-                .foregroundStyle(StatusUI.color(svc.status))
+                .foregroundStyle(model.ipStale(svc) ? Palette.error : StatusUI.color(svc.status))
                 .frame(width: 16)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
@@ -414,8 +444,13 @@ struct ServiceRowView: View {
                             .foregroundStyle(Palette.accent).help("Держать открытым включён").fixedSize()
                     }
                 }
-                Text(StatusUI.line(svc, now: model.now))
-                    .font(.system(size: 11)).foregroundStyle(svc.status == .open ? Palette.open : .secondary)
+                if model.ipStale(svc) {
+                    Text("Открыто для старого IP — перестучите")
+                        .font(.system(size: 11)).foregroundStyle(Palette.error)
+                } else {
+                    Text(StatusUI.line(svc, now: model.now))
+                        .font(.system(size: 11)).foregroundStyle(svc.status == .open ? Palette.open : .secondary)
+                }
             }
             Spacer(minLength: 6)
             if svc.status == .knocking || svc.status == .checking {
@@ -511,6 +546,18 @@ struct ServiceDetailView: View {
             Divider()
             FittingScroll {
                 VStack(alignment: .leading, spacing: 12) {
+                    if model.ipStale(svc) {
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 11)).foregroundStyle(Palette.error)
+                            Text("Внешний IP изменился — доступ открыт для старого адреса. Стукните заново.")
+                                .font(.system(size: 11)).foregroundStyle(Palette.error)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(RoundedRectangle(cornerRadius: 9).fill(Palette.error.opacity(0.12)))
+                    }
                     Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 5) {
                         detailRow("Роутер", svc.routerAddress, mono: true)
                         detailRow("Проверка", svc.checkPort > 0 ? "\(svc.checkPort)" : "check off", mono: true)

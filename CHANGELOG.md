@@ -4,6 +4,33 @@ Notable changes to this project. Format: [Keep a Changelog](https://keepachangel
 Versions are the **Go CLI / provisioner** release tags (`mkpk`, `mkpk-provision`);
 the native macOS recipient app in `client-macos/` ships separately.
 
+## [0.4.2] — 2026-07-31
+
+This release is **macOS-client focused**; the Go CLI / provisioner is functionally
+unchanged from 0.4.1 (the binaries are rebuilt under the new tag).
+
+### Added
+- macOS client **re-checks the external (egress) IP** — on network changes
+  (Wi-Fi ↔ cellular / reconnect), periodically while a port is open, and via a
+  manual refresh button in the footer. When a service is open for an address that
+  no longer matches, the client flags it (menu-bar attention, an in-app warning and
+  a notification) so you know to re-knock. Closes the silent "port is open, but for
+  my *old* IP" trap after a reconnect.
+
+### Changed
+- macOS client is now **Developer ID signed + notarized** — a downloaded DMG/app no
+  longer trips Gatekeeper quarantine (no `xattr -cr` needed). The provision-desktop
+  (Wails) app is still ad-hoc for now.
+
+### Fixed
+- macOS client: brand icons are flattened into `Contents/Resources` and loaded via
+  `Bundle.main`, so the `.app` is codesignable (a resource bundle at the bundle root
+  blocked signing).
+
+### Notes
+- iCloud Keychain sync of invites stays off pending a Developer ID provisioning
+  profile (#24); the Settings toggle falls back to the local file store.
+
 ## [0.4.1] — 2026-07-29
 
 ### Fixed
