@@ -58,7 +58,28 @@ The token is `sha512(psk|v1|service|client_id|bucket|psk)` (lowercase hex);
 
 - Never bump the version on your own initiative — propose it and wait for the
   owner's explicit sign-off before tagging.
-- Distribution (later): signed + notarized DMG + Sparkle appcast.
+- **Distribution** (`script/`): `build_app.sh` → `sign.sh` → `make_dmg.sh` →
+  `notarize.sh`. `sign.sh` uses the **Developer ID Application** identity
+  (`EDINY GOROD, OOO (R2M77TY8U9)`) + hardened runtime + `release.entitlements`
+  (the `__TEAM_PREFIX__` keychain-group placeholder is filled with the team id at
+  sign time). `notarize.sh` submits via the `mkpk-notary` keychain profile and
+  staples — accepts a `.app` (zips it) or a `.dmg`. Bundle id `ru.eg23.mkpk.client`
+  (its default keychain-access-group equals the entitlement, so no App-ID/portal
+  registration is needed). Packaging note: the brand PNGs are **flattened into
+  Contents/Resources** and loaded via `Bundle.main` — a resource bundle beside
+  `Contents/` makes the app unsignable ("unsealed contents in the bundle root"),
+  so `Bundle.module` is a `#if DEBUG` (`swift run`) fallback only.
+- **iCloud Keychain sync** (the Settings toggle) is **off until provisioned**: the
+  `keychain-access-groups` entitlement only launches on macOS when the `.app`
+  embeds a matching **Developer ID provisioning profile** (without it amfi kills
+  the app — error 163 "Launchd job spawn failed"). So `sign.sh` applies the
+  entitlement only when `MKPK_PROVISION_PROFILE` (or `script/mkpk.provisionprofile`)
+  is present; otherwise it signs entitlement-free and the toggle falls back to the
+  file store. To enable: register App ID `ru.eg23.mkpk.client` + a Keychain-Sharing
+  group, make a Developer ID provisioning profile, drop it at `script/mkpk.provisionprofile`,
+  and set `kSecUseDataProtectionKeychain` on the synchronizable items. Tracked as a
+  GitLab issue.
+- Sparkle appcast: still later.
 
 ## Skills
 

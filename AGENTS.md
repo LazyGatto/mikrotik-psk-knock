@@ -59,24 +59,38 @@ the Go reference, the Swift client, and the rendered RouterOS rules.
    glab release upload vX.Y.Z /tmp/mkpk-provision-desktop_vX.Y.Z_darwin_arm64.dmg
    ```
    Needs `wails` (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`) + Xcode CLT.
-6. **Manual, macOS-only — the `client-macos/` recipient app.** Also built by hand
-   and attached to the same Release:
+6. **Manual, macOS-only — the `client-macos/` recipient app.** Built, **Developer ID
+   signed + notarized**, and attached to the same Release:
 
    ```sh
-   cd client-macos && MKPK_VERSION=vX.Y.Z script/build_app.sh   # → .build/mkpk.app (ad-hoc signed)
-   script/make_dmg.sh .build/mkpk.app /tmp/mkpk-client_vX.Y.Z_darwin_arm64.dmg mkpk
+   cd client-macos
+   ID="Developer ID Application: EDINY GOROD, OOO (R2M77TY8U9)"
+   MKPK_VERSION=vX.Y.Z script/build_app.sh              # → .build/mkpk.app
+   script/sign.sh                                       # Developer ID + hardened runtime + entitlements
+   script/notarize.sh .build/mkpk.app                   # notarize + staple the app (offline first-launch)
+   MKPK_SIGN_ID="$ID" script/make_dmg.sh .build/mkpk.app /tmp/mkpk-client_vX.Y.Z_darwin_arm64.dmg mkpk
+   script/notarize.sh /tmp/mkpk-client_vX.Y.Z_darwin_arm64.dmg   # notarize + staple the DMG
    glab release upload vX.Y.Z /tmp/mkpk-client_vX.Y.Z_darwin_arm64.dmg
    ```
    Both macOS apps ship as **drag-to-Applications DMGs** (`client-macos/script/make_dmg.sh`,
-   no deps — hdiutil + an /Applications symlink), ad-hoc signed arm64. Downloaders
-   hit Gatekeeper quarantine — clear it with `xattr -cr <app>.app`; a real Developer
-   ID signature + notarization is the proper fix (tracked in the issues).
+   no deps — hdiutil + an /Applications symlink), arm64. The **client** is now signed +
+   notarized + stapled (`spctl -a` → "Notarized Developer ID"; no quarantine prompt).
+   Notarization needs the one-time keychain profile `mkpk-notary`
+   (`xcrun notarytool store-credentials mkpk-notary --apple-id … --team-id R2M77TY8U9 --password <app-specific-pw>`).
+   The **provision-desktop** (Wails) app is still ad-hoc — apply the same sign/notarize
+   pass to it (tracked in the issues); until then clear its quarantine with `xattr -cr <app>.app`.
 
 `main` is protected; push over HTTPS via the `glab` credential helper. Pushing a
 tag is separate from pushing to protected `main`.
 
 ## Conventions
 
+- **Primary repo = self-hosted GitLab** (`origin`; CI, issues, releases). A **public
+  GitHub mirror** exists at `github.com/LazyGatto/mikrotik-psk-knock` (remote `github`).
+  Keep the **GitLab host out of public-facing files** — READMEs and man pages link to
+  the GitHub URL, never `gitlab.eg23.ru`. Push code to both remotes; release assets are
+  synced to GitHub **by hand** (`glab release download` → `gh release …`) until the sync
+  is automated. Issues live on GitLab, so `Closes #N` in commits refers to GitLab issues.
 - Task tracking is **GitLab issues** (member-only, though the repo is public).
 - **Public repo:** never commit real infrastructure identifiers (router hosts,
   usernames, PSKs) to tracked files — use placeholders (`router.example.com`,

@@ -16,7 +16,7 @@ cd "$ROOT"
 APP_NAME="mkpk"                     # display name
 EXE="MkpkApp"                       # executable / target name
 RES_BUNDLE="mkpk-client_MkpkApp.bundle"
-BUNDLE_ID="${MKPK_BUNDLE_ID:-dev.mkpk.client}"   # placeholder — set real id before signing
+BUNDLE_ID="${MKPK_BUNDLE_ID:-ru.eg23.mkpk.client}"   # matches the keychain-access-group in release.entitlements
 VERSION="${MKPK_VERSION:-0.0.0-dev}"             # never a release version without owner sign-off
 BUILD_NUM="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 
@@ -37,17 +37,21 @@ mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 
 cp "$BIN_DIR/$EXE" "$CONTENTS/MacOS/$EXE"
 
-# SwiftPM resource bundle (icons via Bundle.module). The generated Bundle.module
-# accessor for the executable resolves it at Bundle.main.bundleURL/<bundle> — i.e.
-# the .app ROOT, not Contents/Resources — so it MUST live there or the app crashes
-# on any machine other than the one it was built on (which falls back to the
-# baked-in .build path). Copy to both to be safe.
-if [[ -d "$BIN_DIR/$RES_BUNDLE" ]]; then
-  cp -R "$BIN_DIR/$RES_BUNDLE" "$APP/"
-  cp -R "$BIN_DIR/$RES_BUNDLE" "$CONTENTS/Resources/"
-else
-  echo "⚠︎ resource bundle $RES_BUNDLE not found in $BIN_DIR — icons will fall back to SF Symbol"
-fi
+# Bundled brand icons. The generated Bundle.module accessor resolves the resource
+# bundle at the .app ROOT, but content beside Contents/ makes the app unsignable
+# ("unsealed contents present in the bundle root"). So the packaged app instead
+# FLATTENS the PNGs straight into Contents/Resources and loads them via
+# Bundle.main (see Brand.loadPNG); Bundle.module stays a dev-only (`swift run`)
+# fallback. Source PNGs come from the built resource bundle, or the source tree.
+ICON_DIR="$BIN_DIR/$RES_BUNDLE"
+[[ -d "$ICON_DIR" ]] || ICON_DIR="$ROOT/Sources/MkpkApp/Resources"
+copied=0
+for png in icon-dark icon-light; do
+  if [[ -f "$ICON_DIR/$png.png" ]]; then
+    cp "$ICON_DIR/$png.png" "$CONTENTS/Resources/$png.png"; copied=$((copied+1))
+  fi
+done
+[[ $copied -eq 2 ]] || echo "⚠︎ brand PNGs not fully found in $ICON_DIR — logo will fall back to SF Symbol"
 
 # App icon: build an .icns from the 256px brand tile (best-effort).
 ICON_SRC="$ROOT/Sources/MkpkApp/Resources/icon-dark.png"

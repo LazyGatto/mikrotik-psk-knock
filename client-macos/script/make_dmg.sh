@@ -16,4 +16,13 @@ ln -s /Applications "$STAGE/Applications"   # drag-to-install target
 
 rm -f "$OUT"
 hdiutil create -volname "$VOL" -srcfolder "$STAGE" -ov -format UDZO "$OUT" >/dev/null
-echo "✓ $OUT"
+
+# Optionally sign the DMG (gold standard: signed + notarized + stapled). Set
+# MKPK_SIGN_ID to a "Developer ID Application: …" identity to enable; then the DMG
+# still needs notarize.sh. Left unset → an unsigned DMG (fine for local/dev use).
+if [ -n "${MKPK_SIGN_ID:-}" ] && [ "${MKPK_SIGN_ID}" != "-" ]; then
+  codesign --force --sign "$MKPK_SIGN_ID" --timestamp "$OUT"
+  echo "✓ $OUT  (signed: $MKPK_SIGN_ID — run notarize.sh next)"
+else
+  echo "✓ $OUT"
+fi
