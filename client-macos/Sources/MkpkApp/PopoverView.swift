@@ -17,6 +17,7 @@ enum Palette {
         case .timeout: return warn
         case .error: return error
         case .sent: return accent
+        case .unverified: return warn
         }
     }
 }
@@ -28,6 +29,7 @@ enum StatusUI {
         case .open: return Palette.open
         case .closed: return Color(hex: 0x83838A)
         case .error: return Palette.error
+        case .unverified: return Palette.warn
         case .knocking, .checking: return Palette.accent
         case .unknown: return Palette.idle.opacity(0.5)
         }
@@ -39,6 +41,7 @@ enum StatusUI {
         case .checking, .knocking: return "lock.fill"
         case .open: return "lock.open.fill"
         case .closed: return "lock.fill"
+        case .unverified: return "questionmark.circle.fill"
         case .error: return "exclamationmark.triangle.fill"
         }
     }
@@ -49,6 +52,7 @@ enum StatusUI {
         case .knocking: return L("knocking…", "стук…")
         case .open: return L("open", "открыто")
         case .closed: return L("closed", "закрыто")
+        case .unverified: return L("unverified", "не подтв.")
         case .error: return L("error", "ошибка")
         }
     }
@@ -64,6 +68,7 @@ enum StatusUI {
             }
             return L("Open", "Открыто")
         case .closed: return L("Closed", "Закрыто")
+        case .unverified: return L("Can't verify behind VPN/proxy", "Не проверить за VPN/прокси")
         case .error: return L("Error", "Ошибка")
         }
     }
@@ -459,7 +464,9 @@ struct ServiceRowView: View {
                         .font(.system(size: 11)).foregroundStyle(Palette.error)
                 } else {
                     Text(StatusUI.line(svc, now: model.now))
-                        .font(.system(size: 11)).foregroundStyle(svc.status == .open ? Palette.open : .secondary)
+                        .font(.system(size: 11))
+                        .foregroundStyle(svc.status == .open ? Palette.open
+                                         : svc.status == .unverified ? Palette.warn : .secondary)
                 }
             }
             Spacer(minLength: 6)

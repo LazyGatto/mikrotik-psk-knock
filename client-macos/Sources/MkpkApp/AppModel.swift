@@ -19,11 +19,14 @@ private let kVerboseLogKey = "mkpk.verboseLog"
 final class AppModel: ObservableObject {
     enum ServiceStatus: Equatable {
         case unknown, checking, knocking, open, closed, error
+        // Knock sent, but reachability can't be confirmed — the check ran through a
+        // VPN/transparent-proxy tunnel that answers the TCP handshake locally.
+        case unverified
     }
 
     /// Outcome of a knock/check attempt, recorded in the per-service log.
     enum LogResult: String {
-        case open, closed, timeout, error, sent
+        case open, closed, timeout, error, sent, unverified
     }
 
     /// Localized label for a log result (called from the log view).
@@ -34,6 +37,7 @@ final class AppModel: ObservableObject {
         case .timeout: return L("timeout", "таймаут")
         case .error: return L("error", "ошибка")
         case .sent: return L("sent", "отправлено")
+        case .unverified: return L("unverified", "не подтв.")
         }
     }
 
@@ -549,6 +553,19 @@ final class AppModel: ObservableObject {
             let res = await Check.run(CheckOptions(host: vm.routerAddress, port: vm.checkPort, timeout: 1, attempts: 6, interval: 0.5))
             MkpkLog.net("check \(vm.routerAddress):\(vm.checkPort) [\(note)] -> \(String(describing: res.status)) (publicIP=\(self.publicIP ?? "—"), openedFor=\(vm.openedForIP ?? "—"))")
             switch res.status {
+            case .open where res.viaTunnel:
+                // The handshake completed through a VPN/proxy tunnel — the local
+                // proxy answers it, so it proves nothing about the real service.
+                // Report "unverified" instead of a false "open", but still track the
+                // allowed-timeout schedule so keep-open can re-knock before expiry.
+                let until = vm.service.allowedTimeout.flatMap(GoDuration.seconds).map { Date().addingTimeInterval($0) }
+                update(vm.id, .unverified, openUntil: until)
+                appendLog(vm.id, .unverified, note)
+                if notifyOpen {
+                    notify(L("Can't verify (VPN/proxy)", "Проверка недоступна (VPN/прокси)"),
+                           "\(vm.name) · \(vm.routerAddress)")
+                }
+                ensureCountdownTimer()
             case .open:
                 // Arm the countdown from the service's allowed timeout, if known.
                 let until = vm.service.allowedTimeout.flatMap(GoDuration.seconds).map { Date().addingTimeInterval($0) }
@@ -606,7 +623,15 @@ final class AppModel: ObservableObject {
             let until = vm.service.allowedTimeout.flatMap(GoDuration.seconds).map { Date().addingTimeInterval($0) }
             if vm.canCheck {
                 let res = await Check.run(CheckOptions(host: vm.routerAddress, port: vm.checkPort, timeout: 1, attempts: 6, interval: 0.5))
-                if res.status == .open {
+                if res.status == .open, res.viaTunnel {
+                    // Re-knocked, but behind a VPN/proxy we can't confirm — don't
+                    // claim "open". Keep the schedule so we re-knock before expiry;
+                    // not a failure, just unverified.
+                    update(vm.id, .unverified, openUntil: until)
+                    appendLog(vm.id, .unverified, "keep-open")
+                    renewFailures[vm.id] = 0
+                    ensureCountdownTimer()
+                } else if res.status == .open {
                     update(vm.id, .open, openUntil: until)
                     setOpenedIP(vm.id, nil); refreshPublicIP()   // re-record the egress IP
                     appendLog(vm.id, .open, "keep-open")
@@ -646,7 +671,10 @@ final class AppModel: ObservableObject {
         for g in groups {
             for svc in g.services where keepOpenIDs.contains(svc.id) && !renewingIDs.contains(svc.id) {
                 switch svc.status {
-                case .open:
+                case .open, .unverified:
+                    // Re-knock as expiry approaches. Under a tunnel the state stays
+                    // .unverified, but we still keep the access alive on schedule
+                    // (renew only fires near expiry, so no per-tick spam).
                     if let until = svc.openUntil {
                         let lead = min(max(TimeInterval(svc.router.bucketSeconds), 15), 30)
                         if now >= until.addingTimeInterval(-lead) { renew(svc) }
