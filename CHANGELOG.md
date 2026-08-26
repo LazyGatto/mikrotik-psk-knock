@@ -7,6 +7,10 @@ the native macOS recipient app in `client-macos/` ships separately.
 ## [Unreleased]
 
 ### Fixed
+- **CHANGELOG history restored** — cutting a release replaced the previous
+  version's heading instead of inserting above it, so the 0.11.0, 0.11.1,
+  0.11.2 and 0.12.0 sections silently merged into `[Unreleased]` and vanished
+  from the published changelog. Sections rebuilt from the release commits.
 - **A sleeping macOS runner no longer stalls the public mirror** — pushing the
   tag, creating the GitHub release and uploading the Go archives moved out of
   the macOS job into `mirror:github` on the Linux runner. The macOS job now only
@@ -14,7 +18,7 @@ the native macOS recipient app in `client-macos/` ships separately.
   this, an unavailable Mac meant no GitHub release at all, so clients stopped
   seeing updates even though every Linux stage had succeeded.
 
-
+## [0.12.0] — 2026-08-27
 
 Routers get their own service account instead of borrowing an administrator's
 login: adding a router installs it, deleting a router takes it away.
@@ -37,17 +41,15 @@ login: adding a router installs it, deleting a router takes it away.
   refuses a passwordless user, so onboarding generates a random password it
   never stores; authentication is by key.
 
-### Fixed
-- **The last router can be deleted** — an empty config was rejected as invalid,
-  so removing the only router failed after its service account had already been
-  removed. A config with no routers is now a valid state (it is also what a
-  fresh install looks like).
-
 ### Changed
 - **Telegram notification form regrouped**: the bot token gets its own
   full-width field first, with chat id and topic side by side underneath.
 
 ### Fixed
+- **The last router can be deleted** — an empty config was rejected as invalid,
+  so removing the only router failed after its service account had already been
+  removed. A config with no routers is now a valid state (it is also what a
+  fresh install looks like).
 - **Provision footer no longer overlaps its own version string** — the icon row
   (key, password, sign-out, language, theme) is now one menu button opening a
   compact popup, which also gives the actions readable labels instead of
@@ -57,7 +59,7 @@ login: adding a router installs it, deleting a router takes it away.
 - **The public key wraps instead of scrolling** in the SSH key dialog, so the
   whole key is visible at a glance.
 
-
+## [0.11.2] — 2026-08-27
 
 ### Fixed
 - **The SSH key button was missing from the provision UI** — the deploy key
@@ -67,7 +69,7 @@ login: adding a router installs it, deleting a router takes it away.
   form's "instance key" button was equally broken (no icon, untranslated
   label).
 
-
+## [0.11.1] — 2026-08-26
 
 ### Fixed
 - **The `--behind-ingress` port can be published on a LAN address** — it was
@@ -78,7 +80,7 @@ login: adding a router installs it, deleting a router takes it away.
   reboot; the installer warns when the port leaves loopback, since that traffic
   is plain HTTP.
 
-
+## [0.11.0] — 2026-08-26
 
 A remote host goes from nothing to a running instance in one command:
 
