@@ -62,6 +62,13 @@
 - *(перенесено)* Команда, читающая stdin (`go run -`, `swift -` и подобные),
   вешает Bash-инструмент до таймаута → напишите временный файл и запустите его.
 
+- Глобальная CI-переменная `GOPATH=$CI_PROJECT_DIR/.gocache` (кеш linux-джоб)
+  на shell-раннере mac-ci-01 наполняет checkout **read-only** go-mod-кешем →
+  следующий job этого раннера падает ещё на `get_sources` («failed to remove
+  .gocache/... Permission denied») → в macOS-джобе переопределять
+  `export GOPATH="$HOME/go"`, а осиротевший кеш чистить руками:
+  `chmod -R u+w .gocache && rm -rf .gocache` в каталоге checkout.
+
 ## Гейты и приёмка
 
 - Гейт — это **код возврата**, никогда не grep по выводу. Шаблон:

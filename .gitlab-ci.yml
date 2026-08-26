@@ -105,6 +105,10 @@ release:macos:
   script:
     - export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
     - export PATH="$HOME/go/bin:/opt/homebrew/bin:$PATH"   # wails + brew go
+    # Глобальный GOPATH=$CI_PROJECT_DIR/.gocache — для кеша linux-джоб. На маке
+    # он кладёт READ-ONLY go-mod-кеш прямо в checkout, и следующий git clean
+    # падает с Permission denied. Уводим GOPATH в домашний каталог раннера.
+    - export GOPATH="$HOME/go"
     # sign_update пре-сидится на раннере (GitHub CDN оттуда нестабилен);
     # если файла нет — package_release.sh скачает его сам, с ретраями.
     - export SPARKLE_SIGN_UPDATE="$HOME/.gitlab-runner/sparkle-tools/bin/sign_update"
