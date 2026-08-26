@@ -4,7 +4,10 @@ Notable changes to this project. Format: [Keep a Changelog](https://keepachangel
 Versions are the **Go CLI / provisioner** release tags (`mkpk`, `mkpk-provision`);
 the native macOS recipient app in `client-macos/` ships separately.
 
-## [Unreleased]
+## [0.5.0] — 2026-08-26
+
+Infrastructure release: the Go CLI / provisioner is functionally unchanged from
+0.4.2; the macOS client gains in-app auto-update.
 
 ### Added
 - **Single quality gate: `scripts/verify.sh`.** One command for `go vet` / `go build`
