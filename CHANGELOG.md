@@ -4,7 +4,14 @@ Notable changes to this project. Format: [Keep a Changelog](https://keepachangel
 Versions are the **Go CLI / provisioner** release tags (`mkpk`, `mkpk-provision`);
 the native macOS recipient app in `client-macos/` ships separately.
 
-## [Unreleased]
+## [0.11.0] — 2026-08-26
+
+A remote host goes from nothing to a running instance in one command:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/LazyGatto/mikrotik-psk-knock/main/deploy/docker/install.sh \
+  | sudo sh -s -- --domain mkpk.example.com
+```
 
 ### Added
 - **OCI labels on the image** (`source`, `title`, `description`, `licenses`,
