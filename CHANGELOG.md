@@ -6,6 +6,10 @@ the native macOS recipient app in `client-macos/` ships separately.
 
 ## [Unreleased]
 
+### Changed
+- **Telegram notification form regrouped**: the bot token gets its own
+  full-width field first, with chat id and topic side by side underneath.
+
 ### Fixed
 - **Provision footer no longer overlaps its own version string** — the icon row
   (key, password, sign-out, language, theme) is now one menu button opening a
