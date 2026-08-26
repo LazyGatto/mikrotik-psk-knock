@@ -94,7 +94,7 @@ release:macos:
     GIT_DEPTH: "0"
   script:
     - export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-    - export PATH="$HOME/go/bin:$PATH"   # wails
+    - export PATH="$HOME/go/bin:/opt/homebrew/bin:$PATH"   # wails + brew go
     # sign_update пре-сидится на раннере (GitHub CDN оттуда нестабилен);
     # если файла нет — package_release.sh скачает его сам, с ретраями.
     - export SPARKLE_SIGN_UPDATE="$HOME/.gitlab-runner/sparkle-tools/bin/sign_update"
