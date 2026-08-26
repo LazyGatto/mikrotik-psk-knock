@@ -2,8 +2,11 @@ package desktopui
 
 import (
 	"net"
+	"strings"
 	"testing"
 	"time"
+
+	"mikrotik-psk-knock/client/internal/invite"
 )
 
 func TestExpandLaunch(t *testing.T) {
@@ -129,6 +132,84 @@ func TestLaunchRunsOnlyWhenOpen(t *testing.T) {
 	}
 	if res.Launched != "" {
 		t.Fatalf("result reports a launch on a failed knock: %q", res.Launched)
+	}
+}
+
+// TestPresetFromInviteIsHonored closes the loop: a launch KIND set by the admin
+// travels in the invite and the client turns it into a real invocation, without
+// the user configuring anything.
+func TestPresetFromInviteIsHonored(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_ = c.Close()
+		}
+	}()
+	port := ln.Addr().(*net.TCPAddr).Port
+
+	blob, err := invite.Encode(invite.Blob{
+		Version:  invite.Version,
+		ClientID: "test-laptop",
+		Routers: []invite.Router{{
+			Router:        "127.0.0.1",
+			BucketSeconds: 30,
+			PSK:           "synthetic-test-psk",
+			Services: []invite.Service{{
+				Name: "web", Stage1: 40001, Stage2: 40002, Token: 40003,
+				CheckPort: port, Launch: "http",
+			}},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := New(store, "tok", KnockTimings{
+		MinBucketAge: time.Nanosecond, StageDuration: 30 * time.Millisecond,
+		TokenDuration: 30 * time.Millisecond, CheckTimeout: 200 * time.Millisecond,
+		CheckAttempts: 2, CheckInterval: 20 * time.Millisecond,
+	})
+	var ran []string
+	srv.runCmd = func(line string) error { ran = append(ran, line); return nil }
+
+	inv, err := store.Add("laptop", blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := srv.Knock(inv.ID, "127.0.0.1", "web")
+	if err != nil {
+		t.Fatalf("knock: %v", err)
+	}
+	if res.Status != "open" {
+		t.Fatalf("status = %q, want open", res.Status)
+	}
+	want := "127.0.0.1:" + itoa(port)
+	if len(ran) != 1 || !strings.Contains(ran[0], want) || !strings.Contains(ran[0], "http") {
+		t.Fatalf("ran = %v, want one http line containing %q", ran, want)
+	}
+
+	// The user's own command overrides the admin preset.
+	ran = nil
+	if err := srv.SetLaunchCommand(inv.ID, "127.0.0.1", "web", "mine {port}"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.Knock(inv.ID, "127.0.0.1", "web"); err != nil {
+		t.Fatal(err)
+	}
+	if len(ran) != 1 || ran[0] != "mine "+itoa(port) {
+		t.Fatalf("ran = %v, want the user command to win", ran)
 	}
 }
 

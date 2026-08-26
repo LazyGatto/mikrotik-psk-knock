@@ -4,6 +4,13 @@ Notable changes to this project. Format: [Keep a Changelog](https://keepachangel
 Versions are the **Go CLI / provisioner** release tags (`mkpk`, `mkpk-provision`);
 the native macOS recipient app in `client-macos/` ships separately.
 
+## [Unreleased]
+
+### Added
+- **Provision: launch-preset badge on the service row** — a service that opens
+  an app on the client side now shows an `↗ RDP` badge next to its type, so the
+  preset is visible without opening the service form.
+
 ## [0.8.0] — 2026-08-26
 
 ### Added
