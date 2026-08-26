@@ -71,6 +71,8 @@ func run(args []string) error {
 		return serveCmd(args[1:])
 	case "passwd":
 		return passwdCmd(args[1:])
+	case "sshkey":
+		return sshKeyCmd(args[1:])
 	case "version", "--version", "-v":
 		fmt.Printf("mkpk-provision %s\n", version.String())
 		return nil
@@ -100,6 +102,7 @@ func usage() {
   mkpk-provision test --config mkpk.yaml [--router r1] --client laptop [--service ssh] [--wait 4s]   # end-to-end knock test over SSH
   mkpk-provision serve --config mkpk.yaml [--addr 127.0.0.1:8765] [--behind-proxy]
   mkpk-provision passwd --config mkpk.yaml [--password …]   # admin password for the networked UI
+  mkpk-provision sshkey [show|create] --config mkpk.yaml [--replace]   # deploy key of this instance
 `)
 }
 
@@ -769,6 +772,45 @@ func envBool(name string) bool {
 		return true
 	}
 	return false
+}
+
+// sshKeyCmd shows or creates the instance deploy key — the identity this
+// installation uses to reach routers, as opposed to an admin's personal key.
+func sshKeyCmd(args []string) error {
+	sub := "show"
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		sub, args = args[0], args[1:]
+	}
+	fs := flag.NewFlagSet("sshkey", flag.ContinueOnError)
+	configPath := fs.String("config", config.DefaultPath(), "config path")
+	replace := fs.Bool("replace", false, "replace an existing key (invalidates it on every router)")
+	comment := fs.String("comment", "mkpk-provision", "key comment")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	switch sub {
+	case "show":
+		info, err := admin.ReadInstanceKey(*configPath)
+		if err != nil {
+			return err
+		}
+		if !info.Exists {
+			fmt.Printf("no instance key yet — create one: mkpk-provision sshkey create --config %s\n", *configPath)
+			return nil
+		}
+		fmt.Printf("path=%s\nfingerprint=%s\n%s\n", info.Path, info.Fingerprint, info.PublicKey)
+		return nil
+	case "create":
+		info, err := admin.CreateInstanceKey(*configPath, *comment, *replace)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("created %s\nfingerprint=%s\n%s\n", info.Path, info.Fingerprint, info.PublicKey)
+		fmt.Printf("import it on each router, then set the router's key_path to %s\n", info.Path)
+		return nil
+	default:
+		return fmt.Errorf("usage: mkpk-provision sshkey [show|create]")
+	}
 }
 
 // passwdCmd sets or replaces the admin password used by the networked UI.

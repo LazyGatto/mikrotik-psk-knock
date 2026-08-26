@@ -1291,7 +1291,17 @@ function openRouterModal(name) {
   g.user = inp(d.user, { placeholder: "admin" });
   g.key_path = inp(d.key_path, { placeholder: "~/.ssh/id_ed25519" });
   let authMode = d.use_agent === false && d.key_path ? "key" : "agent";
-  const keyWrap = h("div", { class: "field" + (authMode === "key" ? "" : " hidden") }, h("label", null, t("router.keypath")), g.key_path, h("div", { class: "note" }, t("router.keypath_note")));
+  // One click puts this instance's own deploy key in the field (creating it on
+  // first use), so a shared installation never depends on one admin's ~/.ssh.
+  const useInstanceKey = h("button", { type: "button", class: "btn link row", style: "gap:5px;margin-top:6px", onclick: async () => {
+    try {
+      let info = await api("GET", "/api/sshkey");
+      if (!info.exists) info = await api("POST", "/api/sshkey", {});
+      g.key_path.value = info.path;
+      toast(t("ssh.use") + ": " + info.fingerprint);
+    } catch (e) { toast(e.message, true); }
+  } }, icon("key", "ic-sm"), t("ssh.use"));
+  const keyWrap = h("div", { class: "field" + (authMode === "key" ? "" : " hidden") }, h("label", null, t("router.keypath")), g.key_path, useInstanceKey, h("div", { class: "note" }, t("router.keypath_note")));
   const seg = h("div", { class: "seg" },
     h("button", { type: "button", class: authMode === "agent" ? "on" : "", onclick: () => setAuth("agent") }, "ssh-agent"),
     h("button", { type: "button", class: authMode === "key" ? "on" : "", onclick: () => setAuth("key") }, t("router.auth_keyfile")));

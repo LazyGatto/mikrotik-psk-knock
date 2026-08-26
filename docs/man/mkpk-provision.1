@@ -108,12 +108,29 @@ beside the config; read from standard input when
 .B --password
 is omitted.
 .TP
+.B sshkey \fR[\fBshow\fR|\fBcreate\fR] \fB--config\fR \fIFILE\fR [\fB--replace\fR]
+Show or create the deploy key of this installation: an ed25519 key stored in
+.I ssh/id_ed25519
+beside the config. It exists so deploys belong to the installation rather than
+to one administrator's personal key. The private half never leaves the machine;
+import the printed public half on each router
+.RB ( "/user ssh-keys import" )
+and point the router's key path at it.
+.B --replace
+regenerates the key, which stops the old one from working on every router that
+already trusts it.
+.TP
 .B version
 Print the program version and exit.
 .SH FILES
 .TP
 .I ~/.config/mkpk/mkpk.yaml
 Default config path (0600). Holds all secrets.
+.TP
+.I ~/.config/mkpk/ssh/id_ed25519
+Deploy key of this installation (0600), with its
+.I .pub
+alongside.
 .TP
 .I ~/.config/mkpk/mkpk-admin.json
 Admin password record (argon2id, 0600), created beside the config when a

@@ -4,6 +4,17 @@ Notable changes to this project. Format: [Keep a Changelog](https://keepachangel
 Versions are the **Go CLI / provisioner** release tags (`mkpk`, `mkpk-provision`);
 the native macOS recipient app in `client-macos/` ships separately.
 
+## [Unreleased]
+
+### Added
+- **Deploy key that belongs to the installation** — provision can generate its
+  own ed25519 SSH key (`ssh/id_ed25519` beside the config, 0600) instead of
+  borrowing an admin's personal one: the key icon in the sidebar shows the
+  public half with copy and `.pub` download, the router form fills the key path
+  in one click, and `mkpk-provision sshkey show|create` does the same from a
+  shell. The private half is never served by the API. Regenerating is guarded —
+  it invalidates the key on every router that already trusts it.
+
 ## [0.9.0] — 2026-08-26
 
 Provision can now run as one shared instance for a team instead of a local copy

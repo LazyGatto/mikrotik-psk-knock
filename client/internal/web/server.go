@@ -135,6 +135,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("/api/deploy/apply", s.guard(s.handleDeployApply))
 	mux.HandleFunc("/api/deploy/uninstall", s.guard(s.handleDeployUninstall))
 	mux.HandleFunc("/api/deploy/stream", s.guard(s.handleDeployStream))
+	mux.HandleFunc("/api/sshkey", s.guard(s.handleSSHKey))
 	if s.auth != nil {
 		mux.HandleFunc("/login", s.handleLogin)
 		mux.HandleFunc("/logout", s.handleLogout)
@@ -225,6 +226,34 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	page = strings.Replace(page, "__MKPK_AUTH__", strconv.FormatBool(s.auth != nil), 1)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(page))
+}
+
+// handleSSHKey reports the instance deploy key and, on POST, creates it. Only
+// the public half is ever served — the private key stays on this machine.
+func (s *Server) handleSSHKey(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		info, err := admin.ReadInstanceKey(s.configPath)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, info)
+	case http.MethodPost:
+		var req struct {
+			Replace bool   `json:"replace"`
+			Comment string `json:"comment"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req) // empty body → create if absent
+		info, err := admin.CreateInstanceKey(s.configPath, req.Comment, req.Replace)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, info)
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
 }
 
 // --- authentication endpoints (shared-instance mode only) --------------------
