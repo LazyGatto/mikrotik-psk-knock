@@ -22,3 +22,6 @@ routeros/generated-*.rsc
 # local scratch (raw screenshots, etc.)
 /tmp/
 tmp/
+
+# local Claude Code state
+.claude/settings.local.json

@@ -27,12 +27,10 @@ test:
     - gitlab
   <<: *go-cache
   script:
-    - cd client
-    # Every package except the desktop wrapper (needs a platform webview).
-    - PKGS=$(go list ./... | grep -v '/cmd/mkpk-provision-desktop')
-    - go vet $PKGS
-    - go build $PKGS
-    - go test -cover $PKGS
+    # The single quality gate — the same command agents and humans run locally.
+    # It skips the desktop wrapper (needs a platform webview) and reports the
+    # Swift stages as SKIP off macOS. The gate is this script's exit code.
+    - bash scripts/verify.sh
 
 # On a vX.Y.Z tag: cross-compile the CLI binaries and push them to the project's
 # generic package registry, then attach them to a GitLab Release.

@@ -4,6 +4,20 @@ Notable changes to this project. Format: [Keep a Changelog](https://keepachangel
 Versions are the **Go CLI / provisioner** release tags (`mkpk`, `mkpk-provision`);
 the native macOS recipient app in `client-macos/` ships separately.
 
+## [Unreleased]
+
+### Added
+- **Single quality gate: `scripts/verify.sh`.** One command for `go vet` / `go build`
+  / `go test` plus `swift build` and `mkpk-selfcheck`; the gate is its exit code.
+  Stages that cannot run on the machine report SKIP (`--strict` turns a SKIP into a
+  failure), `--quick` builds only, `--docs` adds markdownlint. The CI `test` job now
+  runs this same script instead of duplicating the Go commands.
+- **Agent workflow documentation** (`docs/agents/`): roles, the delegation ladder,
+  Herdr wave orchestration, and a lessons diary. Supporting process skills in
+  `.agents/skills/` (`devils-advocate`, `verification`, `writing-plans`), the HALT
+  protocol in `.claude/rules/halt.md`, and `docs/plans/` for wave plans. Practices
+  adapted from the maintainer's gitlab-companion project.
+
 ## [0.4.2] — 2026-07-31
 
 This release is **macOS-client focused**; the Go CLI / provisioner is functionally
