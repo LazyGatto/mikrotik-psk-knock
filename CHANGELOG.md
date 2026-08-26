@@ -4,7 +4,19 @@ Notable changes to this project. Format: [Keep a Changelog](https://keepachangel
 Versions are the **Go CLI / provisioner** release tags (`mkpk`, `mkpk-provision`);
 the native macOS recipient app in `client-macos/` ships separately.
 
-## [0.11.2] — 2026-08-27
+## [Unreleased]
+
+### Fixed
+- **Provision footer no longer overlaps its own version string** — the icon row
+  (key, password, sign-out, language, theme) is now one menu button opening a
+  compact popup, which also gives the actions readable labels instead of
+  icon-guessing.
+- **Every modal has a close button** (× in the header) — the SSH key dialog had
+  no way out but Esc.
+- **The public key wraps instead of scrolling** in the SSH key dialog, so the
+  whole key is visible at a glance.
+
+
 
 ### Fixed
 - **The SSH key button was missing from the provision UI** — the deploy key

@@ -15,6 +15,8 @@ const I18N = {
     "auth.passwd_title": "Смена пароля админа",
     "auth.passwd_note": "Общий пароль для всех админов этой инсталляции. После смены все остальные сессии завершатся.",
     "auth.current": "Текущий пароль", "auth.new": "Новый пароль", "auth.repeat": "Повторите",
+    "menu.title": "Меню",
+    "close": "Закрыть",
     "ssh.title": "SSH-ключ этой инсталляции",
     "ssh.note": "Ключ принадлежит инсталляции, а не конкретному админу: приватная часть остаётся здесь и наружу не отдаётся, публичную нужно импортировать на каждый роутер.",
     "ssh.none": "Ключа ещё нет.",
@@ -174,6 +176,8 @@ const I18N = {
     "auth.passwd_title": "Change the admin password",
     "auth.passwd_note": "One shared password for every admin of this instance. Changing it signs all other sessions out.",
     "auth.current": "Current password", "auth.new": "New password", "auth.repeat": "Repeat",
+    "menu.title": "Menu",
+    "close": "Close",
     "ssh.title": "SSH key of this instance",
     "ssh.note": "The key belongs to the installation, not to one admin: the private half stays here and is never served, the public half is what you import on each router.",
     "ssh.none": "No key yet.",
@@ -356,6 +360,8 @@ const ICONS = {
   trash: '<path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/>',
   test: '<path d="M3 12h3l2.5 7 4-15 2.5 8H21"/>',
   lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  dots: '<circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18"/>',
   key: '<circle cx="7.5" cy="15.5" r="3.5"/><path d="M10 13 20 3"/><path d="M17 6l2.2 2.2"/><path d="M14.5 8.5l2.2 2.2"/>',
   warn: '<path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4m0 3h.01"/>',
   user: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/>',
@@ -620,16 +626,35 @@ function renderSidebar() {
   }
   nav.append(h("button", { class: "dashed", onclick: () => openUserModal(null) }, t("nav.add_user")));
 
+  // A single menu keeps the narrow footer readable: the icon row used to run
+  // into the version string.
+  const menuPop = h("div", { class: "foot-menu-pop" });
+  const menuBtn = h("button", { class: "iconbtn", "data-tip": t("menu.title"), onclick: (e) => {
+    e.stopPropagation();
+    menuPop.classList.toggle("open");
+  } }, icon("dots"));
+  const closeMenu = () => menuPop.classList.remove("open");
+  const item = (ic, label, onclick, value) => h("button", { onclick: () => { closeMenu(); onclick(); } },
+    icon(ic), h("span", null, label), value ? h("span", { class: "val" }, value) : null);
+
+  menuPop.append(item("key", t("ssh.title"), openSSHKeyModal));
+  if (window.MKPK_AUTH) menuPop.append(item("lock", t("auth.passwd"), openPasswordModal));
+  menuPop.append(h("hr"));
+  menuPop.append(item("globe", t("lang.switch"), toggleLang, LANG.toUpperCase()));
+  menuPop.append(item(THEME === "light" ? "moon" : "sun",
+    THEME === "light" ? t("theme.dark") : t("theme.light"), toggleTheme));
+  if (window.MKPK_AUTH) {
+    menuPop.append(h("hr"));
+    menuPop.append(item("logout", t("auth.logout"), () => { location.href = "/logout"; }));
+  }
+  document.addEventListener("click", closeMenu);
+
   const foot = h("div", { class: "sidebar-foot row" },
-    h("span", { class: "grow" },
+    h("span", { class: "grow row", style: "gap:6px;min-width:0" },
       (window.MKPK_VERSION && window.MKPK_VERSION !== "__MKPK_" + "VERSION__") ? h("span", { class: "ver" }, window.MKPK_VERSION) : null,
       UPDATE && UPDATE.newer ? h("button", { class: "iconbtn", style: "width:auto;padding:0 6px;font-weight:650;font-size:11px;color:var(--accent, #4f8cff)",
         "data-tip": t("update.available", { ver: UPDATE.latest }), onclick: () => openExternal(UPDATE.url) }, "↑ " + UPDATE.latest) : null),
-    h("button", { class: "iconbtn", "data-tip": t("ssh.title"), onclick: openSSHKeyModal }, icon("key")),
-    window.MKPK_AUTH ? h("button", { class: "iconbtn", "data-tip": t("auth.passwd"), onclick: openPasswordModal }, icon("lock")) : null,
-    window.MKPK_AUTH ? h("button", { class: "iconbtn", "data-tip": t("auth.logout"), onclick: () => { location.href = "/logout"; } }, icon("logout")) : null,
-    h("button", { class: "iconbtn", style: "width:auto;padding:0 6px;font-weight:650;font-size:11px", "data-tip": t("lang.switch"), onclick: toggleLang }, LANG.toUpperCase()),
-    h("button", { class: "iconbtn", "data-tip": THEME === "light" ? t("theme.dark") : t("theme.light"), onclick: toggleTheme }, icon(THEME === "light" ? "moon" : "sun")));
+    h("div", { class: "foot-menu" }, menuPop, menuBtn));
   sb.append(nav, foot);
 }
 
@@ -1169,11 +1194,14 @@ async function rotatePSK(user, router) {
 // ---------- modals ----------
 function closeModal() { document.getElementById("modal-root").innerHTML = ""; }
 function modal(node, size) {
-  // Close only via Esc or explicit buttons — not a backdrop click (avoids
-  // losing a half-filled form by accident).
+  // Close via Esc, the × in the header or explicit buttons — but not a backdrop
+  // click (that loses a half-filled form by accident).
   const root = document.getElementById("modal-root");
   root.innerHTML = "";
-  root.append(h("div", { class: "overlay" }, h("div", { class: "modal " + (size || "") }, node)));
+  const box = h("div", { class: "modal " + (size || "") }, node);
+  const head = box.querySelector(".modal-head");
+  if (head) head.append(h("button", { class: "modal-x", "data-tip": t("close"), onclick: closeModal }, "✕"));
+  root.append(h("div", { class: "overlay" }, box));
 }
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && document.querySelector(".overlay")) closeModal();
@@ -1566,7 +1594,7 @@ async function openSSHKeyModal() {
         catch (e) { toast(e.message, true); }
       } }, t("ssh.create")));
   } else {
-    body.append(h("pre", { class: "code" }, info.public_key),
+    body.append(h("pre", { class: "code wrap" }, info.public_key),
       h("div", { class: "grid2", style: "margin-top:10px" },
         field(t("ssh.fp"), h("input", { type: "text", class: "mono", value: info.fingerprint, readonly: true })),
         field(t("ssh.path"), h("input", { type: "text", class: "mono", value: info.path, readonly: true }))),
@@ -1579,6 +1607,7 @@ async function openSSHKeyModal() {
         });
       } }, t("ssh.regen")),
       h("span", { class: "spacer" }),
+      h("button", { class: "btn", onclick: closeModal }, t("close")),
       h("button", { class: "btn", onclick: () => { navigator.clipboard.writeText(info.public_key); toast(t("copied")); } }, t("copy")),
       h("button", { class: "btn pri", onclick: () => downloadText(info.public_key + "\n", "mkpk-provision.pub") }, "⤓ .pub"));
   }
