@@ -62,6 +62,147 @@ Caddy.
 В `Caddyfile` заготовлен закомментированный блок `remote_ip`: раскомментируйте
 и перечислите свои сети/адреса.
 
+## Пошагово: развёртывание на удалённом сервере
+
+Ниже — полный путь с нуля на чистом хосте. Вариант с Caddy (TLS из коробки);
+если у вас уже есть ингресс, пропустите шаги про домен и используйте
+`compose.yaml` вместо `compose.caddy.yaml`.
+
+### 0. Что нужно заранее
+
+- Хост с Linux, root или sudo, 1 CPU / 512 МБ памяти хватает.
+- **Сетевая доступность до роутеров по SSH** с этого хоста — деплой пойдёт отсюда.
+- Для варианта с Caddy: домен, A-запись которого смотрит на хост, и открытые
+  снаружи порты 80/443.
+- Путь к образу (`MKPK_IMAGE`): GitLab → **Deploy → Container Registry**.
+  Если проект публичный, `docker pull` работает без логина; если приватный —
+  создайте Deploy token (scope `read_registry`) и выполните на сервере
+  `docker login <gitlab-host>:5050`.
+
+### 1. Docker
+
+```sh
+curl -fsSL https://get.docker.com | sh
+sudo systemctl enable --now docker
+docker compose version    # должно быть v2.x
+```
+
+### 2. Каталог и файлы
+
+```sh
+sudo mkdir -p /opt/mkpk && cd /opt/mkpk
+BASE=https://raw.githubusercontent.com/LazyGatto/mikrotik-psk-knock/main/deploy/docker
+sudo curl -fsSLO $BASE/compose.caddy.yaml
+sudo curl -fsSLO $BASE/Caddyfile
+sudo curl -fsSL  $BASE/.env.example -o .env
+```
+
+(Для варианта без Caddy — `compose.yaml` вместо первых двух.)
+
+### 3. Заполнить `.env`
+
+```sh
+sudo nano /opt/mkpk/.env
+```
+
+```ini
+MKPK_IMAGE=<gitlab-host>:5050/<группа>/<проект>/provision:v0.9.0
+MKPK_ADMIN_PASSWORD=<длинный пароль, 20+ символов>
+MKPK_DOMAIN=mkpk.example.com
+MKPK_ACME_EMAIL=admin@example.com
+```
+
+```sh
+sudo chmod 600 /opt/mkpk/.env   # там первичный пароль админки
+```
+
+### 4. Ограничить доступ (сделайте это до запуска)
+
+Админка держит SSH-доступ ко всем роутерам. Оставлять её открытой всему
+интернету не нужно даже под паролем:
+
+- в `Caddyfile` раскомментируйте блок `@allowed remote_ip` и перечислите свои
+  сети/адреса — всё остальное получит 404;
+- либо ограничьте 443 файрволом хоста:
+
+```sh
+sudo ufw allow 22/tcp
+sudo ufw allow 80/tcp                      # нужен ACME для выпуска сертификата
+sudo ufw allow from <ваша-сеть> to any port 443 proto tcp
+sudo ufw enable
+```
+
+Порт 8765 наружу не открывайте никогда — он ходит только внутри compose-сети.
+
+### 5. Запуск
+
+```sh
+cd /opt/mkpk
+sudo docker compose -f compose.caddy.yaml up -d
+sudo docker compose -f compose.caddy.yaml logs -f provision
+```
+
+В логе должно появиться `admin password set from MKPK_ADMIN_PASSWORD: /data/mkpk-admin.json`
+и `password required, behind a TLS proxy`. Caddy в своём логе покажет выпуск
+сертификата (первый раз — до минуты).
+
+Проверка снаружи: `curl -I https://mkpk.example.com/` → `200`, а `/api/config`
+без сессии → `401`.
+
+### 6. Первый вход
+
+1. Откройте `https://<домен>` — увидите форму входа.
+2. Войдите паролем из `.env`.
+3. **Сразу смените пароль** в UI (замок слева внизу) и уберите
+   `MKPK_ADMIN_PASSWORD` из `.env`: он нужен был только для первого старта.
+
+### 7. Ключ для деплоя
+
+1. Иконка ключа слева внизу → **Создать ключ**.
+2. Скачайте `.pub` (или скопируйте строку).
+3. На каждом роутере: залейте файл в Files и выполните
+   `/user ssh-keys import user=<логин> public-key-file=mkpk-provision.pub`.
+4. В карточке роутера в блоке SSH нажмите **Ключ инсталляции** — путь
+   подставится сам.
+
+Проверка: в карточке роутера **Deploy → Status** должен показать связь и хеши.
+
+### 8. Дальше как обычно
+
+Добавляете роутеры, сервисы, юзеров, деплоите, экспортируете инвайты — так же,
+как в локальном режиме, только теперь это делают несколько админов в одном
+конфиге.
+
+### 9. Бэкап
+
+```sh
+sudo docker run --rm -v mkpk_mkpk-data:/data -v /opt/mkpk:/backup alpine \
+  tar czf /backup/mkpk-data-$(date +%F).tgz -C /data .
+```
+
+Архив содержит конфиг со **всеми** секретами инфраструктуры (PSK, SSH-креды,
+токены) и приватный ключ деплоя — храните соответственно.
+
+### 10. Обновление
+
+```sh
+cd /opt/mkpk
+sudo sed -i 's|provision:v0.9.0|provision:v0.10.0|' .env    # или правьте руками
+sudo docker compose -f compose.caddy.yaml pull
+sudo docker compose -f compose.caddy.yaml up -d
+```
+
+### Если что-то не так
+
+| Симптом | Причина и что делать |
+| --------- | ---------------------- |
+| Контейнер выходит с `no admin password set` | Не задан `MKPK_ADMIN_PASSWORD` и нет `mkpk-admin.json`. Заполните `.env` либо `docker compose run --rm provision passwd --config /data/mkpk.yaml` |
+| `refusing to serve plain HTTP …` | Потерялся `MKPK_BEHIND_PROXY=1` — он есть в обоих compose, проверьте, что не переопределили |
+| `manifest unknown` / `unauthorized` при pull | Неверный `MKPK_IMAGE` или приватный проект: сверьте путь в Deploy → Container Registry, при необходимости `docker login <gitlab-host>:5050` |
+| Caddy не выпускает сертификат | 80/443 недоступны снаружи или A-запись не на этот хост; смотрите `docker compose logs caddy` |
+| Вход есть, но `409` при сохранении | Кто-то правил конфиг параллельно: страница перезагрузится, повторите правку |
+| `deploy status` не видит роутер | Из контейнера нет доступа к роутеру по SSH либо публичный ключ не импортирован на роутер |
+
 ## Первый запуск и пароль
 
 - `MKPK_ADMIN_PASSWORD` используется **только один раз** — при первом старте он
@@ -133,9 +274,12 @@ volumes:
 docker compose pull && docker compose up -d
 ```
 
-Образ публикуется на каждый тег: `registry.gitlab.eg23.ru/lazygatto/mikrotik-psk-knock/provision:vX.Y.Z`
-и `:latest`. В проде лучше пинить версию (`MKPK_IMAGE` в `.env`), а не жить на
-`latest`.
+Образ публикуется на каждый тег как `…/provision:vX.Y.Z` и `:latest`. Точный
+путь смотрите в GitLab: **Deploy → Container Registry** — он выглядит как
+`<gitlab-host>:5050/<группа>/<проект>/provision`. Этот путь задаётся в `.env`
+переменной `MKPK_IMAGE` (в трекаемых файлах его нет намеренно: репозиторий
+публичный и адрес инфраструктуры в него не выносится). В проде пиньте версию,
+а не `latest`.
 
 ## Переменные окружения
 

@@ -9,7 +9,7 @@
 #
 services:
   provision:
-    image: ${MKPK_IMAGE:-registry.gitlab.eg23.ru/lazygatto/mikrotik-psk-knock/provision:latest}
+    image: ${MKPK_IMAGE:?set MKPK_IMAGE in .env — the image path of your GitLab project, see docs/deploy-docker.md}
     restart: unless-stopped
     environment:
       # Seeds the admin password on the very first start. An existing

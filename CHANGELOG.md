@@ -6,7 +6,19 @@ the native macOS recipient app in `client-macos/` ships separately.
 
 ## [Unreleased]
 
+### Fixed
+- **Compose no longer carries a wrong (and private) registry hostname** — the
+  image path was invented rather than checked, so `docker pull` would have
+  failed, and it also put the internal GitLab host into public files against
+  the project's own rule. `MKPK_IMAGE` is now required and documented; the real
+  path comes from GitLab's Container Registry page and lives only in the
+  operator's untracked `.env`.
+
 ### Added
+- **Step-by-step remote-server deployment guide** in
+  `docs/deploy-docker.md`: prerequisites, Docker, files, `.env`, restricting
+  access before the first start, first login and password change, the deploy
+  key, backups, upgrades and a troubleshooting table.
 - **Deploy key that belongs to the installation** — provision can generate its
   own ed25519 SSH key (`ssh/id_ed25519` beside the config, 0600) instead of
   borrowing an admin's personal one: the key icon in the sidebar shows the
