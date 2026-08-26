@@ -307,7 +307,10 @@ add name="mkpk-tt-notify" policy=read,write,test source={
 
     # Channels are independent — every enabled one fires.
     :if (($nTelegram = true) && ([:len $nBotToken] > 0) && ([:len $nChatId] > 0)) do={
-        :local text ("mkpk allowed src=" . $mkpkTtNotifySrc . " service=" . $mkpkTtNotifyService . " client_id=" . $mkpkTtNotifyClientId . " ttl=" . $mkpkTtNotifyTtl . " router=" . $mkpkTtNotifyRouter)
+        # Human-readable, plain text (no parse_mode → nothing to escape):
+        #   🔓 KZ-D2A: socks5 open for test2
+        #   from 95.25.177.50 · 55m
+        :local text ("\F0\9F\94\93 " . $mkpkTtNotifyRouter . ": " . $mkpkTtNotifyService . " open for " . $mkpkTtNotifyClientId . "\nfrom " . $mkpkTtNotifySrc . " \C2\B7 " . $mkpkTtNotifyTtl)
         :local tgBody ("{\"chat_id\":\"" . $nChatId . "\",\"text\":" . [:serialize $text to=json] . "}")
         :do {
             /tool fetch url=("https://api.telegram.org/bot" . $nBotToken . "/sendMessage") http-method=post http-header-field="Content-Type: application/json" http-data=$tgBody keep-result=no

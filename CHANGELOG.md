@@ -7,6 +7,12 @@ the native macOS recipient app in `client-macos/` ships separately.
 ## [Unreleased]
 
 ### Added
+- **Human-readable Telegram notification** from the router on a knock: the
+  rendered `mkpk-tt-notify` now sends `🔓 <router>: <service> open for
+  <client_id>` + `from <ip> · <ttl>` instead of the `key=value` line (the
+  webhook payload and email body stay machine-parseable). Re-deploy routers to
+  pick it up. Confirmed live on a real router (issue #27): allow-before-notify
+  order and the on-error guard behave as designed.
 - **Windows GUI client `mkpk-desktop`** (#26): a small Wails app for invite
   recipients — import `.mkpk` invites (stored under `%APPDATA%\mkpk`), see
   routers/services, knock and check with an honest open/closed/error status,
