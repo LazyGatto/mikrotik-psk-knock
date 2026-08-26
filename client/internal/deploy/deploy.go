@@ -97,9 +97,26 @@ func Connect(address string, port int, auth Auth) (*Client, error) {
 	addr := net.JoinHostPort(address, fmt.Sprint(port))
 	conn, err := ssh.Dial("tcp", addr, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("ssh dial %s: %w", addr, err)
+		return nil, fmt.Errorf("ssh dial %s: %w%s", addr, err, routerOSAuthHint(err, auth))
 	}
 	return &Client{conn: conn}, nil
+}
+
+// routerOSAuthHint explains the most common way a RouterOS login fails, since
+// the raw SSH error gives an operator nothing to act on. RouterOS defaults to
+// `password-authentication: yes-if-no-key`: the moment a user has an SSH key
+// imported, password login stops working *for that user*.
+func routerOSAuthHint(err error, a Auth) string {
+	if err == nil || !strings.Contains(err.Error(), "unable to authenticate") {
+		return ""
+	}
+	if a.Password != "" {
+		return "\n  hint: RouterOS disables password login for a user that has an SSH key" +
+			" imported (/ip ssh password-authentication=yes-if-no-key). Use that key here," +
+			" or on the router: /ip ssh set password-authentication=yes"
+	}
+	return "\n  hint: check that this key is imported for the user on the router" +
+		" (/user ssh-keys print), and that the user exists"
 }
 
 func (c *Client) Close() error { return c.conn.Close() }
@@ -273,6 +290,17 @@ func authMethods(a Auth) ([]ssh.AuthMethod, error) {
 	}
 	if a.Password != "" {
 		methods = append(methods, ssh.Password(a.Password))
+		// Some RouterOS builds offer only keyboard-interactive for password
+		// login; answering its prompts with the same password covers that
+		// without a second question to the operator.
+		methods = append(methods, ssh.KeyboardInteractive(
+			func(name, instruction string, questions []string, echos []bool) ([]string, error) {
+				answers := make([]string, len(questions))
+				for i := range questions {
+					answers[i] = a.Password
+				}
+				return answers, nil
+			}))
 	}
 	if len(methods) == 0 {
 		return nil, errors.New("no auth method: provide --key, --agent or --password")

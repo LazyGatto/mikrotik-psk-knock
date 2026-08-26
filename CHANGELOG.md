@@ -7,6 +7,12 @@ the native macOS recipient app in `client-macos/` ships separately.
 ## [Unreleased]
 
 ### Fixed
+- **Password login to a router works again where RouterOS wants
+  keyboard-interactive** — some builds offer only that method, and the client
+  knew only plain `password`, so onboarding failed with "no supported methods
+  remain". A failed login now also explains the usual cause: RouterOS defaults
+  to `password-authentication=yes-if-no-key`, so importing an SSH key for a user
+  silently disables password login *for that user*.
 - **CHANGELOG history restored** — cutting a release replaced the previous
   version's heading instead of inserting above it, so the 0.11.0, 0.11.1,
   0.11.2 and 0.12.0 sections silently merged into `[Unreleased]` and vanished
