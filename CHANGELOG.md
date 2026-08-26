@@ -4,7 +4,17 @@ Notable changes to this project. Format: [Keep a Changelog](https://keepachangel
 Versions are the **Go CLI / provisioner** release tags (`mkpk`, `mkpk-provision`);
 the native macOS recipient app in `client-macos/` ships separately.
 
-## [0.12.0] — 2026-08-27
+## [Unreleased]
+
+### Fixed
+- **A sleeping macOS runner no longer stalls the public mirror** — pushing the
+  tag, creating the GitHub release and uploading the Go archives moved out of
+  the macOS job into `mirror:github` on the Linux runner. The macOS job now only
+  adds what it alone can build: the signed DMGs and the Sparkle appcast. Before
+  this, an unavailable Mac meant no GitHub release at all, so clients stopped
+  seeing updates even though every Linux stage had succeeded.
+
+
 
 Routers get their own service account instead of borrowing an administrator's
 login: adding a router installs it, deleting a router takes it away.

@@ -191,18 +191,10 @@ fi
 rel_id="$(python3 -c 'import json,sys; print(json.load(sys.stdin).get("id",""))' <<<"$rel_json" 2>/dev/null)"
 
 if [[ -n "$rel_id" ]]; then
-  # Go-zips подтягиваем из package registry (публичный проект → публичное чтение),
-  # чтобы зеркало получало полный набор ассетов без ручной синхронизации.
-  for os in linux darwin windows; do for arch in amd64 arm64; do for bin in mkpk mkpk-provision; do
-    z="${bin}_${TAG}_${os}_${arch}.zip"
-    [[ -f "$DIST/$z" ]] || curl -fsS --retry 3 -o "$DIST/$z" "$PKG/$z" || echo "  ⚠︎ пропуск $z (нет в registry)"
-  done; done; done
-  for arch in amd64 arm64; do
-    z="mkpk-client_${TAG}_windows_${arch}.zip"
-    [[ -f "$DIST/$z" ]] || curl -fsS --retry 3 -o "$DIST/$z" "$PKG/$z" || echo "  ⚠︎ пропуск $z (нет в registry)"
-  done
+  # Go-архивы кладёт джоба mirror:github на linux-раннере — здесь только то,
+  # что умеет собрать macOS: подписанные DMG и appcast для автообновления.
   assets_json="$(gh_curl "$GH_API/releases/$rel_id/assets")"
-  for f in "$CLIENT_DMG" "$DESKTOP_DMG" "$APPCAST" "$DIST"/*.zip; do
+  for f in "$CLIENT_DMG" "$DESKTOP_DMG" "$APPCAST"; do
     [[ -f "$f" ]] || continue
     name="$(basename "$f")"
     old_id="$(python3 -c 'import json,sys; print(next((str(a["id"]) for a in json.load(sys.stdin) if a.get("name")==sys.argv[1]), ""))' "$name" <<<"$assets_json" 2>/dev/null)"
