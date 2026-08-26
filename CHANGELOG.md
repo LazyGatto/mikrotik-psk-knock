@@ -7,6 +7,18 @@ the native macOS recipient app in `client-macos/` ships separately.
 ## [Unreleased]
 
 ### Added
+- **Provision: shared-instance mode with a password** (#31) — the same web UI
+  can now serve a whole team instead of living in each admin's local copy.
+  A password (argon2id, stored in `mkpk-admin.json` beside the config, seeded
+  from `MKPK_ADMIN_PASSWORD` or `mkpk-provision passwd`) turns on server-side
+  sessions with `HttpOnly; SameSite=Strict; Secure` cookies, a per-session CSRF
+  token, login throttling, sign-out and password change in the UI. Local use is
+  unchanged: loopback `serve` and the desktop app need no password.
+  `serve` refuses a non-loopback address without a password, and refuses plain
+  HTTP without `--behind-proxy` / `MKPK_BEHIND_PROXY=1`.
+- **Provision: lost-update protection** — the config carries a version and a
+  save against a config another admin already changed is rejected with 409 and
+  a reload, instead of silently overwriting their work.
 - **Provision: launch-preset badge on the service row** — a service that opens
   an app on the client side now shows an `↗ RDP` badge next to its type, so the
   preset is visible without opening the service form.

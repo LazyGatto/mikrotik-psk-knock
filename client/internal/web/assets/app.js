@@ -9,6 +9,13 @@ const I18N = {
     "offline.short": "нет связи с бэкендом (serve не запущен)",
     add: "Добавить", copy: "Скопировать", copied: "✓ Скопировано", loading: "загрузка…", error: "ошибка",
     "saved_to": "Сохранено: {path}",
+    "auth.signed_out": "Сессия истекла — войдите заново",
+    "auth.stale": "Конфиг изменили в другой сессии — перезагружено, повторите правку",
+    "auth.logout": "Выйти", "auth.passwd": "Сменить пароль",
+    "auth.passwd_title": "Смена пароля админа",
+    "auth.passwd_note": "Общий пароль для всех админов этой инсталляции. После смены все остальные сессии завершатся.",
+    "auth.current": "Текущий пароль", "auth.new": "Новый пароль", "auth.repeat": "Повторите",
+    "auth.mismatch": "Пароли не совпадают", "auth.changed": "Пароль изменён",
     "update.available": "Доступно обновление {ver} — открыть страницу релиза",
     "note.add": "Добавить примечание", "note.title": "Примечание · {kind} {name}", "note.subtitle": "Хранится только в этом конфиге — на роутер не уходит",
     "note.placeholder": "Заметка для себя…", "note.clear": "Очистить", "note.saved": "Примечание сохранено", "note.cleared": "Примечание удалено",
@@ -153,6 +160,13 @@ const I18N = {
     "note.kind.router": "router", "note.kind.service": "service", "note.kind.user": "user",
     add: "Add", copy: "Copy", copied: "✓ Copied", loading: "loading…", error: "error",
     "saved_to": "Saved: {path}",
+    "auth.signed_out": "Session expired — sign in again",
+    "auth.stale": "The config changed in another session — reloaded, redo your edit",
+    "auth.logout": "Sign out", "auth.passwd": "Change password",
+    "auth.passwd_title": "Change the admin password",
+    "auth.passwd_note": "One shared password for every admin of this instance. Changing it signs all other sessions out.",
+    "auth.current": "Current password", "auth.new": "New password", "auth.repeat": "Repeat",
+    "auth.mismatch": "Passwords do not match", "auth.changed": "Password changed",
     "update.available": "Update {ver} available — open the release page",
     undo: "Undo", redo: "Redo", "toast.undone": "Undone", "toast.redone": "Redone",
     "nav.dashboard": "Overview", "nav.routers": "Routers", "nav.users": "Users",
@@ -328,6 +342,7 @@ const ICONS = {
   lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   warn: '<path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4m0 3h.01"/>',
   user: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/>',
+  logout: '<path d="M15 4h3.4A1.6 1.6 0 0 1 20 5.6v12.8a1.6 1.6 0 0 1-1.6 1.6H15"/><path d="M10 16l-4-4 4-4"/><path d="M6 12h10"/>',
   launch: '<path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M18 14v5a1.6 1.6 0 0 1-1.6 1.6H5.6A1.6 1.6 0 0 1 4 19V8.2A1.6 1.6 0 0 1 5.6 6.6H10"/>',
   note: '<path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/>',
 };
@@ -361,11 +376,20 @@ function toast(msg, isErr) {
 
 async function api(method, path, body) {
   const opts = { method, headers: { "X-MKPK-Token": TOKEN } };
+  // Echo the config version we last saw, so a save against a config someone
+  // else already changed is rejected instead of silently overwriting them.
+  if (S.version) opts.headers["X-MKPK-Config-Version"] = S.version;
   if (body !== undefined) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
   let res;
   try { res = await fetch(path, opts); }
   catch (e) { setOnline(false); throw new Error(t("offline.short")); } // serve is down / unreachable
   setOnline(true);
+  if (res.status === 401) { location.href = "/login"; throw new Error(t("auth.signed_out")); }
+  if (res.status === 409) {
+    toast(t("auth.stale"), true);
+    await reload().then(render).catch(() => {});
+    throw new Error(t("auth.stale"));
+  }
   const ct = res.headers.get("content-type") || "";
   if (ct.includes("application/json")) {
     const data = await res.json();
@@ -402,6 +426,7 @@ const isDrift = (r) => routerState(r) === "needs" || routerState(r) === "never";
 
 async function applyConfig(data) {
   S.path = data.path;
+  S.version = data.version || "";
   const sum = data.summary || { routers: [], users: [] };
   S.routers = (sum.routers || []).map((r) => ({ ...r, services: r.services || [], clients: r.clients || [] }));
   S.users = (sum.users || []).map((u) => ({ ...u, access: (u.access || []).map((a) => ({ ...a, services: a.services || [] })) }));
@@ -583,6 +608,8 @@ function renderSidebar() {
       (window.MKPK_VERSION && window.MKPK_VERSION !== "__MKPK_" + "VERSION__") ? h("span", { class: "ver" }, window.MKPK_VERSION) : null,
       UPDATE && UPDATE.newer ? h("button", { class: "iconbtn", style: "width:auto;padding:0 6px;font-weight:650;font-size:11px;color:var(--accent, #4f8cff)",
         "data-tip": t("update.available", { ver: UPDATE.latest }), onclick: () => openExternal(UPDATE.url) }, "↑ " + UPDATE.latest) : null),
+    window.MKPK_AUTH ? h("button", { class: "iconbtn", "data-tip": t("auth.passwd"), onclick: openPasswordModal }, icon("lock")) : null,
+    window.MKPK_AUTH ? h("button", { class: "iconbtn", "data-tip": t("auth.logout"), onclick: () => { location.href = "/logout"; } }, icon("logout")) : null,
     h("button", { class: "iconbtn", style: "width:auto;padding:0 6px;font-weight:650;font-size:11px", "data-tip": t("lang.switch"), onclick: toggleLang }, LANG.toUpperCase()),
     h("button", { class: "iconbtn", "data-tip": THEME === "light" ? t("theme.dark") : t("theme.light"), onclick: toggleTheme }, icon(THEME === "light" ? "moon" : "sun")));
   sb.append(nav, foot);
@@ -1490,6 +1517,27 @@ function seg2(vals, labels, cur, on) {
   const s = h("div", { class: "seg" });
   vals.forEach((v, i) => s.append(h("button", { type: "button", class: v === cur ? "on" : "", onclick: () => { [...s.children].forEach((c, j) => c.className = j === i ? "on" : ""); on(v); } }, labels[i])));
   return s;
+}
+
+function openPasswordModal() {
+  const cur = h("input", { type: "password", autocomplete: "current-password" });
+  const next = h("input", { type: "password", autocomplete: "new-password" });
+  const again = h("input", { type: "password", autocomplete: "new-password" });
+  const err = h("div", { class: "foot-note", style: "color:var(--danger)" });
+  const save = h("button", { class: "btn pri", onclick: async () => {
+    if (next.value !== again.value) { err.textContent = t("auth.mismatch"); return; }
+    try {
+      await api("POST", "/api/password", { current: cur.value, next: next.value });
+      closeModal(); toast(t("auth.changed"));
+    } catch (e) { err.textContent = e.message; }
+  } }, t("save"));
+  modal(h("div", null,
+    h("div", { class: "modal-head" }, h("h3", null, t("auth.passwd_title"))),
+    h("div", { class: "modal-body" },
+      h("div", { class: "note" }, t("auth.passwd_note")),
+      field(t("auth.current"), cur), field(t("auth.new"), next), field(t("auth.repeat"), again), err),
+    h("div", { class: "modal-foot" }, h("span", { class: "spacer" }),
+      h("button", { class: "btn", onclick: closeModal }, t("cancel")), save)), "sm");
 }
 
 function openUserModal(name) {

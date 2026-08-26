@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -67,6 +69,8 @@ func run(args []string) error {
 		return testCmd(args[1:])
 	case "serve":
 		return serveCmd(args[1:])
+	case "passwd":
+		return passwdCmd(args[1:])
 	case "version", "--version", "-v":
 		fmt.Printf("mkpk-provision %s\n", version.String())
 		return nil
@@ -94,7 +98,8 @@ func usage() {
   mkpk-provision export --config mkpk.yaml --user laptop [--router r1] [--out laptop.mkpk]   # all routers when --router omitted
   mkpk-provision deploy [status|uninstall] --config mkpk.yaml [--router r1] [--json]   # creds come from the router
   mkpk-provision test --config mkpk.yaml [--router r1] --client laptop [--service ssh] [--wait 4s]   # end-to-end knock test over SSH
-  mkpk-provision serve --config mkpk.yaml [--addr 127.0.0.1:8765]
+  mkpk-provision serve --config mkpk.yaml [--addr 127.0.0.1:8765] [--behind-proxy]
+  mkpk-provision passwd --config mkpk.yaml [--password …]   # admin password for the networked UI
 `)
 }
 
@@ -677,20 +682,116 @@ func testCmd(args []string) error {
 func serveCmd(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	configPath := fs.String("config", config.DefaultPath(), "config path")
-	addr := fs.String("addr", "127.0.0.1:8765", "listen address (loopback only)")
+	addr := fs.String("addr", "127.0.0.1:8765", "listen address; non-loopback needs a password + --behind-proxy")
+	behindProxy := fs.Bool("behind-proxy", envBool("MKPK_BEHIND_PROXY"),
+		"a reverse proxy terminates TLS in front of this instance")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	token, err := admin.GenerateSecret(24)
+
+	// Shared-instance mode is on as soon as an admin password exists (or the
+	// environment supplies the first one). Local single-operator use is
+	// unchanged: loopback + a per-process token, no password.
+	credPath := web.CredentialsPath(*configPath)
+	creds, hasPassword, err := web.BootstrapPassword(credPath, os.Getenv("MKPK_ADMIN_PASSWORD"))
 	if err != nil {
 		return err
 	}
+	if os.Getenv("MKPK_ADMIN_PASSWORD") != "" && hasPassword {
+		if _, existed, _ := web.LoadCredentials(credPath); existed {
+			fmt.Fprintf(os.Stderr, "note: %s already exists — MKPK_ADMIN_PASSWORD ignored (use `mkpk-provision passwd` to change it)\n", credPath)
+		}
+	}
+
+	// The config holds SSH credentials for every router, notification tokens
+	// and every user's PSK. Reaching it over the network without a password is
+	// never what someone means, so refuse instead of trusting a typo.
+	if !isLoopbackAddr(*addr) {
+		if !hasPassword {
+			return fmt.Errorf("refusing to listen on %s without an admin password: set MKPK_ADMIN_PASSWORD or run `mkpk-provision passwd`", *addr)
+		}
+		if !*behindProxy {
+			return fmt.Errorf("refusing to serve plain HTTP on %s: terminate TLS in a reverse proxy and pass --behind-proxy (or MKPK_BEHIND_PROXY=1)", *addr)
+		}
+	}
+
 	logger := log.New(os.Stdout, "", log.LstdFlags)
-	handler := web.LogRequests(web.Handler(*configPath, token), logger)
-	srv := &http.Server{Addr: *addr, Handler: handler}
+	var handler http.Handler
+	if hasPassword {
+		handler = web.LogRequests(web.AuthHandler(*configPath, web.NewAuth(credPath, creds, *behindProxy)), logger)
+	} else {
+		token, err := admin.GenerateSecret(24)
+		if err != nil {
+			return err
+		}
+		handler = web.LogRequests(web.Handler(*configPath, token), logger)
+	}
+	srv := &http.Server{Addr: *addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 	fmt.Printf("mkpk provision UI: http://%s/\n", *addr)
-	fmt.Printf("config: %s (loopback only, Ctrl-C to stop)\n", *configPath)
+	mode := "loopback only, no password"
+	if hasPassword {
+		mode = "password required"
+		if *behindProxy {
+			mode += ", behind a TLS proxy"
+		}
+	}
+	fmt.Printf("config: %s (%s, Ctrl-C to stop)\n", *configPath, mode)
 	return srv.ListenAndServe()
+}
+
+// isLoopbackAddr reports whether a listen address stays on the local machine.
+// An empty host (":8765") means every interface — not loopback.
+func isLoopbackAddr(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	switch host {
+	case "localhost":
+		return true
+	case "":
+		return false
+	}
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	return ip != nil && ip.IsLoopback()
+}
+
+func envBool(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
+}
+
+// passwdCmd sets or replaces the admin password used by the networked UI.
+func passwdCmd(args []string) error {
+	fs := flag.NewFlagSet("passwd", flag.ContinueOnError)
+	configPath := fs.String("config", config.DefaultPath(), "config path")
+	password := fs.String("password", "", "new password; read from stdin when empty")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	pw := *password
+	if pw == "" {
+		fmt.Fprint(os.Stderr, "new admin password: ")
+		line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+		if err != nil && line == "" {
+			return fmt.Errorf("reading password: %w", err)
+		}
+		pw = strings.TrimRight(line, "\r\n")
+	}
+	rec, err := web.HashPassword(pw)
+	if err != nil {
+		return err
+	}
+	path := web.CredentialsPath(*configPath)
+	if err := web.SaveCredentials(path, rec); err != nil {
+		return err
+	}
+	fmt.Printf("admin password updated: %s\n", path)
+	fmt.Println("all existing sessions on a running instance stay valid until it restarts")
+	return nil
 }
 
 func printSummary(path string, s admin.Summary) {

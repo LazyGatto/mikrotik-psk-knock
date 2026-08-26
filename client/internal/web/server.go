@@ -5,7 +5,9 @@
 package web
 
 import (
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -23,7 +25,7 @@ import (
 	"mikrotik-psk-knock/client/internal/version"
 )
 
-//go:embed assets/index.html assets/app.js assets/style.css assets/favicon-16.png assets/favicon-32.png assets/apple-touch-icon.png assets/logo-96.png assets/icon-512.png
+//go:embed assets/login.html assets/index.html assets/app.js assets/style.css assets/favicon-16.png assets/favicon-32.png assets/apple-touch-icon.png assets/logo-96.png assets/icon-512.png
 var assetsFS embed.FS
 
 const maxUndo = 100
@@ -36,6 +38,7 @@ type Server struct {
 	token      string
 	desktop    bool // desktop build: browser blob-downloads don't work, save server-side
 	hooks      DesktopHooks
+	auth       *Auth // nil → local mode: loopback + a static per-process token
 
 	updMu      sync.Mutex
 	updCache   updateInfo
@@ -50,6 +53,15 @@ type Server struct {
 // against that listener.
 func Handler(configPath, token string) http.Handler {
 	return loopbackOnly(mux(configPath, token, false, DesktopHooks{}))
+}
+
+// AuthHandler builds the UI for a networked, shared instance: every request is
+// gated by a session from the shared admin password. No loopback guard — the
+// point is to reach it over the network — and no static token: the per-session
+// token injected into the page doubles as the CSRF token.
+func AuthHandler(configPath string, auth *Auth) http.Handler {
+	s := &Server{configPath: configPath, auth: auth}
+	return s.routes()
 }
 
 // EmbeddedHandler builds the same admin UI for the desktop app, where it is
@@ -79,6 +91,10 @@ func EmbeddedHandlerHooks(configPath, token string, hooks DesktopHooks) http.Han
 // mux wires the routes shared by both entry points.
 func mux(configPath, token string, desktop bool, hooks DesktopHooks) *http.ServeMux {
 	s := &Server{configPath: configPath, token: token, desktop: desktop, hooks: hooks}
+	return s.routes()
+}
+
+func (s *Server) routes() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.index)
 	// Liveness probe for the UI heartbeat: no auth, no request-log noise (path is
@@ -96,29 +112,34 @@ func mux(configPath, token string, desktop bool, hooks DesktopHooks) *http.Serve
 	mux.HandleFunc("/apple-touch-icon.png", s.static("assets/apple-touch-icon.png", "image/png"))
 	mux.HandleFunc("/logo-96.png", s.static("assets/logo-96.png", "image/png"))
 	mux.HandleFunc("/icon-512.png", s.static("assets/icon-512.png", "image/png"))
-	mux.HandleFunc("/api/config", s.auth(s.handleConfig))
-	mux.HandleFunc("/api/secret", s.auth(s.handleSecret))
-	mux.HandleFunc("/api/ports/suggest", s.auth(s.handlePortsSuggest))
-	mux.HandleFunc("/api/router", s.auth(s.handleRouter))
-	mux.HandleFunc("/api/router/info", s.auth(s.handleRouterInfo))
-	mux.HandleFunc("/api/service", s.auth(s.handleService))
-	mux.HandleFunc("/api/service/enable", s.auth(s.handleServiceEnable))
-	mux.HandleFunc("/api/service/test/stream", s.auth(s.handleServiceTestStream))
-	mux.HandleFunc("/api/note", s.auth(s.handleNote))
-	mux.HandleFunc("/api/save", s.auth(s.handleSave))
-	mux.HandleFunc("/api/update", s.auth(s.handleUpdate))
-	mux.HandleFunc("/api/open", s.auth(s.handleOpen))
-	mux.HandleFunc("/api/client", s.auth(s.handleClient))
-	mux.HandleFunc("/api/user", s.auth(s.handleUser))
-	mux.HandleFunc("/api/user/psk", s.auth(s.handleUserPSK))
-	mux.HandleFunc("/api/undo", s.auth(s.handleUndo))
-	mux.HandleFunc("/api/redo", s.auth(s.handleRedo))
-	mux.HandleFunc("/api/export", s.auth(s.handleExport))
-	mux.HandleFunc("/api/render", s.auth(s.handleRender))
-	mux.HandleFunc("/api/deploy/status", s.auth(s.handleDeployStatus))
-	mux.HandleFunc("/api/deploy/apply", s.auth(s.handleDeployApply))
-	mux.HandleFunc("/api/deploy/uninstall", s.auth(s.handleDeployUninstall))
-	mux.HandleFunc("/api/deploy/stream", s.auth(s.handleDeployStream))
+	mux.HandleFunc("/api/config", s.guard(s.handleConfig))
+	mux.HandleFunc("/api/secret", s.guard(s.handleSecret))
+	mux.HandleFunc("/api/ports/suggest", s.guard(s.handlePortsSuggest))
+	mux.HandleFunc("/api/router", s.guard(s.versioned(s.handleRouter)))
+	mux.HandleFunc("/api/router/info", s.guard(s.handleRouterInfo))
+	mux.HandleFunc("/api/service", s.guard(s.versioned(s.handleService)))
+	mux.HandleFunc("/api/service/enable", s.guard(s.versioned(s.handleServiceEnable)))
+	mux.HandleFunc("/api/service/test/stream", s.guard(s.handleServiceTestStream))
+	mux.HandleFunc("/api/note", s.guard(s.versioned(s.handleNote)))
+	mux.HandleFunc("/api/save", s.guard(s.handleSave))
+	mux.HandleFunc("/api/update", s.guard(s.handleUpdate))
+	mux.HandleFunc("/api/open", s.guard(s.handleOpen))
+	mux.HandleFunc("/api/client", s.guard(s.versioned(s.handleClient)))
+	mux.HandleFunc("/api/user", s.guard(s.versioned(s.handleUser)))
+	mux.HandleFunc("/api/user/psk", s.guard(s.versioned(s.handleUserPSK)))
+	mux.HandleFunc("/api/undo", s.guard(s.versioned(s.handleUndo)))
+	mux.HandleFunc("/api/redo", s.guard(s.versioned(s.handleRedo)))
+	mux.HandleFunc("/api/export", s.guard(s.handleExport))
+	mux.HandleFunc("/api/render", s.guard(s.handleRender))
+	mux.HandleFunc("/api/deploy/status", s.guard(s.handleDeployStatus))
+	mux.HandleFunc("/api/deploy/apply", s.guard(s.handleDeployApply))
+	mux.HandleFunc("/api/deploy/uninstall", s.guard(s.handleDeployUninstall))
+	mux.HandleFunc("/api/deploy/stream", s.guard(s.handleDeployStream))
+	if s.auth != nil {
+		mux.HandleFunc("/login", s.handleLogin)
+		mux.HandleFunc("/logout", s.handleLogout)
+		mux.HandleFunc("/api/password", s.guard(s.handlePassword))
+	}
 	return mux
 }
 
@@ -184,16 +205,95 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	pageToken := s.token
+	if s.auth != nil {
+		sess, ok := s.auth.Session(r)
+		if !ok {
+			s.loginPage(w, "")
+			return
+		}
+		pageToken = sess.csrf
+	}
 	data, err := assetsFS.ReadFile("assets/index.html")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	page := strings.Replace(string(data), "__MKPK_TOKEN__", s.token, 1)
+	page := strings.Replace(string(data), "__MKPK_TOKEN__", pageToken, 1)
 	page = strings.Replace(page, "__MKPK_VERSION__", version.String(), 1)
 	page = strings.Replace(page, "__MKPK_DESKTOP__", strconv.FormatBool(s.desktop), 1)
+	page = strings.Replace(page, "__MKPK_AUTH__", strconv.FormatBool(s.auth != nil), 1)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(page))
+}
+
+// --- authentication endpoints (shared-instance mode only) --------------------
+
+func (s *Server) loginPage(w http.ResponseWriter, errMsg string) {
+	data, err := assetsFS.ReadFile("assets/login.html")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	page := strings.Replace(string(data), "__MKPK_ERROR__", errMsg, 1)
+	page = strings.Replace(page, "__MKPK_VERSION__", version.String(), 1)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if errMsg != "" {
+		w.WriteHeader(http.StatusUnauthorized)
+	}
+	_, _ = w.Write([]byte(page))
+}
+
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		if _, ok := s.auth.Session(r); ok {
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		s.loginPage(w, "")
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		s.loginPage(w, "bad request")
+		return
+	}
+	id, _, err := s.auth.Login(r.PostFormValue("password"))
+	if err != nil {
+		s.loginPage(w, "wrong password")
+		return
+	}
+	s.auth.SetCookie(w, id)
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	s.auth.Logout(r)
+	s.auth.ClearCookie(w)
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
+}
+
+func (s *Server) handlePassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var req struct {
+		Current string `json:"current"`
+		Next    string `json:"next"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json: "+err.Error())
+		return
+	}
+	if err := s.auth.ChangePassword(r, req.Current, req.Next); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
 func (s *Server) static(name, contentType string) http.HandlerFunc {
@@ -208,15 +308,55 @@ func (s *Server) static(name, contentType string) http.HandlerFunc {
 	}
 }
 
-// auth gates API calls with the session token, so only our own page can call them.
-func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
+// guard gates API calls, so only our own page can call them.
+func (s *Server) guard(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("X-MKPK-Token") != s.token {
+		token := s.token
+		if s.auth != nil {
+			// Shared instance: the caller must hold a live session, and the
+			// page token bound to it. A custom header cannot be sent
+			// cross-site without a CORS preflight, so this doubles as CSRF
+			// protection alongside the SameSite=Strict cookie.
+			sess, ok := s.auth.Session(r)
+			if !ok {
+				writeErr(w, http.StatusUnauthorized, "not signed in")
+				return
+			}
+			token = sess.csrf
+		}
+		if r.Header.Get("X-MKPK-Token") != token {
 			writeErr(w, http.StatusForbidden, "invalid session token")
 			return
 		}
 		next(w, r)
 	}
+}
+
+// versioned rejects a mutation aimed at a config that has changed underneath
+// the caller — the lost-update guard for a shared instance. Requests that carry
+// no version header (scripts, older pages) are let through unchanged.
+func (s *Server) versioned(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if want := r.Header.Get("X-MKPK-Config-Version"); want != "" {
+			if got := configVersion(s.configPath); got != "" && got != want {
+				writeErr(w, http.StatusConflict,
+					"the config changed in another session — reload before saving")
+				return
+			}
+		}
+		next(w, r)
+	}
+}
+
+// configVersion is a content hash of the config file; "" when it cannot be read
+// (a missing file is a valid starting state and must not block the first save).
+func configVersion(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 // --- config ---
@@ -918,6 +1058,10 @@ func (s *Server) writeConfig(w http.ResponseWriter, cfg config.Config) {
 		"summary":  admin.Summarize(cfg),
 		"can_undo": canUndo,
 		"can_redo": canRedo,
+		// The page echoes this back on every mutation so a save against a
+		// config someone else already changed is rejected instead of
+		// silently overwriting their work.
+		"version": configVersion(s.configPath),
 	})
 }
 
