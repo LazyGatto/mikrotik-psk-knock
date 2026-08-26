@@ -18,11 +18,22 @@
 5. **Зависимости:** новых нет — переиспользуем `deploy.Client` (`upload`, `Run`).
 6. **Живой CHR:** обязателен **до** реализации — см. HALT ниже.
 
-## HALT H-2 (открыт)
+## HALT H-2 — закрыт (проверено на живом роутере, RouterOS 7.23.2, 2026-08-27)
 
-Минимальный набор политик группы неизвестен и проверяется только вживую.
-Гипотеза: `ssh,ftp,read,write,policy,test` (+ `sensitive`?). Реализация
-начинается после подтверждения набора на CHR.
+**Набор `policy=ssh,ftp,read,write,policy,test` подтверждён; `sensitive` не нужна.**
+Под сервисным юзером отработали вход по ключу, `deploy status`, `deploy --force`
+и живой стук клиентом; после теста юзер, группа и залитый `.pub` удалены,
+роутер вернулся в исходное состояние.
+
+**Находка, меняющая дизайн:** RouterOS **не создаёт пользователя без пароля** —
+`/user add` требует `password`. Онбординг генерирует случайный пароль, **не
+сохраняет его** и не использует: аутентификация только по ключу. Это нужно
+явно написать в UI.
+
+Сузить набор дальше (без `policy`/`test`) на боевом роутере намеренно не
+пробовали: `/import` не транзакционен и при нехватке прав может упасть уже
+после удаления старых правил, оставив доступ сломанным на несколько секунд.
+Такую проверку — только на отдельном CHR.
 
 ## Проверка на CHR (делает maintainer)
 
@@ -39,7 +50,9 @@ sudo docker compose -f /opt/mkpk/compose.yaml exec provision \
 ```routeros
 /user group add name=mkpk policy=ssh,ftp,read,write,policy,test \
   comment="mkpk provisioning service account"
-/user add name=mkpk group=mkpk comment="mkpk-provision service account"
+# пароль обязателен (RouterOS), но не используется: вход только по ключу
+/user add name=mkpk group=mkpk password="<32 случайных символа>" \
+  comment="mkpk-provision service account"
 
 # ключ: залить mkpk-provision.pub в Files, затем
 /user ssh-keys import user=mkpk public-key-file=mkpk-provision.pub
@@ -70,7 +83,7 @@ sudo docker compose -f /opt/mkpk/compose.yaml exec provision \
 
 | # | Что | Зона |
 | --- | ----- | ------ |
-| 1 | `deploy.EnsureServiceUser(pub, name)` — группа, юзер, импорт ключа, идемпотентно | `internal/deploy/serviceuser.go` |
+| 1 | `deploy.EnsureServiceUser(pub, name)` — группа, юзер (со случайным несохраняемым паролем), импорт ключа, идемпотентно | `internal/deploy/serviceuser.go` |
 | 2 | `deploy.RemoveServiceUser(name)` — обратное действие | там же |
 | 3 | API `/api/router/serviceuser` (POST create / DELETE) с одноразовыми бутстрап-кредами | `internal/web` |
 | 4 | UI: кнопка в блоке SSH карточки роутера + подтверждение + лог | `internal/web/assets` |
