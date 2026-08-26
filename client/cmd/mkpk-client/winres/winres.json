@@ -8,7 +8,7 @@
     "#1": {
       "0409": {
         "identity": {
-          "name": "mkpk-desktop",
+          "name": "mkpk-client",
           "version": "0.0.0.0"
         },
         "description": "MikroTik port-knock client",

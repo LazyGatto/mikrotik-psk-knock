@@ -35,6 +35,11 @@ type Server struct {
 	configPath string
 	token      string
 	desktop    bool // desktop build: browser blob-downloads don't work, save server-side
+	hooks      DesktopHooks
+
+	updMu      sync.Mutex
+	updCache   updateInfo
+	updFetched time.Time
 	mu         sync.Mutex
 	undo       [][]byte // snapshots of the file before each mutation
 	redo       [][]byte
@@ -44,7 +49,7 @@ type Server struct {
 // TCP listener (`mkpk-provision serve`). The Host guard blocks DNS-rebinding
 // against that listener.
 func Handler(configPath, token string) http.Handler {
-	return loopbackOnly(mux(configPath, token, false))
+	return loopbackOnly(mux(configPath, token, false, DesktopHooks{}))
 }
 
 // EmbeddedHandler builds the same admin UI for the desktop app, where it is
@@ -52,12 +57,28 @@ func Handler(configPath, token string) http.Handler {
 // against, and the webview's Host header is platform-specific, so the loopback
 // Host guard is omitted; the per-session token still gates the API.
 func EmbeddedHandler(configPath, token string) http.Handler {
-	return mux(configPath, token, true)
+	return mux(configPath, token, true, DesktopHooks{})
+}
+
+// DesktopHooks are native capabilities the desktop shell can lend to the UI.
+// Both are optional; absent hooks fall back to the browser-era behavior.
+type DesktopHooks struct {
+	// SaveDialog shows a native save dialog and returns the chosen path
+	// ("" → the user cancelled).
+	SaveDialog func(filename string) (string, error)
+	// OpenURL opens a URL in the system browser (webview links would navigate
+	// the app page away instead).
+	OpenURL func(url string) error
+}
+
+// EmbeddedHandlerHooks is EmbeddedHandler with native desktop capabilities.
+func EmbeddedHandlerHooks(configPath, token string, hooks DesktopHooks) http.Handler {
+	return mux(configPath, token, true, hooks)
 }
 
 // mux wires the routes shared by both entry points.
-func mux(configPath, token string, desktop bool) *http.ServeMux {
-	s := &Server{configPath: configPath, token: token, desktop: desktop}
+func mux(configPath, token string, desktop bool, hooks DesktopHooks) *http.ServeMux {
+	s := &Server{configPath: configPath, token: token, desktop: desktop, hooks: hooks}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.index)
 	// Liveness probe for the UI heartbeat: no auth, no request-log noise (path is
@@ -85,6 +106,8 @@ func mux(configPath, token string, desktop bool) *http.ServeMux {
 	mux.HandleFunc("/api/service/test/stream", s.auth(s.handleServiceTestStream))
 	mux.HandleFunc("/api/note", s.auth(s.handleNote))
 	mux.HandleFunc("/api/save", s.auth(s.handleSave))
+	mux.HandleFunc("/api/update", s.auth(s.handleUpdate))
+	mux.HandleFunc("/api/open", s.auth(s.handleOpen))
 	mux.HandleFunc("/api/client", s.auth(s.handleClient))
 	mux.HandleFunc("/api/user", s.auth(s.handleUser))
 	mux.HandleFunc("/api/user/psk", s.auth(s.handleUserPSK))
@@ -468,7 +491,21 @@ func (s *Server) handleSave(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid filename")
 		return
 	}
-	path := filepath.Join(downloadsDir(), name)
+	var path string
+	if s.hooks.SaveDialog != nil {
+		chosen, err := s.hooks.SaveDialog(name)
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if chosen == "" { // user cancelled the dialog — not an error
+			writeJSON(w, http.StatusOK, map[string]bool{"cancelled": true})
+			return
+		}
+		path = chosen
+	} else {
+		path = filepath.Join(downloadsDir(), name)
+	}
 	if err := os.WriteFile(path, []byte(req.Content), 0o644); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return

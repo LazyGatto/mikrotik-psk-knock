@@ -63,15 +63,15 @@ build:binaries:
           done
         done
       done
-    # Windows GUI client (mkpk-desktop): the Wails Windows backend is cgo-free,
+    # Windows GUI client (mkpk-client): the Wails Windows backend is cgo-free,
     # so it cross-compiles here like the CLIs. -H windowsgui hides the console.
     - |
       for arch in amd64 arm64; do
         GOOS=windows GOARCH=$arch go build -tags desktop,production -trimpath \
-          -ldflags "$LDFLAGS -H windowsgui" -o stage/mkpk-desktop.exe ./cmd/mkpk-desktop
-        (cd stage && zip -q -j "$DIST/mkpk-desktop_${CI_COMMIT_TAG}_windows_${arch}.zip" mkpk-desktop.exe)
-        rm -f stage/mkpk-desktop.exe
-        echo "packaged mkpk-desktop_${CI_COMMIT_TAG}_windows_${arch}.zip"
+          -ldflags "$LDFLAGS -H windowsgui" -o stage/mkpk-client.exe ./cmd/mkpk-client
+        (cd stage && zip -q -j "$DIST/mkpk-client_${CI_COMMIT_TAG}_windows_${arch}.zip" mkpk-client.exe)
+        rm -f stage/mkpk-client.exe
+        echo "packaged mkpk-client_${CI_COMMIT_TAG}_windows_${arch}.zip"
       done
     - cd "$CI_PROJECT_DIR"
     - |
@@ -124,7 +124,7 @@ release:
       set -- create \
         --name "mkpk ${CI_COMMIT_TAG}" \
         --tag-name "${CI_COMMIT_TAG}" \
-        --description "Automated release for ${CI_COMMIT_TAG}. CLI binaries below; the desktop .app is built on macOS (make desktop) and attached separately."
+        --description "Automated release for ${CI_COMMIT_TAG}. CLI binaries (linux/darwin/windows) and the Windows GUI client are attached below; the release:macos job adds the signed+notarized macOS DMGs (mkpk-client, mkpk-provision-desktop) and mirrors everything to GitHub. Details: CHANGELOG.md."
       for f in dist/*.zip; do
         name=$(basename "$f")
         set -- "$@" --assets-link "{\"name\":\"${name}\",\"url\":\"${PKG_REGISTRY}/${name}\"}"

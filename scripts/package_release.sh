@@ -198,7 +198,7 @@ if [[ -n "$rel_id" ]]; then
     [[ -f "$DIST/$z" ]] || curl -fsS --retry 3 -o "$DIST/$z" "$PKG/$z" || echo "  ⚠︎ пропуск $z (нет в registry)"
   done; done; done
   for arch in amd64 arm64; do
-    z="mkpk-desktop_${TAG}_windows_${arch}.zip"
+    z="mkpk-client_${TAG}_windows_${arch}.zip"
     [[ -f "$DIST/$z" ]] || curl -fsS --retry 3 -o "$DIST/$z" "$PKG/$z" || echo "  ⚠︎ пропуск $z (нет в registry)"
   done
   assets_json="$(gh_curl "$GH_API/releases/$rel_id/assets")"

@@ -9,5 +9,5 @@ Regenerate after changing `winres/winres.json` or the icon:
 
 ```sh
 go install github.com/tc-hib/go-winres@latest
-cd client/cmd/mkpk-desktop && go-winres make --in winres/winres.json --arch amd64,arm64
+cd client/cmd/mkpk-client && go-winres make --in winres/winres.json --arch amd64,arm64
 ```

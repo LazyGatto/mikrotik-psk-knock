@@ -1,4 +1,4 @@
-// mkpk-desktop is the invite-recipient GUI client (the desktop sibling of the
+// mkpk-client is the invite-recipient GUI client (the desktop sibling of the
 // native macOS menu-bar app): import .mkpk invites, knock, check. Windows-first
 // — the Wails Windows backend is cgo-free, so release binaries are plain
 // `GOOS=windows go build -tags desktop,production` cross-compiles.
@@ -23,15 +23,15 @@ import (
 func main() {
 	token, err := admin.GenerateSecret(24)
 	if err != nil {
-		log.Fatalf("mkpk-desktop: %v", err)
+		log.Fatalf("mkpk-client: %v", err)
 	}
 	dir, err := desktopui.DefaultDir()
 	if err != nil {
-		log.Fatalf("mkpk-desktop: %v", err)
+		log.Fatalf("mkpk-client: %v", err)
 	}
 	store, err := desktopui.NewStore(dir)
 	if err != nil {
-		log.Fatalf("mkpk-desktop: %v", err)
+		log.Fatalf("mkpk-client: %v", err)
 	}
 
 	err = wails.Run(&options.App{
@@ -45,6 +45,6 @@ func main() {
 		},
 	})
 	if err != nil {
-		log.Fatalf("mkpk-desktop: %v", err)
+		log.Fatalf("mkpk-client: %v", err)
 	}
 }

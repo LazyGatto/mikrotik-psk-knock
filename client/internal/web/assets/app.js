@@ -9,6 +9,7 @@ const I18N = {
     "offline.short": "нет связи с бэкендом (serve не запущен)",
     add: "Добавить", copy: "Скопировать", copied: "✓ Скопировано", loading: "загрузка…", error: "ошибка",
     "saved_to": "Сохранено: {path}",
+    "update.available": "Доступно обновление {ver} — открыть страницу релиза",
     "note.add": "Добавить примечание", "note.title": "Примечание · {kind} {name}", "note.subtitle": "Хранится только в этом конфиге — на роутер не уходит",
     "note.placeholder": "Заметка для себя…", "note.clear": "Очистить", "note.saved": "Примечание сохранено", "note.cleared": "Примечание удалено",
     "note.kind.router": "роутер", "note.kind.service": "сервис", "note.kind.user": "юзер",
@@ -147,6 +148,7 @@ const I18N = {
     "note.kind.router": "router", "note.kind.service": "service", "note.kind.user": "user",
     add: "Add", copy: "Copy", copied: "✓ Copied", loading: "loading…", error: "error",
     "saved_to": "Saved: {path}",
+    "update.available": "Update {ver} available — open the release page",
     undo: "Undo", redo: "Redo", "toast.undone": "Undone", "toast.redone": "Redone",
     "nav.dashboard": "Overview", "nav.routers": "Routers", "nav.users": "Users",
     "nav.add_router": "+ Add router", "nav.add_user": "+ Add user",
@@ -566,7 +568,10 @@ function renderSidebar() {
   nav.append(h("button", { class: "dashed", onclick: () => openUserModal(null) }, t("nav.add_user")));
 
   const foot = h("div", { class: "sidebar-foot row" },
-    h("span", { class: "grow" }, (window.MKPK_VERSION && window.MKPK_VERSION !== "__MKPK_" + "VERSION__") ? h("span", { class: "ver" }, window.MKPK_VERSION) : null),
+    h("span", { class: "grow" },
+      (window.MKPK_VERSION && window.MKPK_VERSION !== "__MKPK_" + "VERSION__") ? h("span", { class: "ver" }, window.MKPK_VERSION) : null,
+      UPDATE && UPDATE.newer ? h("button", { class: "iconbtn", style: "width:auto;padding:0 6px;font-weight:650;font-size:11px;color:var(--accent, #4f8cff)",
+        "data-tip": t("update.available", { ver: UPDATE.latest }), onclick: () => openExternal(UPDATE.url) }, "↑ " + UPDATE.latest) : null),
     h("button", { class: "iconbtn", style: "width:auto;padding:0 6px;font-weight:650;font-size:11px", "data-tip": t("lang.switch"), onclick: toggleLang }, LANG.toUpperCase()),
     h("button", { class: "iconbtn", "data-tip": THEME === "light" ? t("theme.dark") : t("theme.light"), onclick: toggleTheme }, icon(THEME === "light" ? "moon" : "sun")));
   sb.append(nav, foot);
@@ -1548,8 +1553,10 @@ async function downloadText(text, filename) {
   // The desktop webview (Wails) can't do a browser blob-download; the app is
   // local, so save server-side to ~/Downloads and report the path.
   if (window.MKPK_DESKTOP) {
-    try { const r = await api("POST", "/api/save", { filename, content: text }); toast(t("saved_to", { path: r.path })); }
-    catch (e) { toast(e.message, true); }
+    try {
+      const r = await api("POST", "/api/save", { filename, content: text });
+      if (!r.cancelled) toast(t("saved_to", { path: r.path }));
+    } catch (e) { toast(e.message, true); }
     return;
   }
   const a = document.createElement("a");
@@ -1584,6 +1591,21 @@ async function heartbeat() {
 }
 function startHeartbeat() { ensureBanner(); heartbeat(); setInterval(heartbeat, 5000); }
 
+// ---------- update check ----------
+// Release feed lives on the public GitHub mirror; the backend caches the check.
+let UPDATE = null;
+function openExternal(u) {
+  if (window.MKPK_DESKTOP) { api("POST", "/api/open", { url: u }).catch((e) => toast(e.message, true)); }
+  else { window.open(u, "_blank", "noopener"); }
+}
+async function checkUpdate() {
+  try {
+    const d = await api("GET", "/api/update");
+    if (d && d.newer) { UPDATE = d; renderSidebar(); toast(t("update.available", { ver: d.latest })); }
+  } catch { /* offline or rate-limited — never nag about a failed check */ }
+}
+
 // ---------- boot ----------
 startHeartbeat();
 reload().then(startPolling).catch((e) => toast(e.message, true));
+checkUpdate();

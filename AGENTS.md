@@ -12,6 +12,8 @@ repo-wide orientation for AI agents / contributors. Subtrees have their own
   - `client/cmd/mkpk` — end-user knock/check CLI.
   - `client/cmd/mkpk-provision` — admin CLI + local web UI (`serve`).
   - `client/cmd/mkpk-provision-desktop` — Wails desktop wrapper of the web UI.
+  - `client/cmd/mkpk-client` — Wails GUI for invite recipients, Windows-first
+    (cgo-free cross-compile); the macOS recipient app is native (`client-macos/`).
   - `client/internal/{admin,config,routeros,invite,knock,token,servicecheck,deploy,web,version}`
     — core; `routeros/render.go` generates the `.rsc`, `deploy` applies it over SSH.
 - `client-macos/` — the **native Swift menu-bar recipient app** (imports `.mkpk`
@@ -115,6 +117,12 @@ tag is separate from pushing to protected `main`.
   usernames, PSKs) to tracked files — use placeholders (`router.example.com`,
   `203.0.113.x`, synthetic PSKs). Real values are fine only in local/untracked
   config and at runtime.
+- **Unified product naming.** Four products, and every artifact carries its
+  product name: `mkpk` (recipient CLI), `mkpk-client` (recipient GUI — the
+  native macOS app *and* the Wails Windows app; the macOS bundle itself is
+  `mkpk.app`), `mkpk-provision` (admin CLI + web UI), `mkpk-provision-desktop`
+  (admin GUI). Release files are `<product>_vX.Y.Z_<os>_<arch>.<zip|dmg>`.
+  Don't invent new prefixes.
 - Commit messages end with a `Co-Authored-By:` trailer when authored with an agent.
 - Fail loudly with friendly errors; validate at boundaries (invites, network),
   trust internal code.
