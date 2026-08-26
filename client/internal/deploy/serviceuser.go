@@ -140,6 +140,31 @@ func (c *Client) EnsureServiceUser(publicKey string) error {
 	return nil
 }
 
+// SSHPasswordAuth reads /ip ssh password-authentication. RouterOS defaults to
+// "yes-if-no-key": a user with an imported key can no longer log in with a
+// password. Admins often flip it to "yes" to let provisioning in, and then
+// forget to flip it back.
+func (c *Client) SSHPasswordAuth() (string, error) {
+	out, err := c.Run(`:put [/ip ssh get password-authentication]`)
+	if err != nil {
+		return "", fmt.Errorf("read ssh password-authentication: %w", err)
+	}
+	return strings.TrimSpace(out), nil
+}
+
+// SetSSHPasswordAuth writes that setting back.
+func (c *Client) SetSSHPasswordAuth(value string) error {
+	switch value {
+	case "yes", "no", "yes-if-no-key":
+	default:
+		return fmt.Errorf("ssh password-authentication: unexpected value %q", value)
+	}
+	if _, err := c.Run(`/ip ssh set password-authentication=` + value); err != nil {
+		return fmt.Errorf("set ssh password-authentication=%s: %w", value, err)
+	}
+	return nil
+}
+
 // RemoveServiceUser deletes the key, the user and the group in one command.
 // A live check showed RouterOS runs the whole line before tearing down the
 // session, so the service user can remove itself — no admin credentials needed

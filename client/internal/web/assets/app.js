@@ -24,6 +24,10 @@ const I18N = {
     "onb.working": "Подключаемся к роутеру…",
     "onb.done": "Сервисный пользователь {user} создан, ключ {fp}",
     "onb.saved": "Роутер добавлен",
+    "onb.restore": "Вернуть password-authentication после онбординга",
+    "onb.restore_note": "Если для этого подключения вы временно разрешили на роутере вход по паролю (/ip ssh password-authentication=yes), провижн вернёт значение по умолчанию yes-if-no-key — сервисный пользователь ходит по ключу.",
+    "onb.restored": "На роутере password-authentication возвращён: {from} → {to}",
+    "onb.hint_pwauth": "Если RouterOS не пускает по паролю — выполните на роутере и повторите:",
     "onb.left_behind": "Роутер удалён из конфига, но сервисный пользователь на нём остался:",
     "close": "Закрыть",
     "ssh.title": "SSH-ключ этой инсталляции",
@@ -194,6 +198,10 @@ const I18N = {
     "onb.working": "Connecting to the router…",
     "onb.done": "Service user {user} created, key {fp}",
     "onb.saved": "Router added",
+    "onb.restore": "Restore password-authentication afterwards",
+    "onb.restore_note": "If you temporarily allowed password login on the router for this connection (/ip ssh password-authentication=yes), provision sets it back to the default yes-if-no-key — the service account uses its key.",
+    "onb.restored": "password-authentication restored on the router: {from} → {to}",
+    "onb.hint_pwauth": "If RouterOS refuses the password — run this on the router and retry:",
     "onb.left_behind": "The router is gone from the config, but its service user is still on it:",
     "close": "Close",
     "ssh.title": "SSH key of this instance",
@@ -380,6 +388,7 @@ const ICONS = {
   lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
   dots: '<circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/>',
   globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18a15 15 0 0 1 0-18"/>',
+  copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5.6A1.6 1.6 0 0 1 6.6 4H15"/>',
   key: '<circle cx="7.5" cy="15.5" r="3.5"/><path d="M10 13 20 3"/><path d="M17 6l2.2 2.2"/><path d="M14.5 8.5l2.2 2.2"/>',
   warn: '<path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4m0 3h.01"/>',
   user: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/>',
@@ -1353,8 +1362,10 @@ function openOnboardModal() {
   const password = h("input", { type: "password", autocomplete: "off" });
   const keyPath = h("input", { type: "text", placeholder: "~/.ssh/id_ed25519" });
   const agent = h("input", { type: "checkbox" });
+  const restore = h("input", { type: "checkbox", checked: true });
   const out = h("div", { class: "foot-note", style: "white-space:pre-wrap" });
   const err = h("div", { class: "foot-note", style: "color:var(--danger)" });
+  const hint = h("div");
 
   const run = h("button", { class: "btn pri", onclick: async () => {
     err.textContent = ""; out.textContent = t("onb.working");
@@ -1364,8 +1375,12 @@ function openOnboardModal() {
         address: addr.value.trim(), port: +port.value || 0,
         user: user.value.trim(), password: password.value,
         key_path: keyPath.value.trim(), use_agent: agent.checked,
+        restore_password_auth: restore.checked,
       });
       out.textContent = t("onb.done", { user: res.user, fp: res.fingerprint });
+      if (res.password_auth_after && res.password_auth_after !== res.password_auth_before) {
+        out.textContent += "\n" + t("onb.restored", { from: res.password_auth_before, to: res.password_auth_after });
+      }
       // Save the router pointing at the account we just created.
       const cfg = await api("POST", "/api/router", {
         name: name.value.trim() || addr.value.trim(),
@@ -1381,6 +1396,12 @@ function openOnboardModal() {
     } catch (e) {
       err.textContent = e.message;
       out.textContent = "";
+      hint.textContent = "";
+      // The most common failure has a one-line fix on the router — offer it
+      // ready to paste instead of making the operator retype it.
+      if (/password/i.test(e.message) && /authenticate|method/i.test(e.message)) {
+        hint.append(cmdBlock("/ip ssh set password-authentication=yes", t("onb.hint_pwauth")));
+      }
     } finally { run.disabled = false; }
   } }, t("onb.run"));
 
@@ -1394,8 +1415,10 @@ function openOnboardModal() {
         h("div", { class: "grid2" }, field(t("field.user"), user), field(t("field.port"), port)),
         field(t("router.pw_ssh"), password),
         field(t("router.keypath"), keyPath),
-        h("label", { class: "inline-check" }, agent, "ssh-agent")),
-      out, err),
+        h("label", { class: "inline-check" }, agent, "ssh-agent"),
+        h("label", { class: "inline-check" }, restore, t("onb.restore")),
+        h("div", { class: "note" }, t("onb.restore_note"))),
+      out, err, hint),
     h("div", { class: "modal-foot" }, h("span", { class: "spacer" }),
       h("button", { class: "btn", onclick: closeModal }, t("cancel")), run)));
 }
@@ -1685,7 +1708,8 @@ async function openSSHKeyModal() {
       h("div", { class: "grid2", style: "margin-top:10px" },
         field(t("ssh.fp"), h("input", { type: "text", class: "mono", value: info.fingerprint, readonly: true })),
         field(t("ssh.path"), h("input", { type: "text", class: "mono", value: info.path, readonly: true }))),
-      h("div", { class: "foot-note", style: "margin-top:10px" }, t("ssh.howto")));
+      h("div", { class: "foot-note", style: "margin-top:10px" }, t("ssh.howto")),
+      cmdBlock("/user ssh-keys import user=admin public-key-file=mkpk-provision.pub", null));
     foot.append(
       h("button", { class: "btn danger sm", onclick: () => {
         confirmDialog(t("ssh.regen"), t("ssh.regen_warn"), t("ssh.regen"), async () => {
@@ -1699,6 +1723,17 @@ async function openSSHKeyModal() {
       h("button", { class: "btn pri", onclick: () => downloadText(info.public_key + "\n", "mkpk-provision.pub") }, "⤓ .pub"));
   }
   modal(h("div", null, h("div", { class: "modal-head" }, h("h3", null, t("ssh.title"))), body, foot));
+}
+
+// A command an operator has to run on the router: shown as code, copied with a
+// click. Retyping RouterOS commands by hand is how typos get into firewalls.
+function cmdBlock(cmd, label) {
+  const btn = h("button", { class: "btn sm", onclick: () => { navigator.clipboard.writeText(cmd); toast(t("copied")); } },
+    icon("copy", "ic-sm"), t("copy"));
+  return h("div", { class: "cmd-block" },
+    label ? h("div", { class: "foot-note" }, label) : null,
+    h("div", { class: "row", style: "align-items:flex-start;gap:8px" },
+      h("pre", { class: "code wrap", style: "flex:1;margin:0" }, cmd), btn));
 }
 
 function openPasswordModal() {

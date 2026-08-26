@@ -247,6 +247,9 @@ func (s *Server) handleOnboard(w http.ResponseWriter, r *http.Request) {
 		KeyPath  string `json:"key_path"` // … or a key
 		KeyPass  string `json:"key_pass"`
 		UseAgent bool   `json:"use_agent"`
+		// Tidy up after ourselves: an admin who set password-authentication=yes
+		// to let us in should not have to remember to set it back.
+		RestorePasswordAuth bool `json:"restore_password_auth"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid json: "+err.Error())
@@ -278,7 +281,7 @@ func (s *Server) handleOnboard(w http.ResponseWriter, r *http.Request) {
 				User: req.User, Password: req.Password,
 				KeyPath: req.KeyPath, KeyPass: req.KeyPass, UseAgent: req.UseAgent,
 			},
-		}, key.PublicKey)
+		}, key.PublicKey, req.RestorePasswordAuth)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error(), "log": res.Log})
 		return
@@ -287,6 +290,8 @@ func (s *Server) handleOnboard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user": res.User, "policies": res.Policies, "fingerprint": res.Fingerprint,
 		"key_path": key.Path, "log": res.Log,
+		"password_auth_before": res.PasswordAuthBefore,
+		"password_auth_after":  res.PasswordAuthAfter,
 	})
 }
 

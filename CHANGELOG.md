@@ -4,6 +4,22 @@ Notable changes to this project. Format: [Keep a Changelog](https://keepachangel
 Versions are the **Go CLI / provisioner** release tags (`mkpk`, `mkpk-provision`);
 the native macOS recipient app in `client-macos/` ships separately.
 
+## [Unreleased]
+
+### Added
+- **Onboarding tidies up after itself**: if you had to allow password login on
+  the router (`/ip ssh set password-authentication=yes`) to let provision in,
+  it sets the value back to RouterOS's default `yes-if-no-key` afterwards — the
+  service account uses its key from then on. Shown as a checkbox in the dialog
+  (on by default), reported in the result, and available as
+  `--restore-password-auth` on `mkpk-provision serviceuser add`. Only fires when
+  the connection actually used a password and the router really was set to
+  `yes`.
+- **Router commands are copyable** — the key-import command in the SSH key
+  dialog, and the `/ip ssh set password-authentication=yes` hint that now
+  appears right under a failed password login, come with a copy button instead
+  of asking you to retype them.
+
 ## [0.12.1] — 2026-08-27
 
 ### Fixed

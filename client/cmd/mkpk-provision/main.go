@@ -835,6 +835,8 @@ func serviceUserCmd(args []string) error {
 	keyPass := fs.String("key-pass", "", "passphrase for that key")
 	useAgent := fs.Bool("agent", false, "also try ssh-agent")
 	asJSON := fs.Bool("json", false, "machine-readable output")
+	restoreAuth := fs.Bool("restore-password-auth", true,
+		"after onboarding with a password, set /ip ssh password-authentication back to yes-if-no-key")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -875,11 +877,15 @@ func serviceUserCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		res, err := admin.OnboardServiceUser(r, opts, key.PublicKey)
+		res, err := admin.OnboardServiceUser(r, opts, key.PublicKey, *restoreAuth)
 		if err != nil {
 			return err
 		}
 		res.Router, res.Fingerprint = rn, key.Fingerprint
+		if res.PasswordAuthAfter != "" && res.PasswordAuthAfter != res.PasswordAuthBefore {
+			fmt.Printf("router=%s ssh password-authentication: %s → %s (вернули значение по умолчанию)\n",
+				rn, res.PasswordAuthBefore, res.PasswordAuthAfter)
+		}
 		if *asJSON {
 			return printJSON(res)
 		}
