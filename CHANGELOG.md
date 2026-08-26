@@ -4,7 +4,11 @@ Notable changes to this project. Format: [Keep a Changelog](https://keepachangel
 Versions are the **Go CLI / provisioner** release tags (`mkpk`, `mkpk-provision`);
 the native macOS recipient app in `client-macos/` ships separately.
 
-## [Unreleased]
+## [0.9.0] — 2026-08-26
+
+Provision can now run as one shared instance for a team instead of a local copy
+per admin — see [docs/deploy-docker.md](docs/deploy-docker.md) and the widened
+trust zone in [docs/threat-model.md](docs/threat-model.md).
 
 ### Added
 - **Provision: Docker image and two compose recipes** (#32) — `Dockerfile`
