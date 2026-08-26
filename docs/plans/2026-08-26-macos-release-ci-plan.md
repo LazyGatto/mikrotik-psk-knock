@@ -105,8 +105,15 @@ brew install go && go install github.com/wailsapp/wails/v2/cmd/wails@latest
   scope api — asset-links: releases API отвергает `CI_JOB_TOKEN`),
   `GITHUB_TOKEN` (PAT c правом на релизы зеркала);
 - переменные (protected, не masked): `MKPK_SPARKLE_ED_PUBLIC_KEY` (публичный
-  ключ из шага 2 — он не секрет), при переиспользовании чужого keychain —
-  `MKPK_CI_KEYCHAIN` и `MKPK_CI_KEYCHAIN_PASS_FILE`.
+  ключ из шага 2 — он не секрет).
+
+Статус (2026-08-26): раннер включён для проекта, notary-профиль `mkpk-notary`
+и EdDSA-ключ (`--account ru.eg23.mkpk.client`) лежат в CI-keychain, headless
+`sign_update` проверен, go/wails установлены. Вместо переменных
+`MKPK_CI_KEYCHAIN{,_PASS_FILE}` на раннере созданы симлинки под дефолтные пути
+скрипта: `~/Library/Keychains/mkpk-ci.keychain-db` и `~/.mkpk-ci-keychain-pass`
+→ существующий CI-keychain. Осталось: protected tag `v*`,
+`MKPK_RELEASE_TOKEN`, `GITHUB_TOKEN`.
 
 ## Риски / уроки, заложенные заранее
 
