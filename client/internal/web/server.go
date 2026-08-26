@@ -558,6 +558,7 @@ type serviceReq struct {
 	AllowedList    string        `json:"allowed_list"`
 	AllowedTimeout string        `json:"allowed_timeout"`
 	Target         config.Target `json:"target"`
+	Launch         string        `json:"launch"`
 	Force          bool          `json:"force"`
 }
 
@@ -585,7 +586,8 @@ func (s *Server) handleService(w http.ResponseWriter, r *http.Request) {
 		cfg, err = admin.AddService(cfg, req.Router, admin.ServiceOptions{
 			Name: target, ServiceName: req.ServiceName, Disabled: req.Disabled,
 			Stage1Port: req.Stage1Port, Stage2Port: req.Stage2Port, TokenPort: req.TokenPort,
-			AllowedList: req.AllowedList, AllowedTimeout: req.AllowedTimeout, Target: req.Target, Force: true,
+			AllowedList: req.AllowedList, AllowedTimeout: req.AllowedTimeout, Target: req.Target,
+			Launch: req.Launch, Force: true,
 		})
 	case http.MethodDelete:
 		q := r.URL.Query()

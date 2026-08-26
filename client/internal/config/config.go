@@ -113,8 +113,29 @@ type Service struct {
 	// list after a knock. Empty → inherit the router's defaults.allowed_timeout.
 	AllowedTimeout string `yaml:"allowed_timeout,omitempty" json:"allowed_timeout"`
 	Target         Target `yaml:"target" json:"target"`
+	// Launch tells the GUI clients which kind of app to open after this service
+	// opens ("rdp", "ssh", "http", "https", "vnc"; empty → nothing). It travels
+	// in the invite as a kind, never as a command line — see invite.Service.
+	Launch string `yaml:"launch,omitempty" json:"launch"`
 	// Note is free-form operator commentary, stored only in this local config.
 	Note string `yaml:"note,omitempty" json:"note"`
+}
+
+// LaunchKinds are the app kinds a service may ask clients to open. The client
+// maps a kind to a platform-specific invocation; unknown kinds are ignored.
+var LaunchKinds = []string{"rdp", "ssh", "http", "https", "vnc"}
+
+// ValidLaunch reports whether v is empty or a known launch kind.
+func ValidLaunch(v string) bool {
+	if v == "" {
+		return true
+	}
+	for _, k := range LaunchKinds {
+		if v == k {
+			return true
+		}
+	}
+	return false
 }
 
 // EffectiveAllowedTimeout returns the service's allowed timeout, falling back to
@@ -357,6 +378,9 @@ func (r Router) Validate() error {
 		}
 		if len(svc.Note) > maxNoteLen {
 			return fmt.Errorf("service %q note must be at most %d characters", name, maxNoteLen)
+		}
+		if !ValidLaunch(svc.Launch) {
+			return fmt.Errorf("service %q launch %q must be empty or one of %v", name, svc.Launch, LaunchKinds)
 		}
 		if svc.AllowedTimeout != "" {
 			if _, err := time.ParseDuration(svc.AllowedTimeout); err != nil {

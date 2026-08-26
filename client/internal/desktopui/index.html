@@ -146,6 +146,9 @@ const T = {
   launch_hint:   ["Runs on this machine after a successful knock. {host}, {port}, {service} are substituted. Empty — nothing runs.",
                   "Выполняется на этой машине после успешного стука. {host}, {port}, {service} подставляются. Пусто — ничего не запускается."],
   launch_saved:  ["Command saved", "Команда сохранена"],
+  launch_preset_ph:   ["admin preset: ", "пресет админа: "],
+  launch_preset_hint: ["The admin already set what opens after this service — leave empty to use it, or type your own command to override it on this machine ({host}, {port}, {service} are substituted).",
+                       "Админ уже задал, что открывать после стука — оставьте пусто, чтобы использовать это, либо впишите свою команду, она переопределит пресет на этой машине ({host}, {port}, {service} подставляются)."],
   launched:      ["launched", "запущено"],
   about_text:    ["Knock first: a PSK time-token port-knock client for MikroTik routers. Import an invite, knock, connect.",
                   "Сначала постучись: клиент PSK-time port-knock для роутеров MikroTik. Импортируйте инвайт, постучитесь, подключайтесь."],
@@ -245,8 +248,10 @@ function svcRow(inv, rt, svc) {
   const editor = document.createElement("div");
   editor.className = "launch"; editor.style.display = "none";
   const input = document.createElement("input");
-  input.value = svc.launch || ""; input.placeholder = t("launch_ph");
-  const hint = document.createElement("div"); hint.className = "hint"; hint.textContent = t("launch_hint");
+  input.value = svc.launch || "";
+  input.placeholder = svc.launch_kind ? t("launch_preset_ph") + svc.launch_kind.toUpperCase() : t("launch_ph");
+  const hint = document.createElement("div"); hint.className = "hint";
+  hint.textContent = svc.launch_kind ? t("launch_preset_hint") : t("launch_hint");
   editor.append(input, hint);
   const save = async () => {
     const command = input.value.trim();
@@ -254,7 +259,7 @@ function svcRow(inv, rt, svc) {
     try {
       await api("/api/launch", { invite_id: inv.id, router: rt.router, service: svc.name, command });
       svc.launch = command;
-      gear.classList.toggle("on", !!command);
+      gear.classList.toggle("on", !!(command || svc.launch_kind));
       toast(t("launch_saved"));
     } catch (e) { toast(e.message); }
   };
@@ -262,7 +267,7 @@ function svcRow(inv, rt, svc) {
   input.onkeydown = (e) => { if (e.key === "Enter") input.blur(); };
 
   const gear = document.createElement("button");
-  gear.className = "gear" + (svc.launch ? " on" : "");
+  gear.className = "gear" + (svc.launch || svc.launch_kind ? " on" : "");
   gear.textContent = "⚙"; gear.title = t("launch_tip");
   gear.onclick = () => {
     const open = editor.style.display === "none";

@@ -43,6 +43,13 @@ type Service struct {
 	// (the router's, per-service or default), so the client can show how long the
 	// port stays open. Informational only — the router enforces the real TTL.
 	AllowedTimeout string `json:"allowed_timeout,omitempty"`
+	// Launch is an optional client-side hint: which KIND of app to open once the
+	// port is confirmed open ("rdp", "ssh", "http", "https", "vnc"). Deliberately
+	// a kind and never a command line — invites are unsigned, so a command
+	// carried here would make importing a forwarded file arbitrary code
+	// execution. The client builds the invocation itself from the router address
+	// and port it already has, and ignores kinds it does not know.
+	Launch string `json:"launch,omitempty"`
 }
 
 // Encode marshals the blob to a base64url string.

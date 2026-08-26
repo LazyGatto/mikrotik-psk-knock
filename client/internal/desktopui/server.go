@@ -145,7 +145,8 @@ type serviceJSON struct {
 	Name           string `json:"name"`
 	CheckPort      int    `json:"check_port"`
 	AllowedTimeout string `json:"allowed_timeout,omitempty"`
-	Launch         string `json:"launch,omitempty"` // user's local post-open command
+	Launch         string `json:"launch,omitempty"`      // user's local post-open command
+	LaunchKind     string `json:"launch_kind,omitempty"` // admin's preset from the invite
 }
 
 type routerJSON struct {
@@ -191,6 +192,7 @@ func toInviteJSON(inv StoredInvite) inviteJSON {
 		for _, svc := range rt.Services {
 			rj.Services = append(rj.Services, serviceJSON{
 				Name: svc.Name, CheckPort: svc.CheckPort, AllowedTimeout: svc.AllowedTimeout,
+				LaunchKind: svc.Launch,
 			})
 		}
 		out.Routers = append(out.Routers, rj)
@@ -395,8 +397,19 @@ func (s *Server) Knock(inviteID, routerAddr, serviceName string) (KnockResult, e
 			s.state.markOpen(inv.ID, rt.Router, svc.Name, time.Now().Add(d))
 		}
 	}
-	if line := s.launchCommand(inv.ID, rt.Router, svc.Name); line != "" && s.runCmd != nil {
-		cmdline := expandLaunch(line, rt.Router, svc.CheckPort, svc.Name)
+	// What to run: the user's own command wins; otherwise the invite's preset
+	// KIND, expanded by us into a platform invocation.
+	cmdline := ""
+	if line := s.launchCommand(inv.ID, rt.Router, svc.Name); line != "" {
+		cmdline = expandLaunch(line, rt.Router, svc.CheckPort, svc.Name)
+	} else if svc.Launch != "" {
+		line, err := presetLine(svc.Launch, rt.Router, svc.CheckPort)
+		if err != nil {
+			res.LaunchErr = err.Error()
+		}
+		cmdline = line
+	}
+	if cmdline != "" && s.runCmd != nil {
 		if err := s.runCmd(cmdline); err != nil {
 			res.LaunchErr = err.Error()
 		} else {

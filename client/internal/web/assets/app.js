@@ -126,6 +126,8 @@ const I18N = {
     "svc.new": "Новый сервис", "svc.title": "Сервис {name}",
     "svc.field_name": "Имя сервиса", "svc.field_name_note": "Входит в формулу токена — переименование инвалидирует выданные инвайты.",
     "svc.allowed_timeout": "Таймаут доступа", "svc.allowed_timeout_note": "Сколько адрес держится в allowed после стука (напр. 10m, 1h). Пусто = дефолт роутера ({def}).",
+    "svc.launch": "Запускать у клиента", "svc.launch_none": "— ничего —",
+    "svc.launch_note": "GUI-клиент сам откроет это приложение после подтверждённого открытия порта (адрес и порт он уже знает из инвайта). Передаётся тип, а не команда: инвайты не подписаны. Пользователь может переопределить своей командой локально.",
     "svc.name_bad": "имя: только A–Z a–z 0–9 _ -, начинается с буквы/цифры, до 32 символов",
     "svc.knock_ports": "Порты «стука» (stage1 / stage2 / token)", "svc.suggest": "Подобрать свободные",
     "svc.type": "Тип цели", "svc.proto": "Протокол", "svc.port_ext": "Внешний порт", "svc.port_local": "Порт роутера",
@@ -264,6 +266,8 @@ const I18N = {
     "svc.new": "New service", "svc.title": "Service {name}",
     "svc.field_name": "Service name", "svc.field_name_note": "Part of the token formula — renaming invalidates issued invites.",
     "svc.allowed_timeout": "Access timeout", "svc.allowed_timeout_note": "How long the address stays allowed after a knock (e.g. 10m, 1h). Empty = router default ({def}).",
+    "svc.launch": "Client opens", "svc.launch_none": "— nothing —",
+    "svc.launch_note": "The GUI client opens this app itself once the port is confirmed open (it already knows the address and port from the invite). A kind travels in the invite, never a command line — invites are unsigned. The user can override it with their own local command.",
     "svc.name_bad": "name: only A–Z a–z 0–9 _ -, starts with a letter/digit, up to 32 chars",
     "svc.knock_ports": "Knock ports (stage1 / stage2 / token)", "svc.suggest": "Suggest free",
     "svc.type": "Target type", "svc.proto": "Protocol", "svc.port_ext": "External port", "svc.port_local": "Router port",
@@ -1387,6 +1391,11 @@ function openServiceModal(router, name) {
   g.tk = portInput(h("input", { type: "number", value: s ? s.token_port : "", placeholder: "41013" }));
   const routerDefTimeout = (r.defaults && r.defaults.allowed_timeout) || "3m";
   g.allowed_timeout = h("input", { type: "text", class: "mono", value: s ? (s.allowed_timeout || "") : "", placeholder: routerDefTimeout });
+  // Client-side launch hint: a KIND, never a command line — the invite is
+  // unsigned, so clients build the invocation themselves from host:port.
+  g.launch = h("select", null,
+    ...[["", t("svc.launch_none")], ["rdp", "RDP"], ["ssh", "SSH"], ["http", "HTTP"], ["https", "HTTPS"], ["vnc", "VNC"]]
+      .map(([v, label]) => h("option", { value: v, selected: s && (s.launch || "") === v }, label)));
   let ttype = s ? s.target_type : "forward";
   let proto = s ? s.target_protocol : "tcp";
   g.port = portInput(h("input", { type: "number", value: s ? s.target_port : "", placeholder: "2022" }));
@@ -1455,6 +1464,7 @@ function openServiceModal(router, name) {
       const nameVal = g.name.value.trim();
       const val = { router, name: s ? s.name : nameVal, rename: s ? nameVal : "", stage1_port: +g.s1.value, stage2_port: +g.s2.value, token_port: +g.tk.value,
         allowed_timeout: g.allowed_timeout.value.trim(),
+        launch: g.launch.value,
         target: { type: ttype, protocol: proto, port: +g.port.value, to_address: ttype === "forward" ? g.to_addr.value.trim() : "", to_port: ttype === "forward" ? +g.to_port.value : 0 } };
       closeModal(); applyConfig(await api("POST", "/api/service", val)); toast(t("toast.svc_saved"));
     } catch (e) { toast(e.message, true); }
@@ -1465,7 +1475,8 @@ function openServiceModal(router, name) {
     h("div", { class: "field" }, h("label", null, t("svc.knock_ports")),
       h("div", { class: "grid3" }, g.s1, g.s2, g.tk), h("div", { class: "row" }, suggest), conflict),
     field(t("svc.type"), typeSeg), portField, fwdRow, field(t("svc.proto"), protoSeg),
-    field(t("svc.allowed_timeout"), g.allowed_timeout, t("svc.allowed_timeout_note", { def: routerDefTimeout })));
+    field(t("svc.allowed_timeout"), g.allowed_timeout, t("svc.allowed_timeout_note", { def: routerDefTimeout })),
+    field(t("svc.launch"), g.launch, t("svc.launch_note")));
   syncType(); checkPorts();
   modal(h("div", null, h("div", { class: "modal-head" }, h("h3", null, s ? t("svc.title", { name: s.name }) : t("svc.new"))), body,
     h("div", { class: "modal-foot" }, h("span", { class: "spacer" }), h("button", { class: "btn", onclick: closeModal }, t("cancel")), save)));

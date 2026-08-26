@@ -7,6 +7,14 @@ the native macOS recipient app in `client-macos/` ships separately.
 ## [Unreleased]
 
 ### Added
+- **Admin-defined launch presets** (#30): a service can carry a launch *kind*
+  (`rdp` / `ssh` / `http` / `https` / `vnc`, picked in the provision service
+  form) which travels in the invite; the GUI client opens the matching app
+  itself after a confirmed open — the user configures nothing. The invite
+  never carries a command line (unsigned file → would be arbitrary code
+  execution); the client builds the invocation from the router address and
+  port, and refuses to launch when the host is not a plain hostname/IP.
+  A user's own local command still overrides the preset.
 - **mkpk-client: run a command after a service opens.** Each service gets an
   optional local command (the ⚙ next to it), executed only after a confirmed
   `open` — e.g. `start "" mstsc /v:{host}:{port}` to jump straight into RDP.

@@ -257,6 +257,7 @@ type ServiceOptions struct {
 	AllowedList    string
 	AllowedTimeout string // empty → inherit router default
 	Target         config.Target
+	Launch         string // client app kind to open after the port opens
 	Force          bool
 }
 
@@ -385,6 +386,7 @@ func AddService(cfg config.Config, routerName string, o ServiceOptions) (config.
 		AllowedList:    allowed,
 		AllowedTimeout: o.AllowedTimeout,
 		Target:         target,
+		Launch:         o.Launch,
 	}
 	// Preserve the local note when replacing an existing service (the service form
 	// doesn't carry it — notes are edited separately).
@@ -401,6 +403,9 @@ func AddService(cfg config.Config, routerName string, o ServiceOptions) (config.
 // validateService checks a single service in isolation (target coherence).
 // Full config validation, including cross-service checks, runs in SaveConfig.
 func validateService(name string, svc config.Service) error {
+	if !config.ValidLaunch(svc.Launch) {
+		return fmt.Errorf("service %q launch %q must be empty or one of %v", name, svc.Launch, config.LaunchKinds)
+	}
 	switch svc.Target.Type {
 	case config.TargetForward:
 		if svc.Target.Port == 0 || svc.Target.ToPort == 0 || svc.Target.ToAddress == "" {
@@ -702,6 +707,7 @@ func ExportUser(cfg config.Config, userName, routerName string) (string, error) 
 				Token:          s.TokenPort,
 				CheckPort:      s.Target.Port,
 				AllowedTimeout: s.EffectiveAllowedTimeout(r.Defaults),
+				Launch:         s.Launch,
 			})
 		}
 		if len(rb.Services) > 0 {
@@ -807,6 +813,7 @@ type ServiceSummary struct {
 	TargetPort      int    `json:"target_port"`
 	TargetToAddress string `json:"target_to_address"`
 	TargetToPort    int    `json:"target_to_port"`
+	Launch          string `json:"launch"`
 }
 
 type ClientSummary struct {
@@ -842,6 +849,7 @@ func Summarize(cfg config.Config) Summary {
 				TargetPort:      svc.Target.Port,
 				TargetToAddress: svc.Target.ToAddress,
 				TargetToPort:    svc.Target.ToPort,
+				Launch:          svc.Launch,
 			})
 		}
 		for _, un := range sortedKeys(cfg.Users) {
