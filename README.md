@@ -67,7 +67,8 @@ CLI и веб-UI (`serve`, открывается в браузере) рабо�
   без общего админ-конфига.
 - **Три фронтенда, одно ядро** — CLI (скриптуемо, для Ansible), локальный веб-UI (loopback +
   per-session токен) и десктоп-обёртка.
-- **Уведомления** — webhook / Telegram / email на каждый успешный стук, с graceful degradation.
+- **Уведомления** — webhook / Telegram (в т.ч. в топик форум-супергруппы) / email на каждый успешный
+  стук, с graceful degradation. Настройка — [docs/notifications.md](docs/notifications.md).
 - **SSH-провижининг** — установка/обновление/снятие слоя по SSH, идемпотентно (detect по config-hash),
   с dry-run.
 - **Безопасность по умолчанию** — конфиг со всеми секретами пишется 0600 атомарно и не покидает
@@ -171,6 +172,7 @@ end-to-end **тест стука** из провижн-приложения (с�
 - [docs/design.md](docs/design.md) — первичный дизайн ROS-only решения.
 - [docs/threat-model.md](docs/threat-model.md) — модель угроз и ограничения.
 - [docs/admin-app.md](docs/admin-app.md) — модель админ-приложения, мульти-роутер, раздача (invite-blob).
+- [docs/notifications.md](docs/notifications.md) — уведомления: Telegram (включая топики форум-супергрупп), webhook, e-mail.
 - [docs/multi-profile-render.md](docs/multi-profile-render.md) — схема render и data-driven poller.
 - [docs/profile-format.md](docs/profile-format.md) — справочник полей конфига.
 - [docs/open-questions.md](docs/open-questions.md) — открытые вопросы и принятые решения.

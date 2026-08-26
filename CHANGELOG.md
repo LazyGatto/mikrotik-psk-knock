@@ -7,6 +7,10 @@ the native macOS recipient app in `client-macos/` ships separately.
 ## [Unreleased]
 
 ### Added
+- **`docs/notifications.md`** — setup guide for all three notification channels:
+  how to get a Telegram `bot_token` / `chat_id` / forum-topic `thread_id`
+  (with a curl self-test), the webhook JSON payload, SMTP fields, and how to
+  read the router-side diagnostics.
 - **Telegram notifications into a forum-supergroup topic**: `notify.telegram`
   gains an optional `thread_id` (Bot API `message_thread_id`) — set it in the
   router's Notifications tab; empty keeps the General topic / plain chats.

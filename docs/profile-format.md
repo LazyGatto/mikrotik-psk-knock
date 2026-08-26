@@ -63,7 +63,9 @@ clients:
 - `enabled` — включает notification path после успешного allow.
 - `channel` — `webhook` | `telegram` | `email`.
 - `url` — webhook endpoint (канал `webhook`).
-- `telegram.bot_token` / `telegram.chat_id` — параметры Bot API (канал `telegram`).
+- `telegram.bot_token` / `telegram.chat_id` / `telegram.thread_id` — параметры Bot API (канал
+  `telegram`); `thread_id` опционален и адресует топик форум-супергруппы (`message_thread_id`).
+  Пошагово — [notifications.md](notifications.md).
 - `email.to` / `email.from` / `email.server` / `email.port` / `email.tls` / `email.user` /
   `email.password` — SMTP-параметры (канал `email`); передаются inline в `/tool e-mail send`, глобальный
   `/tool e-mail` роутера не мутируется.
