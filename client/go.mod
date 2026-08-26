@@ -3,6 +3,7 @@ module mikrotik-psk-knock/client
 go 1.26
 
 require (
+	fyne.io/systray v1.12.2
 	github.com/wailsapp/wails/v2 v2.13.0
 	golang.org/x/crypto v0.54.0
 	gopkg.in/yaml.v3 v3.0.1

@@ -37,6 +37,9 @@ func testBlob(t *testing.T, checkPort int) string {
 	return blob
 }
 
+// testBlobRaw is testBlob for tests that need the raw string outside HTTP.
+func testBlobRaw(t *testing.T, checkPort int) string { return testBlob(t, checkPort) }
+
 func newTestServer(t *testing.T) (*httptest.Server, *Store) {
 	t.Helper()
 	store, err := NewStore(t.TempDir())

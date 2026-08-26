@@ -45,15 +45,25 @@ type Server struct {
 	store   *Store
 	token   string // per-session token, injected into the page, gates /api
 	timings KnockTimings
+	state   stateRegistry
+	openURL func(string) error // shell hook: open a URL in the system browser
 }
+
+// RepoURL is the public project page (the About link target).
+const RepoURL = "https://github.com/LazyGatto/mikrotik-psk-knock"
+
+// SetOpenURL lends the shell's system-browser hook to the UI (webview links
+// would navigate the app page away instead of opening a browser).
+func (s *Server) SetOpenURL(f func(string) error) { s.openURL = f }
 
 // NewHandler builds the handler with default knock timings.
 func NewHandler(store *Store, sessionToken string) http.Handler {
 	return NewHandlerTimings(store, sessionToken, defaultTimings())
 }
 
-// NewHandlerTimings builds the handler with explicit timings (tests).
-func NewHandlerTimings(store *Store, sessionToken string, t KnockTimings) http.Handler {
+// New builds the Server itself — the desktop shell needs it directly (tray:
+// Status/Knock/SetOnChange), with Handler() mounted as the asset server.
+func New(store *Store, sessionToken string, t KnockTimings) *Server {
 	d := defaultTimings()
 	if t.MinBucketAge == 0 {
 		t.MinBucketAge = d.MinBucketAge
@@ -73,14 +83,24 @@ func NewHandlerTimings(store *Store, sessionToken string, t KnockTimings) http.H
 	if t.CheckInterval == 0 {
 		t.CheckInterval = d.CheckInterval
 	}
-	s := &Server{store: store, token: sessionToken, timings: t}
+	return &Server{store: store, token: sessionToken, timings: t}
+}
+
+// NewHandlerTimings builds the handler with explicit timings (tests).
+func NewHandlerTimings(store *Store, sessionToken string, t KnockTimings) http.Handler {
+	return New(store, sessionToken, t).Handler()
+}
+
+// Handler mounts the UI + API routes.
+func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.index)
-	mux.HandleFunc("/api/state", s.auth(s.state))
+	mux.HandleFunc("/api/state", s.auth(s.handleState))
 	mux.HandleFunc("/api/import", s.auth(s.importInvite))
 	mux.HandleFunc("/api/remove", s.auth(s.removeInvite))
-	mux.HandleFunc("/api/knock", s.auth(s.knock))
-	mux.HandleFunc("/api/language", s.auth(s.language))
+	mux.HandleFunc("/api/knock", s.auth(s.handleKnock))
+	mux.HandleFunc("/api/settings", s.auth(s.handleSettings))
+	mux.HandleFunc("/api/open", s.auth(s.handleOpen))
 	return mux
 }
 
@@ -126,7 +146,7 @@ type inviteJSON struct {
 	Routers  []routerJSON `json:"routers"`
 }
 
-func (s *Server) state(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 	list, err := s.store.List()
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
@@ -136,9 +156,11 @@ func (s *Server) state(w http.ResponseWriter, r *http.Request) {
 	for _, inv := range list {
 		invites = append(invites, toInviteJSON(inv))
 	}
+	st := s.store.Settings()
 	writeJSON(w, map[string]any{
 		"version":  version.String(),
-		"language": s.store.Settings().Language,
+		"language": st.Language,
+		"theme":    st.Theme,
 		"invites":  invites,
 	})
 }
@@ -197,57 +219,94 @@ func (s *Server) removeInvite(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"removed": req.ID})
 }
 
-func (s *Server) language(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeErr(w, http.StatusMethodNotAllowed, "POST only")
 		return
 	}
 	var req struct {
-		Language string `json:"language"`
+		Language *string `json:"language"`
+		Theme    *string `json:"theme"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "bad request: "+err.Error())
 		return
 	}
-	if req.Language != "en" && req.Language != "ru" {
-		writeErr(w, http.StatusBadRequest, "language must be en or ru")
-		return
-	}
 	st := s.store.Settings()
-	st.Language = req.Language
+	if req.Language != nil {
+		if *req.Language != "en" && *req.Language != "ru" {
+			writeErr(w, http.StatusBadRequest, "language must be en or ru")
+			return
+		}
+		st.Language = *req.Language
+	}
+	if req.Theme != nil {
+		if *req.Theme != "dark" && *req.Theme != "light" {
+			writeErr(w, http.StatusBadRequest, "theme must be dark or light")
+			return
+		}
+		st.Theme = *req.Theme
+	}
 	if err := s.store.SaveSettings(st); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, map[string]any{"language": req.Language})
+	writeJSON(w, map[string]any{"language": st.Language, "theme": st.Theme})
 }
 
-// knock performs the full CLI knock flow for one service of one stored invite:
-// wait out the bucket edge → compute the token → staged UDP knock → TCP check
-// of the target port. Synchronous; the page shows progress client-side.
-func (s *Server) knock(w http.ResponseWriter, r *http.Request) {
+// handleOpen opens one of our project pages in the system browser — not a
+// generic URL launcher.
+func (s *Server) handleOpen(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeErr(w, http.StatusMethodNotAllowed, "POST only")
 		return
 	}
+	if s.openURL == nil {
+		writeErr(w, http.StatusBadRequest, "no browser hook in this mode")
+		return
+	}
 	var req struct {
-		InviteID string `json:"invite_id"`
-		Router   string `json:"router"`
-		Service  string `json:"service"`
+		URL string `json:"url"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "bad request: "+err.Error())
 		return
 	}
-	inv, err := s.store.Get(req.InviteID)
-	if err != nil {
+	if !strings.HasPrefix(req.URL, RepoURL) {
+		writeErr(w, http.StatusBadRequest, "url outside the project pages")
+		return
+	}
+	if err := s.openURL(req.URL); err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	rt, svc, err := findService(inv.Invite, req.Router, req.Service)
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+// KnockResult is the outcome of one knock+check run.
+type KnockResult struct {
+	Router     string `json:"router"`
+	Service    string `json:"service"`
+	Knocked    bool   `json:"knocked"`
+	Status     string `json:"status"`
+	Attempts   int    `json:"attempts"`
+	DurationMS int64  `json:"duration_ms"`
+	LastError  string `json:"error"`
+}
+
+// Knock performs the full CLI knock flow for one service of one stored invite:
+// wait out the bucket edge → compute the token → staged UDP knock → TCP check
+// of the target port. Synchronous (seconds); shared by the HTTP API and the
+// tray menu. A successful open is recorded in the state registry so the tray
+// can show "open · Nm left".
+func (s *Server) Knock(inviteID, routerAddr, serviceName string) (KnockResult, error) {
+	inv, err := s.store.Get(inviteID)
 	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
+		return KnockResult{}, err
+	}
+	rt, svc, err := findService(inv.Invite, routerAddr, serviceName)
+	if err != nil {
+		return KnockResult{}, err
 	}
 
 	// Do not send a token right after a bucket edge: the router's poller may
@@ -269,8 +328,7 @@ func (s *Server) knock(w http.ResponseWriter, r *http.Request) {
 		StageDuration: s.timings.StageDuration,
 		TokenDuration: s.timings.TokenDuration,
 	}); err != nil {
-		writeErr(w, http.StatusBadGateway, err.Error())
-		return
+		return KnockResult{}, fmt.Errorf("knock: %w", err)
 	}
 	chk := servicecheck.Check(servicecheck.Options{
 		Host:     rt.Router,
@@ -279,12 +337,42 @@ func (s *Server) knock(w http.ResponseWriter, r *http.Request) {
 		Attempts: s.timings.CheckAttempts,
 		Interval: s.timings.CheckInterval,
 	})
-	writeJSON(w, map[string]any{
-		"router": rt.Router, "service": svc.Name, "knocked": true,
-		"status": chk.Status, "attempts": chk.Attempts,
-		"duration_ms": chk.Duration.Milliseconds(),
-		"error":       chk.LastError,
-	})
+	if chk.Status == "open" && svc.AllowedTimeout != "" {
+		if d, err := parseGoDuration(svc.AllowedTimeout); err == nil {
+			s.state.markOpen(inv.ID, rt.Router, svc.Name, time.Now().Add(d))
+		}
+	}
+	return KnockResult{
+		Router: rt.Router, Service: svc.Name, Knocked: true,
+		Status: chk.Status, Attempts: chk.Attempts,
+		DurationMS: chk.Duration.Milliseconds(), LastError: chk.LastError,
+	}, nil
+}
+
+func (s *Server) handleKnock(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	var req struct {
+		InviteID string `json:"invite_id"`
+		Router   string `json:"router"`
+		Service  string `json:"service"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "bad request: "+err.Error())
+		return
+	}
+	res, err := s.Knock(req.InviteID, req.Router, req.Service)
+	if err != nil {
+		if strings.HasPrefix(err.Error(), "knock:") {
+			writeErr(w, http.StatusBadGateway, err.Error())
+		} else {
+			writeErr(w, http.StatusBadRequest, err.Error())
+		}
+		return
+	}
+	writeJSON(w, res)
 }
 
 func findService(b invite.Blob, routerAddr, serviceName string) (invite.Router, invite.Service, error) {

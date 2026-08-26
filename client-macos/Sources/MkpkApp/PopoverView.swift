@@ -708,6 +708,13 @@ struct SettingsView: View {
                         Brand.logo(.dark)
                             .resizable().interpolation(.high).frame(width: 16, height: 16)
                         Text(Self.aboutLine).font(.system(size: 11)).foregroundStyle(.secondary)
+                        Button("· GitHub") {
+                            if let url = URL(string: "https://github.com/LazyGatto/mikrotik-psk-knock") {
+                                NSWorkspace.shared.open(url)
+                            }
+                        }
+                        .buttonStyle(.borderless).font(.system(size: 11)).foregroundStyle(.secondary)
+                        .help(L("Project page, releases and docs", "Страница проекта, релизы и документация"))
                         Spacer()
                         if let check = model.checkForUpdates {
                             Button(L("Check for updates", "Проверить обновления")) { check() }

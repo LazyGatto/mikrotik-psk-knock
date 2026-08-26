@@ -6,6 +6,19 @@ the native macOS recipient app in `client-macos/` ships separately.
 
 ## [Unreleased]
 
+### Added
+- **mkpk-client (Windows): system tray** (#29) — the brand icon lives in the
+  tray (green-dot variant while any port is open, tooltip with the open count);
+  the menu offers "Open mkpk", one knock item per service with a live
+  "open · Nm left" countdown, and Quit. Closing the window hides it to the
+  tray, not the taskbar (the minimize button stays native — Wails v2 cannot
+  intercept it). New dependency: `fyne.io/systray` (BSD-3, app target only).
+- **mkpk-client: light theme** — a sun/moon toggle next to the language
+  switch; the choice persists in settings.
+- **About → GitHub** in both GUI clients: a footer link in mkpk-client
+  (opens via the system browser) and a "GitHub" button in the macOS client's
+  Settings.
+
 ### Changed
 - **macOS client fails loudly on a failed knock** (parity with the Windows
   client): a manual knock that ends closed / unreachable now shows a dismissible

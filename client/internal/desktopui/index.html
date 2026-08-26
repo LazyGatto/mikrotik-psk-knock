@@ -9,6 +9,11 @@
     --fg: #e8eaee; --dim: #8b919c; --accent: #4f8cff;
     --open: #3fb26f; --closed: #e05555; --warn: #d9a13c;
   }
+  html[data-theme="light"] {
+    --bg: #f2f3f6; --card: #ffffff; --border: #dfe3ea;
+    --fg: #1d2026; --dim: #6a7180; --accent: #3574e6;
+    --open: #1f9d57; --closed: #cc3d3d; --warn: #a87718;
+  }
   * { box-sizing: border-box; margin: 0; }
   body {
     background: var(--bg); color: var(--fg);
@@ -54,14 +59,16 @@
   .empty { color: var(--dim); text-align: center; padding: 34px 10px; }
   .toast {
     position: fixed; left: 14px; right: 14px; bottom: 40px;
-    background: #2a1d1d; border: 1px solid var(--closed); border-radius: 8px;
-    color: #f0c6c6; padding: 8px 12px; font-size: 12px; display: none;
+    background: var(--card); border: 1px solid var(--closed); border-radius: 8px;
+    color: var(--closed); padding: 8px 12px; font-size: 12px; display: none;
   }
   footer {
     position: fixed; left: 14px; right: 14px; bottom: 10px;
     display: flex; color: var(--dim); font-size: 11px;
   }
   footer .spacer { flex: 1; }
+  footer a { color: var(--dim); text-decoration: none; cursor: pointer; }
+  footer a:hover { color: var(--accent); }
   #file { display: none; }
 </style>
 </head>
@@ -69,13 +76,14 @@
 <header>
   <span class="title">mkpk</span>
   <span class="spacer"></span>
+  <button class="lang" id="themeBtn" title=""></button>
   <button class="lang" id="langBtn"></button>
   <button class="primary" id="importBtn"></button>
   <input type="file" id="file" accept=".mkpk,.txt">
 </header>
 <main id="main"></main>
 <div class="toast" id="toast"></div>
-<footer><span>mkpk · Knock first</span><span class="spacer"></span><span>__MKPK_VERSION__</span></footer>
+<footer><span>mkpk · Knock first</span><span>&nbsp;·&nbsp;</span><a id="aboutLink">GitHub</a><span class="spacer"></span><span>__MKPK_VERSION__</span></footer>
 
 <script>
 "use strict";
@@ -94,9 +102,20 @@ const T = {
                   "Инвайтов пока нет. Импортируйте .mkpk-файл, который вам передал администратор."],
   removeConfirm: ["Remove this invite?", "Удалить этот инвайт?"],
   attempts:      ["attempts", "попыток"],
+  theme_light:   ["Light theme", "Светлая тема"],
+  theme_dark:    ["Dark theme", "Тёмная тема"],
 };
 let lang = "en";
+let theme = "dark";
+const REPO_URL = "https://github.com/LazyGatto/mikrotik-psk-knock";
 const t = (k) => T[k][lang === "ru" ? 1 : 0];
+
+function applyTheme() {
+  document.documentElement.dataset.theme = theme;
+  const b = document.getElementById("themeBtn");
+  b.textContent = theme === "dark" ? "☀" : "🌙";
+  b.title = theme === "dark" ? t("theme_light") : t("theme_dark");
+}
 
 async function api(path, body) {
   const res = await fetch(path, {
@@ -197,8 +216,18 @@ async function knock(inv, rt, svc, chip, btn, key) {
 
 document.getElementById("langBtn").onclick = async () => {
   lang = lang === "ru" ? "en" : "ru";
-  render();
-  try { await api("/api/language", { language: lang }); } catch (e) { /* non-fatal */ }
+  render(); applyTheme();
+  try { await api("/api/settings", { language: lang }); } catch (e) { /* non-fatal */ }
+};
+
+document.getElementById("themeBtn").onclick = async () => {
+  theme = theme === "dark" ? "light" : "dark";
+  applyTheme();
+  try { await api("/api/settings", { theme }); } catch (e) { /* non-fatal */ }
+};
+
+document.getElementById("aboutLink").onclick = () => {
+  api("/api/open", { url: REPO_URL }).catch((e) => toast(e.message));
 };
 
 document.getElementById("importBtn").onclick = () => document.getElementById("file").click();
@@ -217,7 +246,8 @@ async function load() {
   const st = await api("/api/state");
   state = st;
   if (st.language === "ru" || st.language === "en") lang = st.language;
-  render();
+  if (st.theme === "light" || st.theme === "dark") theme = st.theme;
+  render(); applyTheme();
 }
 load().catch((e) => toast(e.message));
 </script>

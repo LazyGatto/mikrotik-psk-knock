@@ -34,6 +34,7 @@ type StoredInvite struct {
 // Settings is the persisted UI state.
 type Settings struct {
 	Language string `json:"language,omitempty"` // "en" (default) | "ru"
+	Theme    string `json:"theme,omitempty"`    // "dark" (default) | "light"
 }
 
 // DefaultDir returns the per-user store directory.
