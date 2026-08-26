@@ -4,7 +4,16 @@ Notable changes to this project. Format: [Keep a Changelog](https://keepachangel
 Versions are the **Go CLI / provisioner** release tags (`mkpk`, `mkpk-provision`);
 the native macOS recipient app in `client-macos/` ships separately.
 
-## [0.11.0] — 2026-08-26
+## [Unreleased]
+
+### Fixed
+- **The `--behind-ingress` port can be published on a LAN address** — it was
+  pinned to `127.0.0.1`, which only works when the reverse proxy runs on the
+  same host. `--bind` (and `MKPK_BIND` in `.env`) now takes the address the
+  proxy can reach, with `--port` alongside it; the installer warns when the
+  port leaves loopback, since that traffic is plain HTTP.
+
+
 
 A remote host goes from nothing to a running instance in one command:
 

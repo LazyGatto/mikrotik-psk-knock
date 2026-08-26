@@ -25,10 +25,12 @@ services:
       # Deploying to routers with a key: mount it read-only and point the
       # router's key_path at /data/ssh/id_ed25519.
       # - ./ssh:/data/ssh:ro
-    # Publish only where your proxy can reach it — not 0.0.0.0 unless the host
-    # itself is the trust boundary.
+    # Where to publish the port. Default is loopback (proxy on this host); set
+    # MKPK_BIND to a LAN address when the ingress lives on another machine —
+    # e.g. MKPK_BIND=172.16.10.5. Publish it only where that proxy can reach it,
+    # never on 0.0.0.0 unless the host itself is the trust boundary.
     ports:
-      - "127.0.0.1:8765:8765"
+      - "${MKPK_BIND:-127.0.0.1}:${MKPK_PORT:-8765}:8765"
 
 volumes:
   mkpk-data:

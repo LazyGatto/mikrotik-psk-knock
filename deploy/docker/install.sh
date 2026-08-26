@@ -26,6 +26,7 @@ IMAGE="${MKPK_IMAGE:-}"
 DOMAIN="${MKPK_DOMAIN:-}"
 ACME_EMAIL="${MKPK_ACME_EMAIL:-}"
 PORT="${MKPK_PORT:-8765}"
+BIND="${MKPK_BIND:-127.0.0.1}"
 MODE=""
 INSTALL_DOCKER=0
 
@@ -52,7 +53,7 @@ Usage:
 Pick one:
   --domain <fqdn>     Run Caddy too and get a Let's Encrypt certificate for <fqdn>.
                       Needs ports 80 and 443 reachable from the internet.
-  --behind-ingress    No TLS here; publish 127.0.0.1:PORT for your existing proxy.
+  --behind-ingress    No TLS here; publish a port for your existing proxy.
 
 Image (defaults to the public one — override only for a private mirror):
   --registry <host>   Registry host, e.g. gitlab.example.com:5050 (default: $REGISTRY)
@@ -62,7 +63,10 @@ Image (defaults to the public one — override only for a private mirror):
 Options:
   --acme-email <mail> Contact address for Let's Encrypt expiry notices
   --dir <path>        Install directory (default: $DIR)
-  --port <port>       Local port in --behind-ingress mode (default: $PORT)
+  --bind <addr>       Address to publish on in --behind-ingress mode
+                      (default: $BIND — loopback; use a LAN address such as
+                      172.16.10.5 when the ingress runs on another host)
+  --port <port>       Port to publish (default: $PORT)
   --install-docker    Install Docker via get.docker.com when it is missing
   -h, --help          This text
 USAGE
@@ -78,6 +82,7 @@ while [ $# -gt 0 ]; do
         --acme-email) ACME_EMAIL="${2:?--acme-email needs a value}"; shift 2 ;;
         --dir) DIR="${2:?--dir needs a value}"; shift 2 ;;
         --port) PORT="${2:?--port needs a value}"; shift 2 ;;
+        --bind) BIND="${2:?--bind needs a value}"; shift 2 ;;
         --install-docker) INSTALL_DOCKER=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) usage >&2; die "unknown option: $1" ;;
@@ -159,17 +164,13 @@ fi
         echo "MKPK_DOMAIN=$DOMAIN"
         echo "MKPK_ACME_EMAIL=$ACME_EMAIL"
     else
+        echo "MKPK_BIND=$BIND"
         echo "MKPK_PORT=$PORT"
     fi
 } > .env.new
 mv .env.new .env
 chmod 600 .env
 ok ".env written (0600)"
-
-# In --behind-ingress mode the published port is the operator's choice.
-if [ "$MODE" = ingress ] && [ "$PORT" != "8765" ]; then
-    sed -i.bak "s|127.0.0.1:8765:8765|127.0.0.1:$PORT:8765|" compose.yaml && rm -f compose.yaml.bak
-fi
 
 # --- start -------------------------------------------------------------------
 step "Pulling the image"
@@ -206,7 +207,7 @@ if [ "$MODE" = caddy ]; then
     say "   URL:      ${B}https://$DOMAIN${R}"
     say "   (the first certificate can take up to a minute)"
 else
-    say "   URL:      ${B}http://127.0.0.1:$PORT${R} — point your proxy at this"
+    say "   URL:      ${B}http://$BIND:$PORT${R} — point your proxy at this"
 fi
 if [ "$FRESH" = 1 ]; then
     say "   Login:    ${B}$PASSWORD${R}"
@@ -226,6 +227,10 @@ say "     /user ssh-keys import user=<login> public-key-file=mkpk-provision.pub"
 say "  3. Add a router, services and users, then deploy."
 say ""
 warn "This console holds SSH access to every router — restrict who can reach it"
+if [ "$MODE" = ingress ] && [ "$BIND" != "127.0.0.1" ] && [ "$BIND" != "localhost" ]; then
+    warn "published on $BIND:$PORT over plain HTTP — reachable by anything that can"
+    warn "route there. Keep it on a trusted network and let the proxy do TLS."
+fi
 if [ "$MODE" = caddy ]; then
     warn "(remote_ip allow-list in $DIR/Caddyfile, or a firewall rule on 443)"
 fi
