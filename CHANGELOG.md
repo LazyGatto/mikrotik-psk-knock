@@ -4,6 +4,15 @@ Notable changes to this project. Format: [Keep a Changelog](https://keepachangel
 Versions are the **Go CLI / provisioner** release tags (`mkpk`, `mkpk-provision`);
 the native macOS recipient app in `client-macos/` ships separately.
 
+## [Unreleased]
+
+### Changed
+- **macOS client fails loudly on a failed knock** (parity with the Windows
+  client): a manual knock that ends closed / unreachable now shows a dismissible
+  in-app banner with the attempt count and the underlying error, and the
+  service log records the attempts; a successful open clears the banner.
+  Background keep-open renewals stay quiet as before.
+
 ## [0.6.0] — 2026-08-26
 
 ### Added

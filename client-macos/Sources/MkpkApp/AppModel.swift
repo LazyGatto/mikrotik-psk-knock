@@ -573,14 +573,29 @@ final class AppModel: ObservableObject {
                 setOpenedIP(vm.id, nil)   // backfilled with the true egress IP by the resolve below
                 refreshPublicIP()
                 appendLog(vm.id, .open, note)
-                if notifyOpen { notify(L("Access open", "Доступ открыт"), "\(vm.name) · \(vm.routerAddress)") }
+                if notifyOpen {
+                    lastError = nil   // a stale failure banner would contradict the green row
+                    notify(L("Access open", "Доступ открыт"), "\(vm.name) · \(vm.routerAddress)")
+                }
                 ensureCountdownTimer()
             case .closed:
                 update(vm.id, .closed, openUntil: nil)
-                appendLog(vm.id, .closed, note)
+                appendLog(vm.id, .closed, "\(note) · \(res.attempts)×")
+                // Fail loudly: "closed" after a manual knock is a failure the user
+                // is waiting to hear about, not a neutral state (parity with the
+                // Windows client's toast).
+                if notifyOpen {
+                    lastError = L("\(vm.name): still closed after \(res.attempts) attempts (\(vm.routerAddress):\(vm.checkPort)).",
+                                  "\(vm.name): закрыто после \(res.attempts) попыток (\(vm.routerAddress):\(vm.checkPort)).")
+                }
             case .error:
                 update(vm.id, .closed, openUntil: nil)
-                appendLog(vm.id, .timeout, note)   // refused/timeout — refined by diagnostics later
+                appendLog(vm.id, .timeout, "\(note) · \(res.attempts)×")   // refused/timeout — refined by diagnostics later
+                if notifyOpen {
+                    let detail = res.lastError.map { " — \($0)" } ?? ""
+                    lastError = L("\(vm.name): check failed after \(res.attempts) attempts (\(vm.routerAddress):\(vm.checkPort))\(detail).",
+                                  "\(vm.name): проверка не удалась после \(res.attempts) попыток (\(vm.routerAddress):\(vm.checkPort))\(detail).")
+                }
             }
         }
     }
