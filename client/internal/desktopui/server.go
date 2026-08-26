@@ -18,6 +18,12 @@ import (
 //go:embed index.html
 var indexHTML string
 
+// Brand tile for the About popup — a copy of cmd/mkpk-client/winres/icon.png
+// (go:embed cannot reach outside the package dir; keep the two in sync).
+//
+//go:embed icon.png
+var iconPNG []byte
+
 // KnockTimings groups the knock/check pacing. The zero value means CLI
 // defaults; tests shrink them so the gate stays fast.
 type KnockTimings struct {
@@ -101,6 +107,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/knock", s.auth(s.handleKnock))
 	mux.HandleFunc("/api/settings", s.auth(s.handleSettings))
 	mux.HandleFunc("/api/open", s.auth(s.handleOpen))
+	mux.HandleFunc("/icon.png", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(iconPNG)
+	})
 	return mux
 }
 
@@ -110,7 +120,7 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page := strings.Replace(indexHTML, "__MKPK_TOKEN__", s.token, 1)
-	page = strings.Replace(page, "__MKPK_VERSION__", version.String(), 1)
+	page = strings.ReplaceAll(page, "__MKPK_VERSION__", version.String())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(page))
 }

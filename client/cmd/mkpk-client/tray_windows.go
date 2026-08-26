@@ -74,12 +74,14 @@ func trayReady(srv *desktopui.Server, store *desktopui.Store, getCtx func() cont
 		log.Printf("mkpk-client: tray status: %v", err)
 	}
 	systray.AddSeparator()
+	mAbout := systray.AddMenuItem("mkpk "+appVersion+" — "+trayL(lang, "About", "О программе"), "")
 	mQuit := systray.AddMenuItem(trayL(lang, "Quit", "Выход"), "")
 
 	knocking := map[string]bool{}
 	refresh := func() {
 		lang = store.Settings().Language
 		mShow.SetTitle(trayL(lang, "Open mkpk", "Открыть mkpk"))
+		mAbout.SetTitle("mkpk " + appVersion + " — " + trayL(lang, "About", "О программе"))
 		mQuit.SetTitle(trayL(lang, "Quit", "Выход"))
 		states, err := srv.Status()
 		if err != nil {
@@ -136,6 +138,10 @@ func trayReady(srv *desktopui.Server, store *desktopui.Store, getCtx func() cont
 			select {
 			case <-mShow.ClickedCh:
 				showWindow()
+			case <-mAbout.ClickedCh:
+				if ctx := getCtx(); ctx != nil {
+					wailsruntime.BrowserOpenURL(ctx, desktopui.RepoURL)
+				}
 			case <-mQuit.ClickedCh:
 				if ctx := getCtx(); ctx != nil {
 					wailsruntime.Quit(ctx)

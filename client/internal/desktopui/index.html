@@ -70,12 +70,27 @@
   footer a { color: var(--dim); text-decoration: none; cursor: pointer; }
   footer a:hover { color: var(--accent); }
   #file { display: none; }
+  .overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.45);
+    display: none; align-items: center; justify-content: center; z-index: 50;
+  }
+  .overlay.show { display: flex; }
+  .about {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 22px 26px; width: 300px; text-align: center;
+  }
+  .about img { width: 72px; height: 72px; border-radius: 16px; }
+  .about h2 { font-size: 16px; margin-top: 10px; }
+  .about .ver { color: var(--dim); font-size: 11.5px; margin-top: 2px; }
+  .about p { color: var(--dim); font-size: 11.5px; margin-top: 10px; line-height: 1.5; }
+  .about .row { display: flex; gap: 8px; justify-content: center; margin-top: 14px; }
 </style>
 </head>
 <body>
 <header>
   <span class="title">mkpk</span>
   <span class="spacer"></span>
+  <button class="lang" id="aboutBtn" title="">?</button>
   <button class="lang" id="themeBtn" title=""></button>
   <button class="lang" id="langBtn"></button>
   <button class="primary" id="importBtn"></button>
@@ -83,6 +98,18 @@
 </header>
 <main id="main"></main>
 <div class="toast" id="toast"></div>
+<div class="overlay" id="aboutOverlay">
+  <div class="about">
+    <img src="/icon.png" alt="mkpk">
+    <h2>mkpk</h2>
+    <div class="ver">__MKPK_VERSION__</div>
+    <p id="aboutText"></p>
+    <div class="row">
+      <button id="aboutGithub">GitHub</button>
+      <button class="primary" id="aboutClose"></button>
+    </div>
+  </div>
+</div>
 <footer><span>mkpk · Knock first</span><span>&nbsp;·&nbsp;</span><a id="aboutLink">GitHub</a><span class="spacer"></span><span>__MKPK_VERSION__</span></footer>
 
 <script>
@@ -104,6 +131,10 @@ const T = {
   attempts:      ["attempts", "попыток"],
   theme_light:   ["Light theme", "Светлая тема"],
   theme_dark:    ["Dark theme", "Тёмная тема"],
+  about_tip:     ["About mkpk", "О программе"],
+  about_text:    ["Knock first: a PSK time-token port-knock client for MikroTik routers. Import an invite, knock, connect.",
+                  "Сначала постучись: клиент PSK-time port-knock для роутеров MikroTik. Импортируйте инвайт, постучитесь, подключайтесь."],
+  close:         ["Close", "Закрыть"],
 };
 let lang = "en";
 let theme = "dark";
@@ -115,6 +146,9 @@ function applyTheme() {
   const b = document.getElementById("themeBtn");
   b.textContent = theme === "dark" ? "☀" : "🌙";
   b.title = theme === "dark" ? t("theme_light") : t("theme_dark");
+  document.getElementById("aboutBtn").title = t("about_tip");
+  document.getElementById("aboutText").textContent = t("about_text");
+  document.getElementById("aboutClose").textContent = t("close");
 }
 
 async function api(path, body) {
@@ -227,6 +261,14 @@ document.getElementById("themeBtn").onclick = async () => {
 };
 
 document.getElementById("aboutLink").onclick = () => {
+  api("/api/open", { url: REPO_URL }).catch((e) => toast(e.message));
+};
+
+const aboutOverlay = document.getElementById("aboutOverlay");
+document.getElementById("aboutBtn").onclick = () => aboutOverlay.classList.add("show");
+document.getElementById("aboutClose").onclick = () => aboutOverlay.classList.remove("show");
+aboutOverlay.onclick = (e) => { if (e.target === aboutOverlay) aboutOverlay.classList.remove("show"); };
+document.getElementById("aboutGithub").onclick = () => {
   api("/api/open", { url: REPO_URL }).catch((e) => toast(e.message));
 };
 
