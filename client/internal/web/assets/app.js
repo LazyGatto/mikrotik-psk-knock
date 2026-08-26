@@ -15,6 +15,14 @@ const I18N = {
     "auth.passwd_title": "Смена пароля админа",
     "auth.passwd_note": "Общий пароль для всех админов этой инсталляции. После смены все остальные сессии завершатся.",
     "auth.current": "Текущий пароль", "auth.new": "Новый пароль", "auth.repeat": "Повторите",
+    "ssh.title": "SSH-ключ этой инсталляции",
+    "ssh.note": "Ключ принадлежит инсталляции, а не конкретному админу: приватная часть остаётся здесь и наружу не отдаётся, публичную нужно импортировать на каждый роутер.",
+    "ssh.none": "Ключа ещё нет.",
+    "ssh.create": "Создать ключ", "ssh.regen": "Пересоздать",
+    "ssh.regen_warn": "Пересоздание ключа: старый перестанет подходить ко всем роутерам, куда он уже импортирован. Продолжить?",
+    "ssh.created": "Ключ создан", "ssh.path": "Приватная часть", "ssh.fp": "Отпечаток",
+    "ssh.howto": "На роутере: залейте .pub и выполните /user ssh-keys import user=<логин> public-key-file=mkpk-provision.pub — затем укажите путь выше в поле SSH-ключа роутера.",
+    "ssh.use": "Ключ инсталляции",
     "auth.mismatch": "Пароли не совпадают", "auth.changed": "Пароль изменён",
     "update.available": "Доступно обновление {ver} — открыть страницу релиза",
     "note.add": "Добавить примечание", "note.title": "Примечание · {kind} {name}", "note.subtitle": "Хранится только в этом конфиге — на роутер не уходит",
@@ -166,6 +174,14 @@ const I18N = {
     "auth.passwd_title": "Change the admin password",
     "auth.passwd_note": "One shared password for every admin of this instance. Changing it signs all other sessions out.",
     "auth.current": "Current password", "auth.new": "New password", "auth.repeat": "Repeat",
+    "ssh.title": "SSH key of this instance",
+    "ssh.note": "The key belongs to the installation, not to one admin: the private half stays here and is never served, the public half is what you import on each router.",
+    "ssh.none": "No key yet.",
+    "ssh.create": "Create key", "ssh.regen": "Regenerate",
+    "ssh.regen_warn": "Regenerating replaces the key: the old one stops working on every router that already trusts it. Continue?",
+    "ssh.created": "Key created", "ssh.path": "Private half", "ssh.fp": "Fingerprint",
+    "ssh.howto": "On the router: upload the .pub and run /user ssh-keys import user=<login> public-key-file=mkpk-provision.pub — then point the router\'s SSH key field at the path above.",
+    "ssh.use": "Instance key",
     "auth.mismatch": "Passwords do not match", "auth.changed": "Password changed",
     "update.available": "Update {ver} available — open the release page",
     undo: "Undo", redo: "Redo", "toast.undone": "Undone", "toast.redone": "Redone",
@@ -340,6 +356,7 @@ const ICONS = {
   trash: '<path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/>',
   test: '<path d="M3 12h3l2.5 7 4-15 2.5 8H21"/>',
   lock: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  key: '<circle cx="7.5" cy="15.5" r="3.5"/><path d="M10 13 20 3"/><path d="M17 6l2.2 2.2"/><path d="M14.5 8.5l2.2 2.2"/>',
   warn: '<path d="M12 3 2 20h20L12 3Z"/><path d="M12 10v4m0 3h.01"/>',
   user: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/>',
   logout: '<path d="M15 4h3.4A1.6 1.6 0 0 1 20 5.6v12.8a1.6 1.6 0 0 1-1.6 1.6H15"/><path d="M10 16l-4-4 4-4"/><path d="M6 12h10"/>',
@@ -608,6 +625,7 @@ function renderSidebar() {
       (window.MKPK_VERSION && window.MKPK_VERSION !== "__MKPK_" + "VERSION__") ? h("span", { class: "ver" }, window.MKPK_VERSION) : null,
       UPDATE && UPDATE.newer ? h("button", { class: "iconbtn", style: "width:auto;padding:0 6px;font-weight:650;font-size:11px;color:var(--accent, #4f8cff)",
         "data-tip": t("update.available", { ver: UPDATE.latest }), onclick: () => openExternal(UPDATE.url) }, "↑ " + UPDATE.latest) : null),
+    h("button", { class: "iconbtn", "data-tip": t("ssh.title"), onclick: openSSHKeyModal }, icon("key")),
     window.MKPK_AUTH ? h("button", { class: "iconbtn", "data-tip": t("auth.passwd"), onclick: openPasswordModal }, icon("lock")) : null,
     window.MKPK_AUTH ? h("button", { class: "iconbtn", "data-tip": t("auth.logout"), onclick: () => { location.href = "/logout"; } }, icon("logout")) : null,
     h("button", { class: "iconbtn", style: "width:auto;padding:0 6px;font-weight:650;font-size:11px", "data-tip": t("lang.switch"), onclick: toggleLang }, LANG.toUpperCase()),
@@ -1527,6 +1545,44 @@ function seg2(vals, labels, cur, on) {
   const s = h("div", { class: "seg" });
   vals.forEach((v, i) => s.append(h("button", { type: "button", class: v === cur ? "on" : "", onclick: () => { [...s.children].forEach((c, j) => c.className = j === i ? "on" : ""); on(v); } }, labels[i])));
   return s;
+}
+
+// The instance deploy key: show the public half, let the admin copy or save it,
+// and offer creation when there is none. The private half is never fetched.
+async function openSSHKeyModal() {
+  let info;
+  try { info = await api("GET", "/api/sshkey"); }
+  catch (e) { toast(e.message, true); return; }
+
+  const body = h("div", { class: "modal-body" }, h("div", { class: "note" }, t("ssh.note")));
+  const foot = h("div", { class: "modal-foot" });
+
+  if (!info.exists) {
+    body.append(h("div", { class: "foot-note" }, t("ssh.none")));
+    foot.append(h("span", { class: "spacer" }),
+      h("button", { class: "btn", onclick: closeModal }, t("cancel")),
+      h("button", { class: "btn pri", onclick: async () => {
+        try { await api("POST", "/api/sshkey", {}); closeModal(); toast(t("ssh.created")); openSSHKeyModal(); }
+        catch (e) { toast(e.message, true); }
+      } }, t("ssh.create")));
+  } else {
+    body.append(h("pre", { class: "code" }, info.public_key),
+      h("div", { class: "grid2", style: "margin-top:10px" },
+        field(t("ssh.fp"), h("input", { type: "text", class: "mono", value: info.fingerprint, readonly: true })),
+        field(t("ssh.path"), h("input", { type: "text", class: "mono", value: info.path, readonly: true }))),
+      h("div", { class: "foot-note", style: "margin-top:10px" }, t("ssh.howto")));
+    foot.append(
+      h("button", { class: "btn danger sm", onclick: () => {
+        confirmDialog(t("ssh.regen"), t("ssh.regen_warn"), t("ssh.regen"), async () => {
+          try { await api("POST", "/api/sshkey", { replace: true }); closeModal(); toast(t("ssh.created")); openSSHKeyModal(); }
+          catch (e) { toast(e.message, true); }
+        });
+      } }, t("ssh.regen")),
+      h("span", { class: "spacer" }),
+      h("button", { class: "btn", onclick: () => { navigator.clipboard.writeText(info.public_key); toast(t("copied")); } }, t("copy")),
+      h("button", { class: "btn pri", onclick: () => downloadText(info.public_key + "\n", "mkpk-provision.pub") }, "⤓ .pub"));
+  }
+  modal(h("div", null, h("div", { class: "modal-head" }, h("h3", null, t("ssh.title"))), body, foot));
 }
 
 function openPasswordModal() {

@@ -4,7 +4,17 @@ Notable changes to this project. Format: [Keep a Changelog](https://keepachangel
 Versions are the **Go CLI / provisioner** release tags (`mkpk`, `mkpk-provision`);
 the native macOS recipient app in `client-macos/` ships separately.
 
-## [0.11.1] — 2026-08-26
+## [Unreleased]
+
+### Fixed
+- **The SSH key button was missing from the provision UI** — the deploy key
+  landed in the API, the CLI and the docs, but the patch that added the sidebar
+  button, the modal and its strings never made it into `app.js`, so there was
+  no way to see or download the public half from the interface. The router
+  form's "instance key" button was equally broken (no icon, untranslated
+  label).
+
+
 
 ### Fixed
 - **The `--behind-ingress` port can be published on a LAN address** — it was
