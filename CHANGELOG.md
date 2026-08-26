@@ -4,7 +4,7 @@ Notable changes to this project. Format: [Keep a Changelog](https://keepachangel
 Versions are the **Go CLI / provisioner** release tags (`mkpk`, `mkpk-provision`);
 the native macOS recipient app in `client-macos/` ships separately.
 
-## [Unreleased]
+## [0.7.0] — 2026-08-26
 
 ### Added
 - **mkpk-client (Windows): system tray** (#29) — the brand icon lives in the
