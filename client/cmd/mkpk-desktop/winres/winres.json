@@ -1,0 +1,20 @@
+{
+  "RT_GROUP_ICON": {
+    "APP": {
+      "0000": ["icon.png"]
+    }
+  },
+  "RT_MANIFEST": {
+    "#1": {
+      "0409": {
+        "identity": {
+          "name": "mkpk-desktop",
+          "version": "0.0.0.0"
+        },
+        "description": "MikroTik port-knock client",
+        "execution-level": "as invoker",
+        "dpi-awareness": "per monitor v2"
+      }
+    }
+  }
+}

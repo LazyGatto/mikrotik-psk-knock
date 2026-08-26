@@ -153,6 +153,10 @@ function render() {
   }
 }
 
+function chipText(last) {
+  return t(last.cls) + (last.attempts != null ? " \u00b7 " + last.attempts + " " + t("attempts") : "");
+}
+
 function svcRow(inv, rt, svc) {
   const key = inv.id + "/" + rt.router + "/" + svc.name;
   const row = document.createElement("div"); row.className = "svc";
@@ -165,7 +169,7 @@ function svcRow(inv, rt, svc) {
   const spacer = document.createElement("span"); spacer.className = "spacer";
   const chip = document.createElement("span"); chip.className = "chip";
   const last = chips[key];
-  if (last) { chip.classList.add(last.cls); chip.textContent = last.text; }
+  if (last) { chip.classList.add(last.cls); chip.textContent = chipText(last); }
   else { chip.textContent = t("idle"); }
   const btn = document.createElement("button"); btn.textContent = t("knock");
   btn.onclick = () => knock(inv, rt, svc, chip, btn, key);
@@ -179,13 +183,12 @@ async function knock(inv, rt, svc, chip, btn, key) {
   try {
     const res = await api("/api/knock", { invite_id: inv.id, router: rt.router, service: svc.name });
     const cls = res.status === "open" ? "open" : res.status === "closed" ? "closed" : "error";
-    const text = t(cls) + " · " + res.attempts + " " + t("attempts");
-    chips[key] = { cls, text };
-    chip.className = "chip " + cls; chip.textContent = text;
+    chips[key] = { cls, attempts: res.attempts };
+    chip.className = "chip " + cls; chip.textContent = chipText(chips[key]);
     if (res.status !== "open" && res.error) toast(res.error);
   } catch (e) {
-    chips[key] = { cls: "error", text: t("error") };
-    chip.className = "chip error"; chip.textContent = t("error");
+    chips[key] = { cls: "error" };
+    chip.className = "chip error"; chip.textContent = chipText(chips[key]);
     toast(e.message);
   } finally {
     btn.disabled = false;
