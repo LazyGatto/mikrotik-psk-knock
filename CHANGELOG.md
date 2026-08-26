@@ -4,7 +4,7 @@ Notable changes to this project. Format: [Keep a Changelog](https://keepachangel
 Versions are the **Go CLI / provisioner** release tags (`mkpk`, `mkpk-provision`);
 the native macOS recipient app in `client-macos/` ships separately.
 
-## [Unreleased]
+## [0.13.0] — 2026-08-27
 
 ### Added
 - **Onboarding tidies up after itself**: if you had to allow password login on
