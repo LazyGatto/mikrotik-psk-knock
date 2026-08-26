@@ -1,4 +1,4 @@
-.TH MKPK-PROVISION 1 "2026-07-28" "mkpk-provision 0.2.0" "System Administration"
+.TH MKPK-PROVISION 1 "2026-08-26" "mkpk-provision 0.8.0" "System Administration"
 .SH NAME
 mkpk-provision \- provision and deploy the MikroTik PSK port-knock layer
 .SH SYNOPSIS
@@ -23,8 +23,16 @@ The config defaults to
 .IR ~/.config/mkpk/mkpk.yaml );
 override it with
 .B --config
-on any command. It holds every secret (PSKs, SSH key/password), is written
-0600 with an atomic replace, and never leaves the operator's machine.
+on any command. It holds every secret (PSKs, SSH key/password) and is written
+0600 with an atomic replace.
+.PP
+By default the config stays on the operator's machine and
+.B serve
+listens on loopback without a password. A team can instead run one shared
+instance behind a reverse proxy: setting an admin password turns on sessions
+and network access \(em see
+.B serve
+below and the deployment guide in the project documentation.
 .SH COMMANDS
 .TP
 .B secret generate \fR[\fB--bytes\fR \fIN\fR]
@@ -77,8 +85,28 @@ Connection credentials come from the router. With
 .B --json
 the result (action, hashes, applied) is emitted as JSON for automation.
 .TP
-.B serve --config \fIFILE\fR [\fB--addr\fR \fI127.0.0.1:8765\fR]
-Start the local web UI (loopback only, per-session token).
+.B serve --config \fIFILE\fR [\fB--addr\fR \fI127.0.0.1:8765\fR] [\fB--behind-proxy\fR]
+Start the web UI. With no admin password it is the local tool: loopback only,
+gated by a per-session token. When an admin password exists (see
+.BR passwd ),
+the UI requires a login, keeps server-side sessions and can listen on a
+network address.
+.IP
+Two refusals protect the shared mode, because this config grants SSH access to
+every router: a non-loopback address without an admin password is refused, and
+so is plain HTTP on a non-loopback address without
+.B --behind-proxy
+(or
+.BR MKPK_BEHIND_PROXY=1 ),
+which asserts that a reverse proxy terminates TLS in front.
+.TP
+.B passwd --config \fIFILE\fR [\fB--password\fR \fIPW\fR]
+Set or replace the admin password for the networked UI. Stored as an argon2id
+record in
+.I mkpk-admin.json
+beside the config; read from standard input when
+.B --password
+is omitted.
 .TP
 .B version
 Print the program version and exit.
@@ -86,6 +114,20 @@ Print the program version and exit.
 .TP
 .I ~/.config/mkpk/mkpk.yaml
 Default config path (0600). Holds all secrets.
+.TP
+.I ~/.config/mkpk/mkpk-admin.json
+Admin password record (argon2id, 0600), created beside the config when a
+password is set. Deliberately separate from the config, which gets copied and
+diffed.
+.SH ENVIRONMENT
+.TP
+.B MKPK_ADMIN_PASSWORD
+Seeds the admin password on first start when no record exists yet. An existing
+record always wins, so a stale value cannot reset the password.
+.TP
+.B MKPK_BEHIND_PROXY
+Same as
+.BR --behind-proxy .
 .SH EXAMPLES
 Initialize, add a service and a user, deploy, and export an invite:
 .PP

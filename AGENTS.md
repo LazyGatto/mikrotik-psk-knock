@@ -19,6 +19,8 @@ repo-wide orientation for AI agents / contributors. Subtrees have their own
 - `client-macos/` — the **native Swift menu-bar recipient app** (imports `.mkpk`
   invites, knocks). Has its own `AGENTS.md`. Built with SwiftPM, not in Go CI.
 - `routeros/` — RouterOS-side reference / scripts. `docs/` — design, briefs, mockups.
+- `deploy/docker/` — compose recipes for the shared provision instance (with and
+  without Caddy); the image is built from the root `Dockerfile` by CI on a tag.
 
 The knock token is `sha512(psk|v1|service|client_id|bucket|psk)` (lowercase hex);
 `bucket = floor(unixSeconds / bucket_seconds)`. It MUST stay byte-identical across
@@ -41,7 +43,9 @@ Live runs against a real router (`mkpk knock`, `mkpk-provision deploy`,
 Individual commands:
 
 - Go: `cd client && go build ./... && go vet ./...`. Run the CLIs from
-  `client/cmd/*`. The provision web UI: `mkpk-provision serve --config mkpk.yaml`.
+  `client/cmd/*`. The provision web UI: `mkpk-provision serve --config mkpk.yaml`
+  (loopback, no password). A shared team instance runs in Docker with an admin
+  password — `Dockerfile`, `deploy/docker/`, `docs/deploy-docker.md`.
 - Swift client: see `client-macos/AGENTS.md` (`swift build`, `swift run mkpk-selfcheck`).
 
 ## Agent workflow
