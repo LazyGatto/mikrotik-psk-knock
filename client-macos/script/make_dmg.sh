@@ -15,7 +15,21 @@ cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"   # drag-to-install target
 
 rm -f "$OUT"
-hdiutil create -volname "$VOL" -srcfolder "$STAGE" -ov -format UDZO "$OUT" >/dev/null
+# hdiutil intermittently fails with "Resource busy" on a CI machine: something
+# (Spotlight indexing the staged copy, a lingering mount) still holds it. It is
+# transient, so retry rather than failing a release build.
+attempt=1
+until hdiutil create -volname "$VOL" -srcfolder "$STAGE" -ov -format UDZO "$OUT" >/dev/null 2>"$STAGE/../hdiutil.err"; do
+  if [ "$attempt" -ge 4 ]; then
+    echo "make_dmg: hdiutil create failed after $attempt attempts:" >&2
+    cat "$STAGE/../hdiutil.err" >&2
+    exit 1
+  fi
+  echo "make_dmg: hdiutil create failed ($(tr -d '\n' < "$STAGE/../hdiutil.err")), retry $attempt/3" >&2
+  attempt=$((attempt + 1))
+  sleep 5
+done
+rm -f "$STAGE/../hdiutil.err"
 
 # Optionally sign the DMG (gold standard: signed + notarized + stapled). Set
 # MKPK_SIGN_ID to a "Developer ID Application: …" identity to enable; then the DMG

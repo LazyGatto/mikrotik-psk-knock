@@ -4,6 +4,21 @@ Notable changes to this project. Format: [Keep a Changelog](https://keepachangel
 Versions are the **Go CLI / provisioner** release tags (`mkpk`, `mkpk-provision`);
 the native macOS recipient app in `client-macos/` ships separately.
 
+## [Unreleased]
+
+### Added
+- **One-command installer** `deploy/docker/install.sh`: checks Docker, fetches
+  the compose files, generates the admin password, starts the stack, waits for
+  the container to report healthy and prints the URL, the password and the next
+  steps. `--domain` runs Caddy with automatic TLS, `--behind-ingress` publishes
+  a local port for an existing proxy, `--install-docker` bootstraps Docker.
+  Re-running keeps the existing password, so it doubles as the upgrade path.
+
+### Fixed
+- **DMG packaging retries `hdiutil`** — it intermittently fails with
+  `Resource busy` on the CI machine (Spotlight still holding the staged copy),
+  which failed a whole release job for no real reason.
+
 ## [0.10.0] — 2026-08-26
 
 The deploy identity now belongs to the installation rather than to one admin,
