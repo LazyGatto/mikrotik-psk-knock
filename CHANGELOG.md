@@ -4,7 +4,10 @@ Notable changes to this project. Format: [Keep a Changelog](https://keepachangel
 Versions are the **Go CLI / provisioner** release tags (`mkpk`, `mkpk-provision`);
 the native macOS recipient app in `client-macos/` ships separately.
 
-## [Unreleased]
+## [0.10.0] — 2026-08-26
+
+The deploy identity now belongs to the installation rather than to one admin,
+and `docs/deploy-docker.md` carries a from-scratch runbook for a remote host.
 
 ### Fixed
 - **Compose no longer carries a wrong (and private) registry hostname** — the
