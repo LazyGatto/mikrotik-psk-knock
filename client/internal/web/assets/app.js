@@ -108,6 +108,8 @@ const I18N = {
     "router.ssh_address": "SSH-адрес деплоя (если отличается)",
     "router.ssh_address_note": "Пусто → деплой идёт по публичному адресу. Задайте, если провижн по локальному/management-адресу из safe-env.",
     "router.tab_general": "Общие", "router.tab_notify": "Нотификации",
+    "router.tg_topic": "топик (форум-группа)", "router.tg_topic_ph": "id топика, опционально",
+    "router.tg_topic_note": "Для супергруппы с топиками: число из ссылки на топик (t.me/c/…/<это-число>). Пусто — General.",
     "router.addr_required": "публичный адрес обязателен", "router.addr_bad": "адрес {addr} — не IP и не домен", "router.ssh_addr_bad": "SSH-адрес {addr} — не IP и не домен",
     "router.ssh_legend": "SSH для деплоя",
     "router.ssh_note": "Используется кнопками Status / Apply / Uninstall. Хранится в локальном секретном конфиге (0600) и не покидает эту машину.",
@@ -244,6 +246,8 @@ const I18N = {
     "router.ssh_address": "SSH deploy address (if different)",
     "router.ssh_address_note": "Empty → deploy uses the public address. Set it if you provision over a local/management address from safe-env.",
     "router.tab_general": "General", "router.tab_notify": "Notifications",
+    "router.tg_topic": "topic (forum group)", "router.tg_topic_ph": "topic id, optional",
+    "router.tg_topic_note": "For a forum supergroup: the number from the topic link (t.me/c/…/<this-number>). Empty — General.",
     "router.addr_required": "public address is required", "router.addr_bad": "address {addr} is not an IP or hostname", "router.ssh_addr_bad": "SSH address {addr} is not an IP or hostname",
     "router.ssh_legend": "SSH for deploy",
     "router.ssh_note": "Used by Status / Apply / Uninstall. Stored in the local secret config (0600) and never leaves this machine.",
@@ -1265,7 +1269,8 @@ function openRouterModal(name) {
   g.nw = h("input", { type: "checkbox", checked: !!n.webhook_enabled });
   g.url = inp(n.url, { placeholder: "https://…" });
   g.nt = h("input", { type: "checkbox", checked: !!n.telegram_enabled });
-  g.tg_chat = inp(n.telegram_chat_id, { placeholder: "@chat / id" });
+  g.tg_chat = inp(n.telegram_chat_id, { placeholder: "-100…" });
+  g.tg_thread = inp(n.telegram_thread_id, { placeholder: t("router.tg_topic_ph") });
   g.tg_token = h("input", { type: "password", placeholder: n.bot_token_set ? t("ph.unchanged") : "bot token" });
   g.ne = h("input", { type: "checkbox", checked: !!n.email_enabled });
   g.email_to = inp(n.email_to); g.email_from = inp(n.email_from);
@@ -1298,7 +1303,9 @@ function openRouterModal(name) {
   const paneNotify = h("div", { class: "modal-body hidden" },
     h("div", { class: "note" }, t("router.notify_note")),
     chan(g.nw, "Webhook", field("URL", g.url)),
-    chan(g.nt, "Telegram", h("div", { class: "grid2" }, field("chat id", g.tg_chat), field("bot token", g.tg_token))),
+    chan(g.nt, "Telegram",
+      h("div", { class: "grid2" }, field("chat id", g.tg_chat), field("bot token", g.tg_token)),
+      field(t("router.tg_topic"), g.tg_thread, t("router.tg_topic_note"))),
     chan(g.ne, "Email",
       h("div", { class: "grid2" }, field("to", g.email_to), field("from", g.email_from)),
       h("div", { class: "grid3" }, field("server", g.email_server), field("port", g.email_port), field("tls", g.email_tls)),
@@ -1328,7 +1335,7 @@ function openRouterModal(name) {
         password: g.password.value, key_pass: g.key_pass.value,
         notify: {
           webhook: { enabled: g.nw.checked, url: g.url.value.trim() },
-          telegram: { enabled: g.nt.checked, chat_id: g.tg_chat.value.trim(), bot_token: g.tg_token.value },
+          telegram: { enabled: g.nt.checked, chat_id: g.tg_chat.value.trim(), thread_id: g.tg_thread.value.trim(), bot_token: g.tg_token.value },
           email: { enabled: g.ne.checked, to: g.email_to.value.trim(), from: g.email_from.value.trim(), server: g.email_server.value.trim(), port: +g.email_port.value || 0, tls: g.email_tls.value.trim(), user: g.email_user.value.trim(), password: g.email_pass.value },
         },
       };

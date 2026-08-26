@@ -165,6 +165,9 @@ type NotifyTelegram struct {
 	Enabled  bool   `yaml:"enabled" json:"enabled"`
 	BotToken string `yaml:"bot_token" json:"bot_token"`
 	ChatID   string `yaml:"chat_id" json:"chat_id"`
+	// ThreadID targets a forum-supergroup topic (Bot API message_thread_id).
+	// Empty → the group's General topic / a plain chat.
+	ThreadID string `yaml:"thread_id,omitempty" json:"thread_id"`
 }
 
 type NotifyEmail struct {
@@ -625,6 +628,9 @@ func validateNotify(n Notify) error {
 		if !isChatID(n.Telegram.ChatID) {
 			return fmt.Errorf("notify.telegram.chat_id must be an integer id")
 		}
+		if n.Telegram.ThreadID != "" && !isDigits(n.Telegram.ThreadID) {
+			return fmt.Errorf("notify.telegram.thread_id must be a positive integer (forum topic id)")
+		}
 	}
 	if n.Email.Enabled {
 		if !isEmailAddr(n.Email.To) {
@@ -685,6 +691,15 @@ func isTelegramToken(v string) bool {
 		return false
 	}
 	return true
+}
+
+func isDigits(v string) bool {
+	for _, r := range v {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return v != ""
 }
 
 func isChatID(v string) bool {

@@ -54,6 +54,7 @@ type renderConfigData struct {
 	NotifyTelegram      string // "true" / "false"
 	NotifyBotToken      string // ros-quoted
 	NotifyChatID        string // ros-quoted
+	NotifyThreadID      string // ros-quoted; forum topic (message_thread_id), may be empty
 	NotifyEmail         string // "true" / "false"
 	NotifyEmailTo       string // ros-quoted
 	NotifyEmailFrom     string // ros-quoted
@@ -82,6 +83,7 @@ func RenderConfig(r config.Router, clients []config.RenderClient) (string, error
 		NotifyTelegram:      rosBool(r.Notify.Telegram.Enabled),
 		NotifyBotToken:      rosString(r.Notify.Telegram.BotToken),
 		NotifyChatID:        rosString(r.Notify.Telegram.ChatID),
+		NotifyThreadID:      rosString(r.Notify.Telegram.ThreadID),
 		NotifyEmail:         rosBool(r.Notify.Email.Enabled),
 		NotifyEmailTo:       rosString(r.Notify.Email.To),
 		NotifyEmailFrom:     rosString(r.Notify.Email.From),
@@ -287,6 +289,7 @@ add name="mkpk-tt-notify" policy=read,write,test source={
     :local nTelegram {{.NotifyTelegram}}
     :local nBotToken {{.NotifyBotToken}}
     :local nChatId {{.NotifyChatID}}
+    :local nThreadId {{.NotifyThreadID}}
     :local nEmail {{.NotifyEmail}}
     :local nEmailTo {{.NotifyEmailTo}}
     :local nEmailFrom {{.NotifyEmailFrom}}
@@ -311,7 +314,11 @@ add name="mkpk-tt-notify" policy=read,write,test source={
         #   🔓 KZ-D2A: socks5 open for test2
         #   from 95.25.177.50 · 55m
         :local text ("\F0\9F\94\93 " . $mkpkTtNotifyRouter . ": " . $mkpkTtNotifyService . " open for " . $mkpkTtNotifyClientId . "\nfrom " . $mkpkTtNotifySrc . " \C2\B7 " . $mkpkTtNotifyTtl)
-        :local tgBody ("{\"chat_id\":\"" . $nChatId . "\",\"text\":" . [:serialize $text to=json] . "}")
+        :local tgBody ("{\"chat_id\":\"" . $nChatId . "\"")
+        :if ([:len $nThreadId] > 0) do={
+            :set tgBody ($tgBody . ",\"message_thread_id\":" . $nThreadId)
+        }
+        :set tgBody ($tgBody . ",\"text\":" . [:serialize $text to=json] . "}")
         :do {
             /tool fetch url=("https://api.telegram.org/bot" . $nBotToken . "/sendMessage") http-method=post http-header-field="Content-Type: application/json" http-data=$tgBody keep-result=no
         } on-error={

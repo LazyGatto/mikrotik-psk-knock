@@ -125,6 +125,10 @@ input, select, textarea { font-family: inherit; font-size: inherit; }
 
 /* ---------- main ---------- */
 #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+/* Every view's root is a plain wrapper div (topbar + .content). Without height
+   constraints it grows past #main and .content's overflow-y never engages —
+   long dashboards/user views were unscrollable. */
+#main > div:not(.content) { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .topbar { padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; align-items: flex-start; gap: 14px; }
 .topbar .grow { flex: 1; min-width: 0; }
 .topbar h2 { margin: 0; font-size: 17px; font-weight: 650; letter-spacing: -.02em; }

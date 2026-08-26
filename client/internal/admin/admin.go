@@ -766,6 +766,7 @@ type NotifySummary struct {
 	URL             string `json:"url"`
 	TelegramEnabled bool   `json:"telegram_enabled"`
 	TelegramChat    string `json:"telegram_chat_id"`
+	TelegramThread  string `json:"telegram_thread_id"`
 	BotTokenSet     bool   `json:"bot_token_set"`
 	EmailEnabled    bool   `json:"email_enabled"`
 	EmailTo         string `json:"email_to"`
@@ -878,6 +879,7 @@ func notifySummary(n config.Notify) NotifySummary {
 		URL:             n.Webhook.URL,
 		TelegramEnabled: n.Telegram.Enabled,
 		TelegramChat:    n.Telegram.ChatID,
+		TelegramThread:  n.Telegram.ThreadID,
 		BotTokenSet:     n.Telegram.BotToken != "",
 		EmailEnabled:    n.Email.Enabled,
 		EmailTo:         n.Email.To,

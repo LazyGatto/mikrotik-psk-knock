@@ -7,6 +7,17 @@ the native macOS recipient app in `client-macos/` ships separately.
 ## [Unreleased]
 
 ### Added
+- **Telegram notifications into a forum-supergroup topic**: `notify.telegram`
+  gains an optional `thread_id` (Bot API `message_thread_id`) — set it in the
+  router's Notifications tab; empty keeps the General topic / plain chats.
+  Re-deploy the router to apply.
+
+### Fixed
+- **Provision UI: long views scroll again** — the dashboard and the user access
+  matrix (any view taller than the window) were unscrollable because the view
+  wrapper never constrained the content height; resizing the window was the
+  only workaround.
+
 - **mkpk-client: About** — a `?` button in the header opens an About popup
   (brand icon, version, short description, GitHub link), and the tray menu
   gains an "mkpk vX.Y.Z — About" item opening the project page.
