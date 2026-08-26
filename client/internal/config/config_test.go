@@ -76,9 +76,19 @@ func TestValidateRejectsUserUnknownRouter(t *testing.T) {
 	}
 }
 
-func TestValidateRejectsEmptyRouters(t *testing.T) {
-	if err := (Config{}).Validate(); err == nil {
-		t.Fatal("Validate() error = nil, want empty routers error")
+// An empty config is valid: that is a fresh install, and it is also what you
+// get after removing the last router. Commands that need a router complain
+// themselves rather than making the file unloadable.
+func TestValidateAcceptsEmptyConfig(t *testing.T) {
+	if err := (Config{}).Validate(); err != nil {
+		t.Fatalf("Validate() error = %v, want nil for an empty config", err)
+	}
+	// A user referencing a router that no longer exists is still rejected.
+	cfg := Config{Users: map[string]User{"u1": {ClientID: "u1", Access: map[string]UserAccess{
+		"ghost": {Services: []string{"ssh"}, PSK: "ok"},
+	}}}}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want unknown router error")
 	}
 }
 

@@ -314,9 +314,10 @@ func (c *Config) applyUserDefaults() {
 }
 
 func (c Config) Validate() error {
-	if len(c.Routers) == 0 {
-		return fmt.Errorf("routers must not be empty")
-	}
+	// An empty config is a legitimate state: a fresh install has no routers, and
+	// removing the last one must be allowed. Commands that need a router say so
+	// themselves (pickRouter, render, deploy).
+
 	for name, r := range c.Routers {
 		if !isSafeName(name) {
 			return fmt.Errorf("router key %q must match ^[A-Za-z0-9][A-Za-z0-9_-]*$", name)

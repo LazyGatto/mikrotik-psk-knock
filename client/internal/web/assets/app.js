@@ -16,6 +16,15 @@ const I18N = {
     "auth.passwd_note": "Общий пароль для всех админов этой инсталляции. После смены все остальные сессии завершатся.",
     "auth.current": "Текущий пароль", "auth.new": "Новый пароль", "auth.repeat": "Повторите",
     "menu.title": "Меню",
+    "onb.title": "Добавить роутер",
+    "onb.note": "Провижн заведёт на роутере собственного пользователя mkpk с минимальными правами и своим ключом. Дальше вся работа идёт под ним — личный логин админа больше не нужен.",
+    "onb.admin_legend": "Разовый доступ администратора",
+    "onb.admin_note": "Нужен один раз, чтобы создать сервисного пользователя. В конфиг не сохраняется.",
+    "onb.run": "Подключиться и добавить",
+    "onb.working": "Подключаемся к роутеру…",
+    "onb.done": "Сервисный пользователь {user} создан, ключ {fp}",
+    "onb.saved": "Роутер добавлен",
+    "onb.left_behind": "Роутер удалён из конфига, но сервисный пользователь на нём остался:",
     "close": "Закрыть",
     "ssh.title": "SSH-ключ этой инсталляции",
     "ssh.note": "Ключ принадлежит инсталляции, а не конкретному админу: приватная часть остаётся здесь и наружу не отдаётся, публичную нужно импортировать на каждый роутер.",
@@ -177,6 +186,15 @@ const I18N = {
     "auth.passwd_note": "One shared password for every admin of this instance. Changing it signs all other sessions out.",
     "auth.current": "Current password", "auth.new": "New password", "auth.repeat": "Repeat",
     "menu.title": "Menu",
+    "onb.title": "Add router",
+    "onb.note": "Provision will create its own mkpk user on the router, with a minimal group and its own key. Everything after this runs as that account — no personal admin login needed.",
+    "onb.admin_legend": "One-off administrator access",
+    "onb.admin_note": "Needed once, to create the service user. It is not saved to the config.",
+    "onb.run": "Connect and add",
+    "onb.working": "Connecting to the router…",
+    "onb.done": "Service user {user} created, key {fp}",
+    "onb.saved": "Router added",
+    "onb.left_behind": "The router is gone from the config, but its service user is still on it:",
     "close": "Close",
     "ssh.title": "SSH key of this instance",
     "ssh.note": "The key belongs to the installation, not to one admin: the private half stays here and is never served, the public half is what you import on each router.",
@@ -613,7 +631,7 @@ function renderSidebar() {
       routerDot(r),
       h("span", { class: "gear", onclick: (e) => { e.stopPropagation(); openRouterModal(r.name); }, "data-tip": t("nav.router_settings") }, icon("gear"))));
   }
-  nav.append(h("button", { class: "dashed", onclick: () => openRouterModal(null) }, t("nav.add_router")));
+  nav.append(h("button", { class: "dashed", onclick: () => openOnboardModal() }, t("nav.add_router")));
 
   nav.append(navHeader(t("nav.users"), () => openUserModal(null)));
   for (const u of S.users) {
@@ -685,7 +703,7 @@ function onboarding() {
       icon("router", "glyph"),
       h("h3", null, t("onb.title")),
       h("p", null, t("onb.body")),
-      h("button", { class: "btn pri", onclick: () => openRouterModal(null) }, t("nav.add_router"))));
+      h("button", { class: "btn pri", onclick: () => openOnboardModal() }, t("nav.add_router"))));
 }
 
 // ---------- dashboard ----------
@@ -711,7 +729,7 @@ function dashboard() {
 
   wrap.append(h("div", { class: "row", style: "justify-content:flex-end" },
     h("button", { class: "btn sm", onclick: checkAllStatuses }, t("dash.check")),
-    h("button", { class: "btn sm", onclick: () => openRouterModal(null) }, t("dash.add_router")),
+    h("button", { class: "btn sm", onclick: () => openOnboardModal() }, t("dash.add_router")),
     h("button", { class: "btn sm", onclick: () => openUserModal(null) }, t("dash.add_user"))));
 
   const rlist = h("div", { class: "card" });
@@ -1324,6 +1342,64 @@ function openNoteModal(kind, router, name, note) {
   ta.focus();
 }
 
+// Adding a router starts by installing mkpk's own account on it: the admin
+// credentials are used once, here, and never stored. Only after that does the
+// router get saved — a router in the list is one we can actually reach.
+function openOnboardModal() {
+  const addr = hostInput(h("input", { type: "text", placeholder: "router.example.com" }));
+  const name = nameInput(h("input", { type: "text", placeholder: "router-a" }));
+  const port = portInput(h("input", { type: "number", placeholder: "22" }));
+  const user = h("input", { type: "text", placeholder: "admin" });
+  const password = h("input", { type: "password", autocomplete: "off" });
+  const keyPath = h("input", { type: "text", placeholder: "~/.ssh/id_ed25519" });
+  const agent = h("input", { type: "checkbox" });
+  const out = h("div", { class: "foot-note", style: "white-space:pre-wrap" });
+  const err = h("div", { class: "foot-note", style: "color:var(--danger)" });
+
+  const run = h("button", { class: "btn pri", onclick: async () => {
+    err.textContent = ""; out.textContent = t("onb.working");
+    run.disabled = true;
+    try {
+      const res = await api("POST", "/api/router/onboard", {
+        address: addr.value.trim(), port: +port.value || 0,
+        user: user.value.trim(), password: password.value,
+        key_path: keyPath.value.trim(), use_agent: agent.checked,
+      });
+      out.textContent = t("onb.done", { user: res.user, fp: res.fingerprint });
+      // Save the router pointing at the account we just created.
+      const cfg = await api("POST", "/api/router", {
+        name: name.value.trim() || addr.value.trim(),
+        address: addr.value.trim(),
+        port: +port.value || 0, user: res.user, key_path: res.key_path, use_agent: false,
+        notify: { webhook: {}, telegram: {}, email: {} },
+      });
+      closeModal();
+      applyConfig(cfg);
+      S.view = { kind: "router", id: name.value.trim() || addr.value.trim(), tab: "services" };
+      render();
+      toast(t("onb.saved"));
+    } catch (e) {
+      err.textContent = e.message;
+      out.textContent = "";
+    } finally { run.disabled = false; }
+  } }, t("onb.run"));
+
+  modal(h("div", null,
+    h("div", { class: "modal-head" }, h("h3", null, t("onb.title"))),
+    h("div", { class: "modal-body" },
+      h("div", { class: "note" }, t("onb.note")),
+      h("div", { class: "grid2" }, field(t("field.name"), name), field(t("field.address"), addr)),
+      h("fieldset", { class: "fieldset" }, h("legend", null, t("onb.admin_legend")),
+        h("div", { class: "note" }, t("onb.admin_note")),
+        h("div", { class: "grid2" }, field(t("field.user"), user), field(t("field.port"), port)),
+        field(t("router.pw_ssh"), password),
+        field(t("router.keypath"), keyPath),
+        h("label", { class: "inline-check" }, agent, "ssh-agent")),
+      out, err),
+    h("div", { class: "modal-foot" }, h("span", { class: "spacer" }),
+      h("button", { class: "btn", onclick: closeModal }, t("cancel")), run)));
+}
+
 function openRouterModal(name) {
   const r = name ? routerOf(name) : null;
   const g = {};
@@ -1468,7 +1544,15 @@ async function delRouter(name) {
   const r = routerOf(name);
   const users = S.users.filter((u) => u.access.some((a) => a.router === name)).length;
   confirmDialog(t("router.del.title", { name }), t("router.del.body", { s: r.services.length, u: users }), t("router.del"), async () => {
-    try { closeModal(); applyConfig(await api("DELETE", "/api/router?name=" + encodeURIComponent(name))); toast(t("toast.router_deleted")); } catch (e) { toast(e.message, true); }
+    try {
+      closeModal();
+      const res = await api("DELETE", "/api/router?name=" + encodeURIComponent(name));
+      applyConfig(res);
+      // The router is gone from the config either way; say so plainly when its
+      // service account could not be removed, with the command to finish by hand.
+      if (res.warning) toast(t("onb.left_behind") + " " + res.warning, true);
+      else toast(t("toast.router_deleted"));
+    } catch (e) { toast(e.message, true); }
   });
 }
 

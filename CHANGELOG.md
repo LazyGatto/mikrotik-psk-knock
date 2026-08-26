@@ -7,6 +7,13 @@ the native macOS recipient app in `client-macos/` ships separately.
 ## [Unreleased]
 
 ### Added
+- **Adding a router now onboards it** (#33): the add-router dialog asks for
+  administrator credentials once, installs the `mkpk` service account with the
+  installation key, and saves the router only after that succeeds — so a router
+  in the list is one provision can actually reach. Deleting a router removes the
+  account from it (the account deletes itself); if the router is unreachable it
+  is still removed from the config, with a warning and the command to finish by
+  hand.
 - **Service account on the router** (#33, backend + CLI): provision installs its
   own `mkpk` user with a minimal group (`ssh,ftp,read,write,policy,test` —
   confirmed on a live RouterOS 7.23.2; `sensitive` is not needed) and the
@@ -16,6 +23,12 @@ the native macOS recipient app in `client-macos/` ships separately.
   group in one command — so handing a router back needs no admin login. RouterOS
   refuses a passwordless user, so onboarding generates a random password it
   never stores; authentication is by key.
+
+### Fixed
+- **The last router can be deleted** — an empty config was rejected as invalid,
+  so removing the only router failed after its service account had already been
+  removed. A config with no routers is now a valid state (it is also what a
+  fresh install looks like).
 
 ### Changed
 - **Telegram notification form regrouped**: the bot token gets its own

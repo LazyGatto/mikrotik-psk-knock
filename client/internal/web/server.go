@@ -22,6 +22,7 @@ import (
 
 	"mikrotik-psk-knock/client/internal/admin"
 	"mikrotik-psk-knock/client/internal/config"
+	"mikrotik-psk-knock/client/internal/deploy"
 	"mikrotik-psk-knock/client/internal/version"
 )
 
@@ -136,6 +137,7 @@ func (s *Server) routes() *http.ServeMux {
 	mux.HandleFunc("/api/deploy/uninstall", s.guard(s.handleDeployUninstall))
 	mux.HandleFunc("/api/deploy/stream", s.guard(s.handleDeployStream))
 	mux.HandleFunc("/api/sshkey", s.guard(s.handleSSHKey))
+	mux.HandleFunc("/api/router/onboard", s.guard(s.handleOnboard))
 	if s.auth != nil {
 		mux.HandleFunc("/login", s.handleLogin)
 		mux.HandleFunc("/logout", s.handleLogout)
@@ -226,6 +228,66 @@ func (s *Server) index(w http.ResponseWriter, r *http.Request) {
 	page = strings.Replace(page, "__MKPK_AUTH__", strconv.FormatBool(s.auth != nil), 1)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(page))
+}
+
+// handleOnboard installs mkpk's own service account on a router using
+// administrator credentials supplied for this one call. Those credentials are
+// never written to the config: what gets stored afterwards is the service
+// account plus the instance key.
+func (s *Server) handleOnboard(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var req struct {
+		Address  string `json:"address"`  // public/management address to reach now
+		Port     int    `json:"port"`     // 0 → default
+		User     string `json:"user"`     // administrator login
+		Password string `json:"password"` // administrator password …
+		KeyPath  string `json:"key_path"` // … or a key
+		KeyPass  string `json:"key_pass"`
+		UseAgent bool   `json:"use_agent"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid json: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(req.Address) == "" {
+		writeErr(w, http.StatusBadRequest, "router address is required")
+		return
+	}
+
+	// The account carries this installation's key, so make sure there is one.
+	key, err := admin.ReadInstanceKey(s.configPath)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !key.Exists {
+		if key, err = admin.CreateInstanceKey(s.configPath, "mkpk-provision", false); err != nil {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+
+	res, err := admin.OnboardServiceUser(
+		config.Router{Address: req.Address, Deploy: config.Deploy{Port: req.Port}},
+		admin.DeployOptions{
+			Address: req.Address, Port: req.Port,
+			Auth: deploy.Auth{
+				User: req.User, Password: req.Password,
+				KeyPath: req.KeyPath, KeyPass: req.KeyPass, UseAgent: req.UseAgent,
+			},
+		}, key.PublicKey)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error(), "log": res.Log})
+		return
+	}
+	res.Fingerprint = key.Fingerprint
+	writeJSON(w, http.StatusOK, map[string]any{
+		"user": res.User, "policies": res.Policies, "fingerprint": res.Fingerprint,
+		"key_path": key.Path, "log": res.Log,
+	})
 }
 
 // handleSSHKey reports the instance deploy key and, on POST, creates it. Only
@@ -550,7 +612,25 @@ func (s *Server) handleRouter(w http.ResponseWriter, r *http.Request) {
 		}
 		cfg, err = admin.SetRouter(cfg, admin.RouterOptions{Name: target, Address: req.Address, Deploy: dep, Notify: notify, AllowedTimeout: req.AllowedTimeout})
 	case http.MethodDelete:
-		cfg, err = admin.RemoveRouter(cfg, r.URL.Query().Get("name"))
+		// Removing a router should also hand it back: the service account
+		// deletes itself, so no administrator credentials are needed. A router
+		// we cannot reach is still removed from the config — with a warning, so
+		// nobody is left believing the account is gone when it is not.
+		name := r.URL.Query().Get("name")
+		warning := ""
+		if _, offErr := admin.OffboardServiceUser(cfg, name, admin.DeployOptions{}); offErr != nil {
+			warning = offErr.Error()
+		}
+		cfg, err = admin.RemoveRouter(cfg, name)
+		if err == nil && warning != "" {
+			if saveErr := s.save(cfg); saveErr != nil {
+				writeErr(w, http.StatusBadRequest, saveErr.Error())
+				return
+			}
+			cfg, _ = config.LoadOrEmpty(s.configPath)
+			s.writeConfigWarning(w, cfg, warning)
+			return
+		}
 	default:
 		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
@@ -1077,6 +1157,18 @@ func (s *Server) step(w http.ResponseWriter, r *http.Request, from, to *[][]byte
 }
 
 // --- helpers ---
+
+// writeConfigWarning is writeConfig plus a non-fatal warning the UI shows.
+func (s *Server) writeConfigWarning(w http.ResponseWriter, cfg config.Config, warning string) {
+	s.mu.Lock()
+	canUndo, canRedo := len(s.undo) > 0, len(s.redo) > 0
+	s.mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"path": s.configPath, "summary": admin.Summarize(cfg),
+		"can_undo": canUndo, "can_redo": canRedo,
+		"version": configVersion(s.configPath), "warning": warning,
+	})
+}
 
 func (s *Server) writeConfig(w http.ResponseWriter, cfg config.Config) {
 	s.mu.Lock()
