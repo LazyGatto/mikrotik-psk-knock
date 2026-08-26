@@ -1,9 +1,10 @@
 #!/bin/sh
 # mkpk-provision installer.
 #
-#   curl -fsSL <raw>/deploy/docker/install.sh | sudo sh -s -- \
-#       --image <registry>/<group>/<project>/provision:vX.Y.Z \
-#       --domain mkpk.example.com
+#   curl -fsSL <raw>/deploy/docker/install.sh | sudo sh -s -- --domain mkpk.example.com
+#
+# Pulls the public image from GitHub Packages by default; --registry points it at
+# a private mirror of the same project instead.
 #
 # Downloads the compose files, generates an admin password, writes .env, starts
 # the stack and prints how to get in. Re-running keeps the existing password and
@@ -16,6 +17,11 @@ set -eu
 
 REPO_RAW="${MKPK_REPO_RAW:-https://raw.githubusercontent.com/LazyGatto/mikrotik-psk-knock/main/deploy/docker}"
 DIR="${MKPK_DIR:-/opt/mkpk}"
+# The image path is identical in every registry that carries this project, so a
+# private mirror only changes the host: --registry gitlab.example.com:5050.
+IMAGE_PATH="${MKPK_IMAGE_PATH:-lazygatto/mikrotik-psk-knock/provision}"
+REGISTRY="${MKPK_REGISTRY:-ghcr.io}"
+TAG="${MKPK_TAG:-latest}"
 IMAGE="${MKPK_IMAGE:-}"
 DOMAIN="${MKPK_DOMAIN:-}"
 ACME_EMAIL="${MKPK_ACME_EMAIL:-}"
@@ -41,16 +47,17 @@ usage() {
 mkpk-provision installer
 
 Usage:
-  install.sh --image <ref> (--domain <fqdn> | --behind-ingress) [options]
-
-Required:
-  --image <ref>       Container image, e.g. gitlab.example.com:5050/grp/proj/provision:v1.0.0
-                      (GitLab → Deploy → Container Registry shows the exact path)
+  install.sh (--domain <fqdn> | --behind-ingress) [options]
 
 Pick one:
   --domain <fqdn>     Run Caddy too and get a Let's Encrypt certificate for <fqdn>.
                       Needs ports 80 and 443 reachable from the internet.
   --behind-ingress    No TLS here; publish 127.0.0.1:PORT for your existing proxy.
+
+Image (defaults to the public one — override only for a private mirror):
+  --registry <host>   Registry host, e.g. gitlab.example.com:5050 (default: $REGISTRY)
+  --tag <tag>         Version to run, e.g. v1.2.3 (default: $TAG)
+  --image <ref>       Full image reference, overriding both of the above
 
 Options:
   --acme-email <mail> Contact address for Let's Encrypt expiry notices
@@ -64,6 +71,8 @@ USAGE
 while [ $# -gt 0 ]; do
     case "$1" in
         --image) IMAGE="${2:?--image needs a value}"; shift 2 ;;
+        --registry) REGISTRY="${2:?--registry needs a value}"; shift 2 ;;
+        --tag) TAG="${2:?--tag needs a value}"; shift 2 ;;
         --domain) DOMAIN="${2:?--domain needs a value}"; MODE=caddy; shift 2 ;;
         --behind-ingress) MODE=ingress; shift ;;
         --acme-email) ACME_EMAIL="${2:?--acme-email needs a value}"; shift 2 ;;
@@ -75,7 +84,8 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-[ -n "$IMAGE" ] || { usage >&2; die "--image is required (GitLab → Deploy → Container Registry)"; }
+# --image wins; otherwise compose it from the registry host, path and tag.
+[ -n "$IMAGE" ] || IMAGE="${REGISTRY%/}/$IMAGE_PATH:$TAG"
 [ -n "$DOMAIN" ] && MODE=caddy
 [ -n "$MODE" ] || { usage >&2; die "pick --domain <fqdn> or --behind-ingress"; }
 
@@ -205,6 +215,7 @@ if [ "$FRESH" = 1 ]; then
 else
     say "   Login:    unchanged (existing installation)"
 fi
+say "   Image:    $IMAGE"
 say "   Data:     docker volume, config + password + deploy key"
 say "   Files:    $DIR"
 say ""

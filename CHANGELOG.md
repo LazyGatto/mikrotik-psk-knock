@@ -7,6 +7,11 @@ the native macOS recipient app in `client-macos/` ships separately.
 ## [Unreleased]
 
 ### Added
+- **Public image in GitHub Packages** — every tag now also publishes
+  `ghcr.io/lazygatto/mikrotik-psk-knock/provision:vX.Y.Z` and `:latest`
+  alongside the GitLab registry copy, under the same path. The installer needs
+  no credentials or image argument by default; `--registry <host>` switches to a
+  private mirror of the same project and `--tag` pins a version.
 - **One-command installer** `deploy/docker/install.sh`: checks Docker, fetches
   the compose files, generates the admin password, starts the stack, waits for
   the container to report healthy and prints the URL, the password and the next

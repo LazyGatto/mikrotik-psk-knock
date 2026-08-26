@@ -65,27 +65,29 @@ Caddy.
 ## Быстрая установка одной командой
 
 На чистом хосте всё делает установщик: проверяет docker, скачивает compose,
-генерирует пароль админки, поднимает стек и печатает, куда заходить.
-
-Путь к образу берётся в GitLab: **Deploy → Container Registry**.
+генерирует пароль админки, поднимает стек и печатает, куда заходить. Образ по
+умолчанию — публичный, из GitHub Packages, поэтому ничего указывать не нужно.
 
 ```sh
 # с TLS из коробки (нужен домен на этот хост и открытые 80/443)
 curl -fsSL https://raw.githubusercontent.com/LazyGatto/mikrotik-psk-knock/main/deploy/docker/install.sh \
-  | sudo sh -s -- \
-      --image <registry>/<группа>/<проект>/provision:v0.10.0 \
-      --domain mkpk.example.com --acme-email you@example.com
+  | sudo sh -s -- --domain mkpk.example.com --acme-email you@example.com
 
 # или за уже существующим ингрессом (слушает 127.0.0.1:8765)
 curl -fsSL https://raw.githubusercontent.com/LazyGatto/mikrotik-psk-knock/main/deploy/docker/install.sh \
-  | sudo sh -s -- \
-      --image <registry>/<группа>/<проект>/provision:v0.10.0 \
-      --behind-ingress
+  | sudo sh -s -- --behind-ingress
 ```
 
-Добавьте `--install-docker`, если docker на хосте ещё нет. Скрипт идемпотентен:
-повторный запуск обновляет файлы и **не трогает** уже заданный пароль, так что
-им же удобно обновлять инсталляцию.
+Полезные флаги:
+
+- `--install-docker` — поставить docker, если его на хосте нет;
+- `--tag v0.10.0` — зафиксировать версию вместо `latest` (в проде так и надо);
+- `--registry gitlab.example.com:5050` — тянуть из **своего** реестра: путь
+  образа везде одинаковый, меняется только хост;
+- `--image <полная ссылка>` — если нужно совсем своё имя образа.
+
+Скрипт идемпотентен: повторный запуск обновляет файлы и **не трогает** уже
+заданный пароль, так что им же удобно обновлять инсталляцию (с новым `--tag`).
 
 Если не любите `curl | sh` — это правильная осторожность: скачайте скрипт,
 прочитайте и запустите отдельно.
@@ -238,7 +240,7 @@ sudo docker compose -f compose.caddy.yaml up -d
 | --------- | ---------------------- |
 | Контейнер выходит с `no admin password set` | Не задан `MKPK_ADMIN_PASSWORD` и нет `mkpk-admin.json`. Заполните `.env` либо `docker compose run --rm provision passwd --config /data/mkpk.yaml` |
 | `refusing to serve plain HTTP …` | Потерялся `MKPK_BEHIND_PROXY=1` — он есть в обоих compose, проверьте, что не переопределили |
-| `manifest unknown` / `unauthorized` при pull | Неверный `MKPK_IMAGE` или приватный проект: сверьте путь в Deploy → Container Registry, при необходимости `docker login <gitlab-host>:5050` |
+| `manifest unknown` / `unauthorized` при pull | Неверный `--tag`/`--registry`, либо приватное зеркало: сверьте путь и при необходимости `docker login <хост-реестра>` |
 | Caddy не выпускает сертификат | 80/443 недоступны снаружи или A-запись не на этот хост; смотрите `docker compose logs caddy` |
 | Вход есть, но `409` при сохранении | Кто-то правил конфиг параллельно: страница перезагрузится, повторите правку |
 | `deploy status` не видит роутер | Из контейнера нет доступа к роутеру по SSH либо публичный ключ не импортирован на роутер |
@@ -314,12 +316,15 @@ volumes:
 docker compose pull && docker compose up -d
 ```
 
-Образ публикуется на каждый тег как `…/provision:vX.Y.Z` и `:latest`. Точный
-путь смотрите в GitLab: **Deploy → Container Registry** — он выглядит как
-`<gitlab-host>:5050/<группа>/<проект>/provision`. Этот путь задаётся в `.env`
-переменной `MKPK_IMAGE` (в трекаемых файлах его нет намеренно: репозиторий
-публичный и адрес инфраструктуры в него не выносится). В проде пиньте версию,
-а не `latest`.
+Образ публикуется на каждый тег в два места с **одинаковым путём**:
+
+- публично — `ghcr.io/lazygatto/mikrotik-psk-knock/provision:vX.Y.Z` и `:latest`
+  (это дефолт установщика, никаких доступов не нужно);
+- в реестр самого GitLab-проекта — тот же `…/provision:vX.Y.Z`, точный хост
+  смотрите в **Deploy → Container Registry**.
+
+Поэтому переключение на приватное зеркало — это один флаг `--registry <хост>`
+(или `MKPK_IMAGE` в `.env`). В проде пиньте версию, а не `latest`.
 
 ## Переменные окружения
 
