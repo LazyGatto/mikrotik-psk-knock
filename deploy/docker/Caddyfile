@@ -1,0 +1,17 @@
+{
+	email {$MKPK_ACME_EMAIL}
+}
+
+{$MKPK_DOMAIN} {
+	encode gzip
+
+	# The admin console holds SSH credentials for every router. Keep it off the
+	# open internet where you can: uncomment and list your networks.
+	# @allowed remote_ip 10.0.0.0/8 192.168.0.0/16 203.0.113.4
+	# handle @allowed {
+	# 	reverse_proxy provision:8765
+	# }
+	# respond "not found" 404
+
+	reverse_proxy provision:8765
+}

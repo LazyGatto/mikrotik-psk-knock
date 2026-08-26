@@ -1,0 +1,43 @@
+# mkpk-provision with TLS included: Caddy fetches and renews a Let's Encrypt
+# certificate for MKPK_DOMAIN and proxies to the provision container.
+#
+#   cp .env.example .env   # set MKPK_DOMAIN, MKPK_ADMIN_PASSWORD, MKPK_ACME_EMAIL
+#   docker compose -f compose.caddy.yaml up -d
+#
+# Requirements: the domain resolves to this host, and ports 80/443 are reachable
+# from the internet (ACME HTTP-01). Behind a corporate ingress use compose.yaml.
+#
+services:
+  provision:
+    image: ${MKPK_IMAGE:-registry.gitlab.eg23.ru/lazygatto/mikrotik-psk-knock/provision:latest}
+    restart: unless-stopped
+    environment:
+      MKPK_ADMIN_PASSWORD: ${MKPK_ADMIN_PASSWORD:?set MKPK_ADMIN_PASSWORD in .env for the first start}
+      MKPK_BEHIND_PROXY: "1"
+    volumes:
+      - mkpk-data:/data
+      # - ./ssh:/data/ssh:ro
+    # No ports: reachable only through Caddy on the compose network.
+    expose:
+      - "8765"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - provision
+    environment:
+      MKPK_DOMAIN: ${MKPK_DOMAIN:?set MKPK_DOMAIN in .env}
+      MKPK_ACME_EMAIL: ${MKPK_ACME_EMAIL:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+
+volumes:
+  mkpk-data:
+  caddy-data:
+  caddy-config:

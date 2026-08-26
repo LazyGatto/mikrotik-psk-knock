@@ -1,0 +1,14 @@
+# Keep the build context small: only client/ and deploy/docker are needed.
+.git
+.gitlab-ci.yml
+.agents
+.claude
+client-macos
+routeros
+docs
+dist
+tmp
+*.md
+mkpk-icon.png
+client/cmd/mkpk-provision-desktop/build
+client/cmd/mkpk-client/assets

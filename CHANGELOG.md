@@ -7,6 +7,13 @@ the native macOS recipient app in `client-macos/` ships separately.
 ## [Unreleased]
 
 ### Added
+- **Provision: Docker image and two compose recipes** (#32) — `Dockerfile`
+  (static CGO-free binary, alpine, non-root, healthcheck, `/data` volume) plus
+  `deploy/docker/`: `compose.yaml` for an ingress you already run, and
+  `compose.caddy.yaml` with Caddy and automatic Let's Encrypt certificates for
+  a from-scratch host. CI publishes the image on every tag to the GitLab
+  registry (`…/provision:vX.Y.Z` and `:latest`). New guide
+  `docs/deploy-docker.md` covers all three ways to run provision.
 - **Provision: shared-instance mode with a password** (#31) — the same web UI
   can now serve a whole team instead of living in each admin's local copy.
   A password (argon2id, stored in `mkpk-admin.json` beside the config, seeded

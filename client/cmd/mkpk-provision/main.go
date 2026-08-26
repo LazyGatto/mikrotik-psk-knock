@@ -693,14 +693,21 @@ func serveCmd(args []string) error {
 	// environment supplies the first one). Local single-operator use is
 	// unchanged: loopback + a per-process token, no password.
 	credPath := web.CredentialsPath(*configPath)
+	// Whether a password already existed decides the message below, so check
+	// before bootstrapping — afterwards the file exists either way.
+	_, hadCredentials, err := web.LoadCredentials(credPath)
+	if err != nil {
+		return err
+	}
 	creds, hasPassword, err := web.BootstrapPassword(credPath, os.Getenv("MKPK_ADMIN_PASSWORD"))
 	if err != nil {
 		return err
 	}
-	if os.Getenv("MKPK_ADMIN_PASSWORD") != "" && hasPassword {
-		if _, existed, _ := web.LoadCredentials(credPath); existed {
-			fmt.Fprintf(os.Stderr, "note: %s already exists — MKPK_ADMIN_PASSWORD ignored (use `mkpk-provision passwd` to change it)\n", credPath)
-		}
+	switch {
+	case os.Getenv("MKPK_ADMIN_PASSWORD") != "" && hadCredentials:
+		fmt.Fprintf(os.Stderr, "note: %s already exists — MKPK_ADMIN_PASSWORD ignored (use `mkpk-provision passwd` to change it)\n", credPath)
+	case os.Getenv("MKPK_ADMIN_PASSWORD") != "" && hasPassword:
+		fmt.Printf("admin password set from MKPK_ADMIN_PASSWORD: %s\n", credPath)
 	}
 
 	// The config holds SSH credentials for every router, notification tokens

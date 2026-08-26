@@ -1,0 +1,34 @@
+# mkpk-provision behind an ingress you already run.
+#
+# The container speaks plain HTTP on an internal address; your existing proxy
+# publishes it as https://mkpk.example.com → mkpk-provision:8765. Nothing here
+# terminates TLS — if you have no proxy yet, use compose.caddy.yaml instead.
+#
+#   docker compose up -d
+#   # first start only: MKPK_ADMIN_PASSWORD is hashed into /data/mkpk-admin.json
+#
+services:
+  provision:
+    image: ${MKPK_IMAGE:-registry.gitlab.eg23.ru/lazygatto/mikrotik-psk-knock/provision:latest}
+    restart: unless-stopped
+    environment:
+      # Seeds the admin password on the very first start. An existing
+      # mkpk-admin.json always wins, so leaving this here later is harmless —
+      # but removing it once the password is set is cleaner.
+      MKPK_ADMIN_PASSWORD: ${MKPK_ADMIN_PASSWORD:?set MKPK_ADMIN_PASSWORD in .env for the first start}
+      # A proxy terminates TLS in front of us; without this the binary refuses
+      # to serve plain HTTP on a non-loopback address.
+      MKPK_BEHIND_PROXY: "1"
+    volumes:
+      # Config, admin password record and any SSH keys used for deploys.
+      - mkpk-data:/data
+      # Deploying to routers with a key: mount it read-only and point the
+      # router's key_path at /data/ssh/id_ed25519.
+      # - ./ssh:/data/ssh:ro
+    # Publish only where your proxy can reach it — not 0.0.0.0 unless the host
+    # itself is the trust boundary.
+    ports:
+      - "127.0.0.1:8765:8765"
+
+volumes:
+  mkpk-data:

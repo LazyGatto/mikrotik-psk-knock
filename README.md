@@ -66,7 +66,8 @@ CLI и веб-UI (`serve`, открывается в браузере) рабо�
 - **Раздача клиентам** — компактный invite-blob на юзера (только его адрес роутера, PSK, сервисы),
   без общего админ-конфига.
 - **Три фронтенда, одно ядро** — CLI (скриптуемо, для Ansible), локальный веб-UI (loopback +
-  per-session токен) и десктоп-обёртка.
+  per-session токен) и десктоп-обёртка. Плюс **общая инсталляция в Docker** для команды:
+  один конфиг на всех, общий пароль, TLS на прокси — [docs/deploy-docker.md](docs/deploy-docker.md).
 - **Уведомления** — webhook / Telegram (в т.ч. в топик форум-супергруппы) / email на каждый успешный
   стук, с graceful degradation. Настройка — [docs/notifications.md](docs/notifications.md).
 - **Автозапуск после стука (GUI-клиент)** — админ задаёт сервису тип приложения
@@ -182,6 +183,7 @@ end-to-end **тест стука** из провижн-приложения (с�
 - [docs/threat-model.md](docs/threat-model.md) — модель угроз и ограничения.
 - [docs/admin-app.md](docs/admin-app.md) — модель админ-приложения, мульти-роутер, раздача (invite-blob).
 - [docs/notifications.md](docs/notifications.md) — уведомления: Telegram (включая топики форум-супергрупп), webhook, e-mail.
+- [docs/deploy-docker.md](docs/deploy-docker.md) — три способа запуска провижна: локально, десктопом и общей инсталляцией в Docker.
 - [docs/multi-profile-render.md](docs/multi-profile-render.md) — схема render и data-driven poller.
 - [docs/profile-format.md](docs/profile-format.md) — справочник полей конфига.
 - [docs/open-questions.md](docs/open-questions.md) — открытые вопросы и принятые решения.
