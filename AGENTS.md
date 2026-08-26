@@ -82,40 +82,22 @@ RouterOS-side domain principles: [`agent/instructions.md`](agent/instructions.md
 3. `git tag vX.Y.Z`.
 4. Push the tag → CI builds & releases the Go binaries (`mkpk`, `mkpk-provision`)
    and creates the GitLab Release.
-5. **Manual, macOS-only — the Wails provision-desktop app.** CI can't build it
-   (needs macOS + `wails` CLI + Xcode CLT), so build and attach it to the same
-   Release by hand:
-
-   ```sh
-   cd client && make desktop          # VERSION auto-resolves from the tag via git describe
-   # → cmd/mkpk-provision-desktop/build/bin/mkpk-provision-desktop.app
-   ../client-macos/script/make_dmg.sh cmd/mkpk-provision-desktop/build/bin/mkpk-provision-desktop.app \
-     /tmp/mkpk-provision-desktop_vX.Y.Z_darwin_arm64.dmg mkpk-provision
-   glab release upload vX.Y.Z /tmp/mkpk-provision-desktop_vX.Y.Z_darwin_arm64.dmg
-   ```
-
-   Needs `wails` (`go install github.com/wailsapp/wails/v2/cmd/wails@latest`) + Xcode CLT.
-6. **Manual, macOS-only — the `client-macos/` recipient app.** Built, **Developer ID
-   signed + notarized**, and attached to the same Release:
-
-   ```sh
-   cd client-macos
-   ID="Developer ID Application: EDINY GOROD, OOO (R2M77TY8U9)"
-   MKPK_VERSION=vX.Y.Z script/build_app.sh              # → .build/mkpk.app
-   script/sign.sh                                       # Developer ID + hardened runtime + entitlements
-   script/notarize.sh .build/mkpk.app                   # notarize + staple the app (offline first-launch)
-   MKPK_SIGN_ID="$ID" script/make_dmg.sh .build/mkpk.app /tmp/mkpk-client_vX.Y.Z_darwin_arm64.dmg mkpk
-   script/notarize.sh /tmp/mkpk-client_vX.Y.Z_darwin_arm64.dmg   # notarize + staple the DMG
-   glab release upload vX.Y.Z /tmp/mkpk-client_vX.Y.Z_darwin_arm64.dmg
-   ```
-
-   Both macOS apps ship as **drag-to-Applications DMGs** (`client-macos/script/make_dmg.sh`,
-   no deps — hdiutil + an /Applications symlink), arm64. The **client** is now signed +
-   notarized + stapled (`spctl -a` → "Notarized Developer ID"; no quarantine prompt).
-   Notarization needs the one-time keychain profile `mkpk-notary`
+5. **Automated, mac-ci-01 — both macOS apps.** The same tag also runs
+   `release:macos` (`scripts/package_release.sh`) on the macOS runner: builds,
+   Developer ID signs and notarizes the native `client-macos/` client **and** the
+   Wails `mkpk-provision-desktop`, packs both into drag-to-Applications DMGs
+   (arm64), attaches them to the GitLab release, mirrors the release to GitHub
+   (DMGs + Go zips + `appcast.xml`) and Sparkle-signs the client DMG for
+   **in-app auto-update** (feed: GitHub `releases/latest/download/appcast.xml`).
+   Runner provisioning (CI keychain, `mkpk-notary` profile, EdDSA key, `wails`):
+   [`docs/plans/2026-08-26-macos-release-ci-plan.md`](docs/plans/2026-08-26-macos-release-ci-plan.md).
+6. **Manual fallback** (maintainer's machine, e.g. when the runner is down):
+   `bash scripts/package_release.sh vX.Y.Z` from the tagged checkout runs the
+   same build/sign/notarize pipeline locally and prints the `glab`/`gh` upload
+   commands. The underlying scripts (`client-macos/script/{build_app,sign,make_dmg,notarize}.sh`,
+   `cd client && make desktop`) remain usable individually. Notarization needs
+   the one-time keychain profile `mkpk-notary`
    (`xcrun notarytool store-credentials mkpk-notary --apple-id … --team-id R2M77TY8U9 --password <app-specific-pw>`).
-   The **provision-desktop** (Wails) app is still ad-hoc — apply the same sign/notarize
-   pass to it (tracked in the issues); until then clear its quarantine with `xattr -cr <app>.app`.
 
 `main` is protected; push over HTTPS via the `glab` credential helper. Pushing a
 tag is separate from pushing to protected `main`.

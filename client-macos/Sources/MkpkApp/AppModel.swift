@@ -707,6 +707,10 @@ final class AppModel: ObservableObject {
     func showSettings() { screen = .settings }
     func quit() { NSApp.terminate(nil) }
 
+    /// Sparkle hook, set by the AppDelegate when the bundle carries an update
+    /// feed (release .app only). nil → Settings hides the update button.
+    var checkForUpdates: (() -> Void)?
+
     func lastKnockText(for id: String) -> String {
         guard let d = logs[id]?.first?.time else { return "—" }
         return Self.hhmm.string(from: d)

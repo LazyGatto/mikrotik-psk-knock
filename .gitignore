@@ -25,3 +25,5 @@ tmp/
 
 # local Claude Code state
 .claude/settings.local.json
+# macOS release artifacts (scripts/package_release.sh)
+/dist/

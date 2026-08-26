@@ -21,7 +21,9 @@ hdiutil create -volname "$VOL" -srcfolder "$STAGE" -ov -format UDZO "$OUT" >/dev
 # MKPK_SIGN_ID to a "Developer ID Application: …" identity to enable; then the DMG
 # still needs notarize.sh. Left unset → an unsigned DMG (fine for local/dev use).
 if [ -n "${MKPK_SIGN_ID:-}" ] && [ "${MKPK_SIGN_ID}" != "-" ]; then
-  codesign --force --sign "$MKPK_SIGN_ID" --timestamp "$OUT"
+  # MKPK_KEYCHAIN: dedicated CI keychain (login is locked for headless jobs)
+  codesign --force --sign "$MKPK_SIGN_ID" --timestamp \
+    ${MKPK_KEYCHAIN:+--keychain "$MKPK_KEYCHAIN"} "$OUT"
   echo "✓ $OUT  (signed: $MKPK_SIGN_ID — run notarize.sh next)"
 else
   echo "✓ $OUT"

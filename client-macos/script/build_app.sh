@@ -37,6 +37,22 @@ mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 
 cp "$BIN_DIR/$EXE" "$CONTENTS/MacOS/$EXE"
 
+# Embed SPM-linked frameworks (Sparkle). Universal builds expose them at
+# $BIN_DIR/Frameworks, single-arch builds directly in $BIN_DIR. Without this
+# the app dies at launch: dyld cannot resolve @rpath/Sparkle.framework.
+for FW_DIR in "$BIN_DIR/Frameworks" "$BIN_DIR"; do
+  for FW in "$FW_DIR"/*.framework; do
+    [[ -d "$FW" ]] || continue
+    mkdir -p "$CONTENTS/Frameworks"
+    cp -R "$FW" "$CONTENTS/Frameworks/"
+  done
+  [[ -d "$CONTENTS/Frameworks" ]] && break
+done
+if [[ -d "$CONTENTS/Frameworks" ]]; then
+  install_name_tool -add_rpath "@executable_path/../Frameworks" "$CONTENTS/MacOS/$EXE"
+  echo "✓ Embedded frameworks: $(ls "$CONTENTS/Frameworks" | tr '\n' ' ')"
+fi
+
 # Bundled brand icons. The generated Bundle.module accessor resolves the resource
 # bundle at the .app ROOT, but content beside Contents/ makes the app unsignable
 # ("unsealed contents present in the bundle root"). So the packaged app instead
@@ -71,6 +87,18 @@ else
   ICON_KEY=''
 fi
 
+# Sparkle update feed. Written ONLY when the EdDSA public key is provided
+# (release/CI builds): dev bundles get no feed keys, so the in-app updater and
+# the Settings button stay off. The feed lives on the public GitHub mirror —
+# never point it at the GitLab host (public repo scrub policy).
+SPARKLE_FEED_URL="${MKPK_SPARKLE_FEED_URL:-https://github.com/LazyGatto/mikrotik-psk-knock/releases/latest/download/appcast.xml}"
+SPARKLE_KEYS=''
+if [[ -n "${MKPK_SPARKLE_ED_PUBLIC_KEY:-}" ]]; then
+  SPARKLE_KEYS="<key>SUFeedURL</key><string>$SPARKLE_FEED_URL</string>
+  <key>SUPublicEDKey</key><string>$MKPK_SPARKLE_ED_PUBLIC_KEY</string>"
+  echo "▸ Sparkle feed enabled: $SPARKLE_FEED_URL"
+fi
+
 cat > "$CONTENTS/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -87,6 +115,7 @@ cat > "$CONTENTS/Info.plist" <<PLIST
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
   $ICON_KEY
+  $SPARKLE_KEYS
   <key>NSHumanReadableCopyright</key><string>mkpk · Knock first</string>
 </dict>
 </plist>

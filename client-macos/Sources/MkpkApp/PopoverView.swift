@@ -709,6 +709,11 @@ struct SettingsView: View {
                             .resizable().interpolation(.high).frame(width: 16, height: 16)
                         Text(Self.aboutLine).font(.system(size: 11)).foregroundStyle(.secondary)
                         Spacer()
+                        if let check = model.checkForUpdates {
+                            Button(L("Check for updates", "Проверить обновления")) { check() }
+                                .buttonStyle(OutlineButton())
+                                .help(L("Check for a new mkpk version", "Проверить, вышла ли новая версия mkpk"))
+                        }
                         Button(L("Quit", "Выйти")) { model.quit() }
                             .buttonStyle(OutlineButton())
                             .help(L("Quit mkpk (or right-click the icon)", "Завершить mkpk (или правый клик по иконке)"))

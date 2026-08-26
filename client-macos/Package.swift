@@ -20,6 +20,12 @@ let package = Package(
         // (LSUIElement, signed) is assembled by script/ for distribution.
         .executable(name: "MkpkApp", targets: ["MkpkApp"]),
     ],
+    dependencies: [
+        // Sparkle in-app updater (plan 2026-08-26, maintainer-approved): the
+        // only third-party dependency, linked into the app target ONLY —
+        // MkpkKit and mkpk-selfcheck stay dependency-free.
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.7.0"),
+    ],
     targets: [
         .target(
             name: "MkpkKit",
@@ -32,7 +38,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "MkpkApp",
-            dependencies: ["MkpkKit"],
+            dependencies: [
+                "MkpkKit",
+                .product(name: "Sparkle", package: "Sparkle"),
+            ],
             resources: [.process("Resources")],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),

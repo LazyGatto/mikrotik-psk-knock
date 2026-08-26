@@ -12,6 +12,14 @@ the native macOS recipient app in `client-macos/` ships separately.
   Stages that cannot run on the machine report SKIP (`--strict` turns a SKIP into a
   failure), `--quick` builds only, `--docs` adds markdownlint. The CI `test` job now
   runs this same script instead of duplicating the Go commands.
+- **Automated macOS releases + in-app auto-update.** A `v*` tag now also runs
+  `release:macos` on the macOS runner (`scripts/package_release.sh`): builds,
+  Developer ID signs, notarizes and DMG-packs **both** macOS apps (the native
+  client and the Wails provision-desktop), attaches them to the GitLab release
+  and mirrors everything (DMGs, Go zips, `appcast.xml`) to the public GitHub
+  releases. The macOS client gains **Sparkle** in-app updates (app target only;
+  feed on GitHub releases, EdDSA-signed) with a "Check for updates" button in
+  Settings; dev builds and builds without the feed key stay updater-free.
 - **Agent workflow documentation** (`docs/agents/`): roles, the delegation ladder,
   Herdr wave orchestration, and a lessons diary. Supporting process skills in
   `.agents/skills/` (`devils-advocate`, `verification`, `writing-plans`), the HALT

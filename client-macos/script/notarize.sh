@@ -15,9 +15,17 @@ FILE="${1:?usage: notarize.sh <file.app|file.dmg> [keychain-profile]}"
 PROFILE="${2:-mkpk-notary}"
 [[ -e "$FILE" ]] || { echo "✗ not found: $FILE"; exit 1; }
 
+# Optional dedicated keychain (CI on mac-ci-01): the notary profile lives there
+# rather than in the login keychain, which is locked for headless jobs.
+KEYCHAIN_ARGS=()
+if [[ -n "${MKPK_KEYCHAIN:-}" ]]; then
+  KEYCHAIN_ARGS=(--keychain "$MKPK_KEYCHAIN")
+fi
+
 submit() {  # <path-to-submit>
   echo "▸ Submitting $1 to the notary service (profile: $PROFILE)"
-  xcrun notarytool submit "$1" --keychain-profile "$PROFILE" --wait
+  xcrun notarytool submit "$1" --keychain-profile "$PROFILE" \
+    ${KEYCHAIN_ARGS[@]+"${KEYCHAIN_ARGS[@]}"} --wait
 }
 
 case "$FILE" in
