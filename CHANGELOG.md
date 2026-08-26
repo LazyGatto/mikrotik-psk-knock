@@ -4,7 +4,7 @@ Notable changes to this project. Format: [Keep a Changelog](https://keepachangel
 Versions are the **Go CLI / provisioner** release tags (`mkpk`, `mkpk-provision`);
 the native macOS recipient app in `client-macos/` ships separately.
 
-## [Unreleased]
+## [0.12.1] — 2026-08-27
 
 ### Fixed
 - **Password login to a router works again where RouterOS wants
