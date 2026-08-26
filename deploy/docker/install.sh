@@ -228,8 +228,14 @@ say "  3. Add a router, services and users, then deploy."
 say ""
 warn "This console holds SSH access to every router — restrict who can reach it"
 if [ "$MODE" = ingress ] && [ "$BIND" != "127.0.0.1" ] && [ "$BIND" != "localhost" ]; then
-    warn "published on $BIND:$PORT over plain HTTP — reachable by anything that can"
-    warn "route there. Keep it on a trusted network and let the proxy do TLS."
+    if [ "$BIND" = "0.0.0.0" ]; then
+        warn "published on ALL interfaces (0.0.0.0:$PORT) over plain HTTP — including"
+        warn "a public one if this host has it. Fine on an internal VM; otherwise"
+        warn "restrict the port with a firewall."
+    else
+        warn "published on $BIND:$PORT over plain HTTP — reachable by anything that can"
+        warn "route there. Keep it on a trusted network and let the proxy do TLS."
+    fi
 fi
 if [ "$MODE" = caddy ]; then
     warn "(remote_ip allow-list in $DIR/Caddyfile, or a firewall rule on 443)"

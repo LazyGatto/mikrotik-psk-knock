@@ -10,8 +10,10 @@ the native macOS recipient app in `client-macos/` ships separately.
 - **The `--behind-ingress` port can be published on a LAN address** — it was
   pinned to `127.0.0.1`, which only works when the reverse proxy runs on the
   same host. `--bind` (and `MKPK_BIND` in `.env`) now takes the address the
-  proxy can reach, with `--port` alongside it; the installer warns when the
-  port leaves loopback, since that traffic is plain HTTP.
+  proxy can reach, with `--port` alongside it. `--bind 0.0.0.0` is the practical
+  choice for an internal VM on DHCP, where a fixed address would break after a
+  reboot; the installer warns when the port leaves loopback, since that traffic
+  is plain HTTP.
 
 
 
