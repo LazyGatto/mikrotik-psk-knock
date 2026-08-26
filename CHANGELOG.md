@@ -6,6 +6,17 @@ the native macOS recipient app in `client-macos/` ships separately.
 
 ## [Unreleased]
 
+### Added
+- **Service account on the router** (#33, backend + CLI): provision installs its
+  own `mkpk` user with a minimal group (`ssh,ftp,read,write,policy,test` —
+  confirmed on a live RouterOS 7.23.2; `sensitive` is not needed) and the
+  installation key, so deploys stop depending on an administrator's personal
+  login. `mkpk-provision serviceuser status|add|remove`: `add` uses one-off
+  admin credentials, `remove` lets the account delete itself — keys, user and
+  group in one command — so handing a router back needs no admin login. RouterOS
+  refuses a passwordless user, so onboarding generates a random password it
+  never stores; authentication is by key.
+
 ### Changed
 - **Telegram notification form regrouped**: the bot token gets its own
   full-width field first, with chat id and topic side by side underneath.

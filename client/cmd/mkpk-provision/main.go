@@ -73,6 +73,8 @@ func run(args []string) error {
 		return passwdCmd(args[1:])
 	case "sshkey":
 		return sshKeyCmd(args[1:])
+	case "serviceuser":
+		return serviceUserCmd(args[1:])
 	case "version", "--version", "-v":
 		fmt.Printf("mkpk-provision %s\n", version.String())
 		return nil
@@ -103,6 +105,7 @@ func usage() {
   mkpk-provision serve --config mkpk.yaml [--addr 127.0.0.1:8765] [--behind-proxy]
   mkpk-provision passwd --config mkpk.yaml [--password …]   # admin password for the networked UI
   mkpk-provision sshkey [show|create] --config mkpk.yaml [--replace]   # deploy key of this instance
+  mkpk-provision serviceuser [status|add|remove] --config mkpk.yaml --router r1 [--user admin --password …]
 `)
 }
 
@@ -810,6 +813,94 @@ func sshKeyCmd(args []string) error {
 		return nil
 	default:
 		return fmt.Errorf("usage: mkpk-provision sshkey [show|create]")
+	}
+}
+
+// serviceUserCmd manages mkpk's own account on a router: `add` installs it with
+// one-off administrator credentials, `remove` lets it delete itself, `status`
+// reports what is there.
+func serviceUserCmd(args []string) error {
+	sub := "status"
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		sub, args = args[0], args[1:]
+	}
+	fs := flag.NewFlagSet("serviceuser", flag.ContinueOnError)
+	configPath := fs.String("config", config.DefaultPath(), "config path")
+	routerName := fs.String("router", "", "router name; sole router when empty")
+	address := fs.String("address", "", "override router address")
+	port := fs.Int("port", 0, "override SSH port")
+	user := fs.String("user", "", "SSH user for this call (onboarding: an administrator)")
+	password := fs.String("password", "", "SSH password for this call")
+	keyPath := fs.String("key", "", "SSH private key for this call")
+	keyPass := fs.String("key-pass", "", "passphrase for that key")
+	useAgent := fs.Bool("agent", false, "also try ssh-agent")
+	asJSON := fs.Bool("json", false, "machine-readable output")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg, err := config.Load(*configPath)
+	if err != nil {
+		return err
+	}
+	rn, err := pickRouter(cfg, *routerName)
+	if err != nil {
+		return err
+	}
+	opts := admin.DeployOptions{
+		Address: *address, Port: *port,
+		Auth: deploy.Auth{User: *user, KeyPath: *keyPath, KeyPass: *keyPass, UseAgent: *useAgent, Password: *password},
+	}
+
+	switch sub {
+	case "status":
+		st, err := admin.ServiceUserState(cfg, rn, opts)
+		if err != nil {
+			return err
+		}
+		if *asJSON {
+			return printJSON(st)
+		}
+		fmt.Printf("router=%s user=%t group=%t keys=%d policies=%s\n", rn, st.UserExists, st.GroupExists, st.KeyCount, st.Policies)
+		return nil
+
+	case "add":
+		key, err := admin.ReadInstanceKey(*configPath)
+		if err != nil {
+			return err
+		}
+		if !key.Exists {
+			return fmt.Errorf("no instance key yet — create one: mkpk-provision sshkey create --config %s", *configPath)
+		}
+		r, err := admin.RouterByName(cfg, rn)
+		if err != nil {
+			return err
+		}
+		res, err := admin.OnboardServiceUser(r, opts, key.PublicKey)
+		if err != nil {
+			return err
+		}
+		res.Router, res.Fingerprint = rn, key.Fingerprint
+		if *asJSON {
+			return printJSON(res)
+		}
+		fmt.Printf("router=%s service user %q installed (policies=%s, key %s)\n", rn, res.User, res.Policies, res.Fingerprint)
+		fmt.Printf("point the router at it: mkpk-provision router set --config %s --name %s --user %s --key %s\n",
+			*configPath, rn, res.User, key.Path)
+		return nil
+
+	case "remove":
+		res, err := admin.OffboardServiceUser(cfg, rn, opts)
+		if err != nil {
+			return err
+		}
+		if *asJSON {
+			return printJSON(res)
+		}
+		fmt.Printf("router=%s service user removed\n", rn)
+		return nil
+
+	default:
+		return fmt.Errorf("usage: mkpk-provision serviceuser [status|add|remove]")
 	}
 }
 
