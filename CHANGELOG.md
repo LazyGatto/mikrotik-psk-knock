@@ -7,6 +7,8 @@ the native macOS recipient app in `client-macos/` ships separately.
 ## [Unreleased]
 
 ### Added
+- **OCI labels on the image** (`source`, `title`, `description`, `licenses`,
+  `version`), so the published package links back to the repository.
 - **Public image in GitHub Packages** — every tag now also publishes
   `ghcr.io/lazygatto/mikrotik-psk-knock/provision:vX.Y.Z` and `:latest`
   alongside the GitLab registry copy, under the same path. The installer needs

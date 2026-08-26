@@ -316,6 +316,12 @@ volumes:
 docker compose pull && docker compose up -d
 ```
 
+> Разовая настройка после первого пуша в GHCR: GitHub создаёт пакет
+> **приватным**. Сделайте его публичным — профиль → Packages →
+> `mikrotik-psk-knock/provision` → Package settings → Change visibility →
+> Public. Без этого анонимный `docker pull` вернёт `denied`, и установщик
+> придётся запускать с `--registry`.
+
 Образ публикуется на каждый тег в два места с **одинаковым путём**:
 
 - публично — `ghcr.io/lazygatto/mikrotik-psk-knock/provision:vX.Y.Z` и `:latest`

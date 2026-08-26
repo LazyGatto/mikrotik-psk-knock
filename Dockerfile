@@ -22,6 +22,14 @@ RUN CGO_ENABLED=0 go build -trimpath \
         -o /out/mkpk ./cmd/mkpk
 
 FROM alpine:3.20
+# OCI labels: `source` links the published package to the repository on GitHub,
+# so it shows up on the repo page and is managed from there.
+LABEL org.opencontainers.image.source="https://github.com/LazyGatto/mikrotik-psk-knock" \
+      org.opencontainers.image.description="mkpk-provision — admin console for the MikroTik PSK time-token port-knock layer" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.title="mkpk-provision"
+ARG VERSION=dev
+LABEL org.opencontainers.image.version="${VERSION}"
 # ca-certificates: outbound HTTPS for the update check and Telegram notifications.
 # tzdata: readable timestamps in logs. wget (busybox) backs the healthcheck.
 RUN apk add --no-cache ca-certificates tzdata \
