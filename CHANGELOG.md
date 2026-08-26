@@ -4,7 +4,10 @@ Notable changes to this project. Format: [Keep a Changelog](https://keepachangel
 Versions are the **Go CLI / provisioner** release tags (`mkpk`, `mkpk-provision`);
 the native macOS recipient app in `client-macos/` ships separately.
 
-## [Unreleased]
+## [0.12.0] — 2026-08-27
+
+Routers get their own service account instead of borrowing an administrator's
+login: adding a router installs it, deleting a router takes it away.
 
 ### Added
 - **Adding a router now onboards it** (#33): the add-router dialog asks for

@@ -102,7 +102,7 @@ curl -fsSL https://raw.githubusercontent.com/LazyGatto/mikrotik-psk-knock/main/d
 Полезные флаги:
 
 - `--install-docker` — поставить docker, если его на хосте нет;
-- `--tag v0.11.2` — зафиксировать версию вместо `latest` (в проде так и надо);
+- `--tag v0.12.0` — зафиксировать версию вместо `latest` (в проде так и надо);
 - `--bind <адрес>` / `--port <порт>` — где публиковать порт для прокси
   (см. выше);
 - `--registry gitlab.example.com:5050` — тянуть из **своего** реестра: путь
@@ -171,7 +171,7 @@ sudo nano /opt/mkpk/.env
 ```
 
 ```ini
-MKPK_IMAGE=ghcr.io/lazygatto/mikrotik-psk-knock/provision:v0.11.2
+MKPK_IMAGE=ghcr.io/lazygatto/mikrotik-psk-knock/provision:v0.12.0
 MKPK_ADMIN_PASSWORD=<длинный пароль, 20+ символов>
 MKPK_DOMAIN=mkpk.example.com
 MKPK_ACME_EMAIL=admin@example.com
@@ -254,10 +254,10 @@ sudo docker run --rm -v mkpk_mkpk-data:/data -v /opt/mkpk:/backup alpine \
 cd /opt/mkpk
 # проще всего — тем же установщиком с новым тегом (пароль он не тронет):
 curl -fsSL https://raw.githubusercontent.com/LazyGatto/mikrotik-psk-knock/main/deploy/docker/install.sh \
-  | sudo sh -s -- --domain mkpk.example.com --tag v0.11.2
+  | sudo sh -s -- --domain mkpk.example.com --tag v0.12.0
 
 # или вручную
-sudo sed -i 's|provision:v0.10.0|provision:v0.11.2|' .env
+sudo sed -i 's|provision:v0.10.0|provision:v0.12.0|' .env
 sudo docker compose -f compose.caddy.yaml pull
 sudo docker compose -f compose.caddy.yaml up -d
 ```
