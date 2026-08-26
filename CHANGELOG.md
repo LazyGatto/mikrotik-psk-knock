@@ -7,6 +7,13 @@ the native macOS recipient app in `client-macos/` ships separately.
 ## [Unreleased]
 
 ### Added
+- **mkpk-client: run a command after a service opens.** Each service gets an
+  optional local command (the ⚙ next to it), executed only after a confirmed
+  `open` — e.g. `start "" mstsc /v:{host}:{port}` to jump straight into RDP.
+  `{host}`, `{port}` and `{service}` are substituted; knocking from the tray
+  launches it too. The command is typed by the user and stored only on that
+  machine (`settings.json`): invites are unsigned, so executable strings are
+  deliberately never carried in them (see issue #30).
 - **`docs/notifications.md`** — setup guide for all three notification channels:
   how to get a Telegram `bot_token` / `chat_id` / forum-topic `thread_id`
   (with a curl self-test), the webhook JSON payload, SMTP fields, and how to

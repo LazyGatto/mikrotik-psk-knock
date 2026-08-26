@@ -35,6 +35,11 @@ type StoredInvite struct {
 type Settings struct {
 	Language string `json:"language,omitempty"` // "en" (default) | "ru"
 	Theme    string `json:"theme,omitempty"`    // "dark" (default) | "light"
+	// Launch holds per-service commands the USER typed, keyed by
+	// "inviteID/router/service". Nothing here ever comes from an invite: an
+	// invite is unsigned, so a command carried in one would be arbitrary code
+	// execution on import. The local file is 0600 like the invites.
+	Launch map[string]string `json:"launch,omitempty"`
 }
 
 // DefaultDir returns the per-user store directory.

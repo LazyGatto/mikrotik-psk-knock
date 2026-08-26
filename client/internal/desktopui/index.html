@@ -57,6 +57,15 @@
   .chip.error  { color: var(--warn);   border-color: var(--warn); }
   .chip.busy   { color: var(--accent); border-color: var(--accent); }
   .empty { color: var(--dim); text-align: center; padding: 34px 10px; }
+  .svc .gear { background: none; border: none; color: var(--dim); padding: 2px 4px; font-size: 13px; }
+  .svc .gear:hover { color: var(--accent); }
+  .svc .gear.on { color: var(--open); }
+  .launch { padding: 0 0 8px; }
+  .launch input {
+    width: 100%; background: var(--bg); color: var(--fg); font: 11.5px/1.4 inherit;
+    border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px;
+  }
+  .launch .hint { color: var(--dim); font-size: 10.5px; margin-top: 4px; }
   .toast {
     position: fixed; left: 14px; right: 14px; bottom: 40px;
     background: var(--card); border: 1px solid var(--closed); border-radius: 8px;
@@ -132,6 +141,12 @@ const T = {
   theme_light:   ["Light theme", "Светлая тема"],
   theme_dark:    ["Dark theme", "Тёмная тема"],
   about_tip:     ["About mkpk", "О программе"],
+  launch_tip:    ["Command to run after this service opens", "Команда, запускаемая после открытия сервиса"],
+  launch_ph:     ["e.g. start \"\" mstsc /v:{host}:{port}", "например: start \"\" mstsc /v:{host}:{port}"],
+  launch_hint:   ["Runs on this machine after a successful knock. {host}, {port}, {service} are substituted. Empty — nothing runs.",
+                  "Выполняется на этой машине после успешного стука. {host}, {port}, {service} подставляются. Пусто — ничего не запускается."],
+  launch_saved:  ["Command saved", "Команда сохранена"],
+  launched:      ["launched", "запущено"],
   about_text:    ["Knock first: a PSK time-token port-knock client for MikroTik routers. Import an invite, knock, connect.",
                   "Сначала постучись: клиент PSK-time port-knock для роутеров MikroTik. Импортируйте инвайт, постучитесь, подключайтесь."],
   close:         ["Close", "Закрыть"],
@@ -212,6 +227,7 @@ function chipText(last) {
 
 function svcRow(inv, rt, svc) {
   const key = inv.id + "/" + rt.router + "/" + svc.name;
+  const box = document.createElement("div");
   const row = document.createElement("div"); row.className = "svc";
   const info = document.createElement("div");
   const name = document.createElement("div"); name.className = "name"; name.textContent = svc.name;
@@ -224,10 +240,41 @@ function svcRow(inv, rt, svc) {
   const last = chips[key];
   if (last) { chip.classList.add(last.cls); chip.textContent = chipText(last); }
   else { chip.textContent = t("idle"); }
+
+  // Local post-open command: typed by the user, stored on this machine only.
+  const editor = document.createElement("div");
+  editor.className = "launch"; editor.style.display = "none";
+  const input = document.createElement("input");
+  input.value = svc.launch || ""; input.placeholder = t("launch_ph");
+  const hint = document.createElement("div"); hint.className = "hint"; hint.textContent = t("launch_hint");
+  editor.append(input, hint);
+  const save = async () => {
+    const command = input.value.trim();
+    if (command === (svc.launch || "")) return;
+    try {
+      await api("/api/launch", { invite_id: inv.id, router: rt.router, service: svc.name, command });
+      svc.launch = command;
+      gear.classList.toggle("on", !!command);
+      toast(t("launch_saved"));
+    } catch (e) { toast(e.message); }
+  };
+  input.onblur = save;
+  input.onkeydown = (e) => { if (e.key === "Enter") input.blur(); };
+
+  const gear = document.createElement("button");
+  gear.className = "gear" + (svc.launch ? " on" : "");
+  gear.textContent = "⚙"; gear.title = t("launch_tip");
+  gear.onclick = () => {
+    const open = editor.style.display === "none";
+    editor.style.display = open ? "block" : "none";
+    if (open) input.focus();
+  };
+
   const btn = document.createElement("button"); btn.textContent = t("knock");
   btn.onclick = () => knock(inv, rt, svc, chip, btn, key);
-  row.append(info, spacer, chip, btn);
-  return row;
+  row.append(info, spacer, gear, chip, btn);
+  box.append(row, editor);
+  return box;
 }
 
 async function knock(inv, rt, svc, chip, btn, key) {
@@ -239,6 +286,10 @@ async function knock(inv, rt, svc, chip, btn, key) {
     chips[key] = { cls, attempts: res.attempts };
     chip.className = "chip " + cls; chip.textContent = chipText(chips[key]);
     if (res.status !== "open" && res.error) toast(res.error);
+    if (res.launch_error) toast(res.launch_error);
+    else if (res.launched) {
+      chip.textContent = chipText(chips[key]) + " · " + t("launched");
+    }
   } catch (e) {
     chips[key] = { cls: "error" };
     chip.className = "chip error"; chip.textContent = chipText(chips[key]);

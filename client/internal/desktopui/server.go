@@ -53,6 +53,7 @@ type Server struct {
 	timings KnockTimings
 	state   stateRegistry
 	openURL func(string) error // shell hook: open a URL in the system browser
+	runCmd  func(string) error // launch runner; swapped in tests
 }
 
 // RepoURL is the public project page (the About link target).
@@ -89,7 +90,7 @@ func New(store *Store, sessionToken string, t KnockTimings) *Server {
 	if t.CheckInterval == 0 {
 		t.CheckInterval = d.CheckInterval
 	}
-	return &Server{store: store, token: sessionToken, timings: t}
+	return &Server{store: store, token: sessionToken, timings: t, runCmd: runCommandLine}
 }
 
 // NewHandlerTimings builds the handler with explicit timings (tests).
@@ -107,6 +108,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/knock", s.auth(s.handleKnock))
 	mux.HandleFunc("/api/settings", s.auth(s.handleSettings))
 	mux.HandleFunc("/api/open", s.auth(s.handleOpen))
+	mux.HandleFunc("/api/launch", s.auth(s.handleLaunch))
 	mux.HandleFunc("/icon.png", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		_, _ = w.Write(iconPNG)
@@ -143,6 +145,7 @@ type serviceJSON struct {
 	Name           string `json:"name"`
 	CheckPort      int    `json:"check_port"`
 	AllowedTimeout string `json:"allowed_timeout,omitempty"`
+	Launch         string `json:"launch,omitempty"` // user's local post-open command
 }
 
 type routerJSON struct {
@@ -162,11 +165,17 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	st := s.store.Settings()
 	invites := make([]inviteJSON, 0, len(list))
 	for _, inv := range list {
-		invites = append(invites, toInviteJSON(inv))
+		ij := toInviteJSON(inv)
+		for ri, rt := range ij.Routers {
+			for si, svc := range rt.Services {
+				ij.Routers[ri].Services[si].Launch = st.Launch[LaunchKey(inv.ID, rt.Router, svc.Name)]
+			}
+		}
+		invites = append(invites, ij)
 	}
-	st := s.store.Settings()
 	writeJSON(w, map[string]any{
 		"version":  version.String(),
 		"language": st.Language,
@@ -293,6 +302,30 @@ func (s *Server) handleOpen(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]bool{"ok": true})
 }
 
+// handleLaunch stores the user's post-open command for one service (empty
+// clears it). The command is local to this machine and never leaves it.
+func (s *Server) handleLaunch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	var req struct {
+		InviteID string `json:"invite_id"`
+		Router   string `json:"router"`
+		Service  string `json:"service"`
+		Command  string `json:"command"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "bad request: "+err.Error())
+		return
+	}
+	if err := s.SetLaunchCommand(req.InviteID, req.Router, req.Service, req.Command); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, map[string]string{"command": strings.TrimSpace(req.Command)})
+}
+
 // KnockResult is the outcome of one knock+check run.
 type KnockResult struct {
 	Router     string `json:"router"`
@@ -302,6 +335,8 @@ type KnockResult struct {
 	Attempts   int    `json:"attempts"`
 	DurationMS int64  `json:"duration_ms"`
 	LastError  string `json:"error"`
+	Launched   string `json:"launched,omitempty"`     // command started after open
+	LaunchErr  string `json:"launch_error,omitempty"` // it failed to start
 }
 
 // Knock performs the full CLI knock flow for one service of one stored invite:
@@ -347,16 +382,28 @@ func (s *Server) Knock(inviteID, routerAddr, serviceName string) (KnockResult, e
 		Attempts: s.timings.CheckAttempts,
 		Interval: s.timings.CheckInterval,
 	})
-	if chk.Status == "open" && svc.AllowedTimeout != "" {
+	res := KnockResult{
+		Router: rt.Router, Service: svc.Name, Knocked: true,
+		Status: chk.Status, Attempts: chk.Attempts,
+		DurationMS: chk.Duration.Milliseconds(), LastError: chk.LastError,
+	}
+	if chk.Status != "open" {
+		return res, nil // nothing is launched unless the port really opened
+	}
+	if svc.AllowedTimeout != "" {
 		if d, err := parseGoDuration(svc.AllowedTimeout); err == nil {
 			s.state.markOpen(inv.ID, rt.Router, svc.Name, time.Now().Add(d))
 		}
 	}
-	return KnockResult{
-		Router: rt.Router, Service: svc.Name, Knocked: true,
-		Status: chk.Status, Attempts: chk.Attempts,
-		DurationMS: chk.Duration.Milliseconds(), LastError: chk.LastError,
-	}, nil
+	if line := s.launchCommand(inv.ID, rt.Router, svc.Name); line != "" && s.runCmd != nil {
+		cmdline := expandLaunch(line, rt.Router, svc.CheckPort, svc.Name)
+		if err := s.runCmd(cmdline); err != nil {
+			res.LaunchErr = err.Error()
+		} else {
+			res.Launched = cmdline
+		}
+	}
+	return res, nil
 }
 
 func (s *Server) handleKnock(w http.ResponseWriter, r *http.Request) {
