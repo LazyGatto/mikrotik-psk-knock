@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>mkpk</title>
+<style>
+  :root {
+    --bg: #16181d; --card: #1e2128; --border: #2b2f38;
+    --fg: #e8eaee; --dim: #8b919c; --accent: #4f8cff;
+    --open: #3fb26f; --closed: #e05555; --warn: #d9a13c;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font: 13px/1.45 "Segoe UI", system-ui, sans-serif;
+    padding: 14px; user-select: none;
+  }
+  header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  header .title { font-size: 15px; font-weight: 700; }
+  header .spacer { flex: 1; }
+  button {
+    background: var(--card); color: var(--fg);
+    border: 1px solid var(--border); border-radius: 7px;
+    padding: 5px 12px; font: inherit; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .lang { min-width: 40px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 11px; margin-bottom: 10px;
+  }
+  .invite-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+  .invite-head .cid { font-weight: 600; }
+  .invite-head .x { margin-left: auto; color: var(--dim); background: none; border: none; padding: 2px 6px; }
+  .invite-head .x:hover { color: var(--closed); }
+  .router { color: var(--dim); font-size: 11.5px; margin: 6px 0 4px; }
+  .svc {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 0; border-top: 1px solid var(--border);
+  }
+  .svc .name { font-weight: 600; }
+  .svc .meta { color: var(--dim); font-size: 11px; }
+  .svc .spacer { flex: 1; }
+  .chip {
+    font-size: 11px; padding: 2px 9px; border-radius: 99px;
+    border: 1px solid var(--border); color: var(--dim); white-space: nowrap;
+  }
+  .chip.open   { color: var(--open);   border-color: var(--open); }
+  .chip.closed { color: var(--closed); border-color: var(--closed); }
+  .chip.error  { color: var(--warn);   border-color: var(--warn); }
+  .chip.busy   { color: var(--accent); border-color: var(--accent); }
+  .empty { color: var(--dim); text-align: center; padding: 34px 10px; }
+  .toast {
+    position: fixed; left: 14px; right: 14px; bottom: 40px;
+    background: #2a1d1d; border: 1px solid var(--closed); border-radius: 8px;
+    color: #f0c6c6; padding: 8px 12px; font-size: 12px; display: none;
+  }
+  footer {
+    position: fixed; left: 14px; right: 14px; bottom: 10px;
+    display: flex; color: var(--dim); font-size: 11px;
+  }
+  footer .spacer { flex: 1; }
+  #file { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <span class="title">mkpk</span>
+  <span class="spacer"></span>
+  <button class="lang" id="langBtn"></button>
+  <button class="primary" id="importBtn"></button>
+  <input type="file" id="file" accept=".mkpk,.txt">
+</header>
+<main id="main"></main>
+<div class="toast" id="toast"></div>
+<footer><span>mkpk · Knock first</span><span class="spacer"></span><span>__MKPK_VERSION__</span></footer>
+
+<script>
+"use strict";
+const TOKEN = "__MKPK_TOKEN__";
+const T = {
+  import:        ["Import invite", "Импорт инвайта"],
+  knock:         ["Knock", "Постучать"],
+  knocking:      ["Knocking…", "Стучимся…"],
+  open:          ["open", "открыто"],
+  closed:        ["closed", "закрыто"],
+  error:         ["error", "ошибка"],
+  idle:          ["—", "—"],
+  port:          ["port", "порт"],
+  openFor:       ["opens for", "открывается на"],
+  empty:         ["No invites yet. Import a .mkpk file you received from your admin.",
+                  "Инвайтов пока нет. Импортируйте .mkpk-файл, который вам передал администратор."],
+  removeConfirm: ["Remove this invite?", "Удалить этот инвайт?"],
+  attempts:      ["attempts", "попыток"],
+};
+let lang = "en";
+const t = (k) => T[k][lang === "ru" ? 1 : 0];
+
+async function api(path, body) {
+  const res = await fetch(path, {
+    method: body === undefined ? "GET" : "POST",
+    headers: { "X-MKPK-Token": TOKEN, "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+function toast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.style.display = "block";
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.style.display = "none"; }, 6000);
+}
+
+let state = { invites: [] };
+const chips = {};   // "inviteId/router/service" → last result
+
+function render() {
+  document.getElementById("langBtn").textContent = lang === "ru" ? "EN" : "RU";
+  document.getElementById("importBtn").textContent = t("import");
+  const main = document.getElementById("main");
+  main.textContent = "";
+  if (!state.invites.length) {
+    const d = document.createElement("div");
+    d.className = "empty"; d.textContent = t("empty");
+    main.appendChild(d);
+    return;
+  }
+  for (const inv of state.invites) {
+    const card = document.createElement("div"); card.className = "card";
+    const head = document.createElement("div"); head.className = "invite-head";
+    const cid = document.createElement("span"); cid.className = "cid"; cid.textContent = inv.client_id;
+    const x = document.createElement("button"); x.className = "x"; x.textContent = "✕";
+    x.onclick = async () => {
+      if (!confirm(t("removeConfirm"))) return;
+      try { await api("/api/remove", { id: inv.id }); await load(); }
+      catch (e) { toast(e.message); }
+    };
+    head.append(cid, x); card.appendChild(head);
+    for (const rt of inv.routers || []) {
+      const rh = document.createElement("div"); rh.className = "router"; rh.textContent = rt.router;
+      card.appendChild(rh);
+      for (const svc of rt.services || []) {
+        card.appendChild(svcRow(inv, rt, svc));
+      }
+    }
+    main.appendChild(card);
+  }
+}
+
+function svcRow(inv, rt, svc) {
+  const key = inv.id + "/" + rt.router + "/" + svc.name;
+  const row = document.createElement("div"); row.className = "svc";
+  const info = document.createElement("div");
+  const name = document.createElement("div"); name.className = "name"; name.textContent = svc.name;
+  const meta = document.createElement("div"); meta.className = "meta";
+  meta.textContent = t("port") + " " + svc.check_port +
+    (svc.allowed_timeout ? " · " + t("openFor") + " " + svc.allowed_timeout : "");
+  info.append(name, meta);
+  const spacer = document.createElement("span"); spacer.className = "spacer";
+  const chip = document.createElement("span"); chip.className = "chip";
+  const last = chips[key];
+  if (last) { chip.classList.add(last.cls); chip.textContent = last.text; }
+  else { chip.textContent = t("idle"); }
+  const btn = document.createElement("button"); btn.textContent = t("knock");
+  btn.onclick = () => knock(inv, rt, svc, chip, btn, key);
+  row.append(info, spacer, chip, btn);
+  return row;
+}
+
+async function knock(inv, rt, svc, chip, btn, key) {
+  btn.disabled = true;
+  chip.className = "chip busy"; chip.textContent = t("knocking");
+  try {
+    const res = await api("/api/knock", { invite_id: inv.id, router: rt.router, service: svc.name });
+    const cls = res.status === "open" ? "open" : res.status === "closed" ? "closed" : "error";
+    const text = t(cls) + " · " + res.attempts + " " + t("attempts");
+    chips[key] = { cls, text };
+    chip.className = "chip " + cls; chip.textContent = text;
+    if (res.status !== "open" && res.error) toast(res.error);
+  } catch (e) {
+    chips[key] = { cls: "error", text: t("error") };
+    chip.className = "chip error"; chip.textContent = t("error");
+    toast(e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.getElementById("langBtn").onclick = async () => {
+  lang = lang === "ru" ? "en" : "ru";
+  render();
+  try { await api("/api/language", { language: lang }); } catch (e) { /* non-fatal */ }
+};
+
+document.getElementById("importBtn").onclick = () => document.getElementById("file").click();
+document.getElementById("file").onchange = async (ev) => {
+  const f = ev.target.files[0];
+  ev.target.value = "";
+  if (!f) return;
+  try {
+    const blob = (await f.text()).trim();
+    await api("/api/import", { name: f.name, blob });
+    await load();
+  } catch (e) { toast(e.message); }
+};
+
+async function load() {
+  const st = await api("/api/state");
+  state = st;
+  if (st.language === "ru" || st.language === "en") lang = st.language;
+  render();
+}
+load().catch((e) => toast(e.message));
+</script>
+</body>
+</html>

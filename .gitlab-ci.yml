@@ -63,6 +63,16 @@ build:binaries:
           done
         done
       done
+    # Windows GUI client (mkpk-desktop): the Wails Windows backend is cgo-free,
+    # so it cross-compiles here like the CLIs. -H windowsgui hides the console.
+    - |
+      for arch in amd64 arm64; do
+        GOOS=windows GOARCH=$arch go build -tags desktop,production -trimpath \
+          -ldflags "$LDFLAGS -H windowsgui" -o stage/mkpk-desktop.exe ./cmd/mkpk-desktop
+        (cd stage && zip -q -j "$DIST/mkpk-desktop_${CI_COMMIT_TAG}_windows_${arch}.zip" mkpk-desktop.exe)
+        rm -f stage/mkpk-desktop.exe
+        echo "packaged mkpk-desktop_${CI_COMMIT_TAG}_windows_${arch}.zip"
+      done
     - cd "$CI_PROJECT_DIR"
     - |
       for f in dist/*.zip; do

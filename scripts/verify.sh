@@ -62,7 +62,18 @@ skip_stage() {
 
 # --- Go: всё, кроме десктопной обёртки (ей нужен платформенный webview) -------
 go_pkgs() {
-    (cd client && go list ./... 2>/dev/null | grep -v '/cmd/mkpk-provision-desktop')
+    # Оба wails-приложения вне дефолтного списка: их платформенным бэкендам
+    # нужны webview-теги; mkpk-desktop проверяется отдельной windows-стадией.
+    (cd client && go list ./... 2>/dev/null \
+        | grep -v '/cmd/mkpk-provision-desktop' \
+        | grep -v '/cmd/mkpk-desktop')
+}
+
+# Windows-клиент: wails-бэкенд Windows без cgo, поэтому кросс-сборка
+# проверяется на любом хосте обычным go build с продакшн-тегами.
+go_win_desktop() {
+    (cd client && GOOS=windows GOARCH=amd64 \
+        go build -tags desktop,production -o /dev/null ./cmd/mkpk-desktop)
 }
 
 go_stage() {  # go_stage <subcommand> [flags...]
@@ -80,6 +91,7 @@ echo
 if command -v go >/dev/null 2>&1; then
     run_stage "go:vet"   go_stage vet
     run_stage "go:build" go_stage build
+    run_stage "go:desktop-win" go_win_desktop
     if [ "$QUICK" -eq 0 ]; then
         run_stage "go:test" go_stage test -cover
     else

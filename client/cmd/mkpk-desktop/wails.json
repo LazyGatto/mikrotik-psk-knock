@@ -1,0 +1,16 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "mkpk-desktop",
+  "outputfilename": "mkpk-desktop",
+  "frontend:install": "",
+  "frontend:build": "",
+  "frontend:dev:watcher": "",
+  "frontend:dev:serverUrl": "",
+  "author": {
+    "name": "mkpk"
+  },
+  "info": {
+    "productName": "mkpk",
+    "comments": "MikroTik port-knock client"
+  }
+}

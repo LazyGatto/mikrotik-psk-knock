@@ -4,6 +4,18 @@ Notable changes to this project. Format: [Keep a Changelog](https://keepachangel
 Versions are the **Go CLI / provisioner** release tags (`mkpk`, `mkpk-provision`);
 the native macOS recipient app in `client-macos/` ships separately.
 
+## [Unreleased]
+
+### Added
+- **Windows GUI client `mkpk-desktop`** (#26): a small Wails app for invite
+  recipients — import `.mkpk` invites (stored under `%APPDATA%\mkpk`), see
+  routers/services, knock and check with an honest open/closed/error status,
+  EN/RU interface. It links the reference Go runtime directly (`invite`,
+  `token`, `knock`, `servicecheck`) — no protocol reimplementation. The Wails
+  Windows backend is cgo-free, so CI cross-compiles `windows/amd64` and
+  `windows/arm64` zips alongside the CLI binaries; unsigned (SmartScreen
+  warning accepted for now).
+
 ## [0.5.0] — 2026-08-26
 
 Infrastructure release: the Go CLI / provisioner is functionally unchanged from
