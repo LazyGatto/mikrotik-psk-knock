@@ -67,4 +67,20 @@ api "$API/projects/$PROJ/registry/repositories?per_page=100" \
           done
     done
 
+# Артефакты джоб в норме чистит `expire_in` в .gitlab-ci.yml — этот шаг нужен,
+# чтобы разгрести хвост, накопленный при прежнем сроке хранения. Поэтому он
+# выключен по умолчанию. GitLab сам решает, что удалять можно: артефакты
+# последнего успешного пайплайна на каждую ветку/тег он сохраняет.
+if [[ "${MKPK_PRUNE_ARTIFACTS:-0}" == 1 ]]; then
+  echo "▸ артефакты джоб"
+  if [[ "$DRY" == 1 ]]; then
+    echo "  ~ (dry-run) DELETE projects/$PROJ/artifacts"
+  elif curl -fsS --request DELETE --header "PRIVATE-TOKEN: $MKPK_RELEASE_TOKEN" \
+      "$API/projects/$PROJ/artifacts" >/dev/null 2>&1; then
+    echo "  ✓ удаление поставлено в очередь (статистика обновится не сразу)"
+  else
+    echo "  ✗ не удалось запросить удаление артефактов"
+  fi
+fi
+
 echo "✓ уборка закончена (git-теги и latest не тронуты)"

@@ -103,7 +103,11 @@ RouterOS-side domain principles: [`agent/instructions.md`](agent/instructions.md
    (`scripts/prune_gitlab_storage.sh`, `MKPK_KEEP_RELEASES`, dry-run via
    `MKPK_PRUNE_DRY_RUN=1`). Git tags and the `latest` image tag are never
    touched — a tag is the version history and what already-deployed instances
-   pull.
+   pull. **Job artifacts are a separate bucket** and the biggest one if
+   forgotten: `build:binaries` produces ~50 MiB per tag, so its `expire_in` is
+   one day — the same zips live in the package registry and on GitHub within
+   minutes. A backlog of old artifacts is cleared with
+   `MKPK_PRUNE_ARTIFACTS=1 bash scripts/prune_gitlab_storage.sh`.
 7. **Manual fallback** (maintainer's machine, e.g. when the runner is down):
    `bash scripts/package_release.sh vX.Y.Z` from the tagged checkout runs the
    same build/sign/notarize pipeline locally and prints the `glab`/`gh` upload
