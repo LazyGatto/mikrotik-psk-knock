@@ -12,3 +12,6 @@ import (
 // (the macOS recipient app is the native client-macos/), and fyne systray
 // would demand the main thread on darwin, which wails owns.
 func startTray(*desktopui.Server, *desktopui.Store, func() context.Context, func(), string) {}
+
+// stopTray is the teardown counterpart; nothing to tear down off Windows.
+func stopTray() {}

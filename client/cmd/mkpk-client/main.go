@@ -89,12 +89,20 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Handler: srv.Handler(),
 		},
+		// Launching mkpk again should bring the running copy forward, not add a
+		// second tray icon knocking on its own schedule.
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId:               "mkpk-client",
+			OnSecondInstanceLaunch: func(options.SecondInstanceData) { show() },
+		},
 		OnStartup: func(ctx context.Context) {
 			mu.Lock()
 			wailsCtx = ctx
 			mu.Unlock()
 			go watchMinimise(ctx, &tucked)
 		},
+		// Every exit path lands here, so this is where the tray icon goes.
+		OnShutdown: func(context.Context) { stopTray() },
 		// Windows expects the close button to close the program, not to hide it
 		// (that is macOS behaviour, and it left people thinking mkpk had quit
 		// while it was still knocking from the tray). Ask, then really quit —

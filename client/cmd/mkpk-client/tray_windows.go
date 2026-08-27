@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"sync"
 	"time"
 
 	"fyne.io/systray"
@@ -21,6 +22,28 @@ var trayIcon []byte
 
 //go:embed assets/tray-open.ico
 var trayIconOpen []byte
+
+// trayGone closes once systray has torn the icon down. Without an explicit
+// teardown Windows keeps drawing the icon until something makes the shell
+// re-poll the tray — which is why it only vanished when the mouse passed over
+// it. systray removes it in its onExit callback, so quitting has to wait for
+// that to actually run.
+var (
+	trayGone     = make(chan struct{})
+	trayStopOnce sync.Once
+)
+
+// stopTray removes the tray icon and waits (briefly) for it to be gone. Called
+// from the app's shutdown hook, so every exit path goes through it.
+func stopTray() {
+	trayStopOnce.Do(func() {
+		systray.Quit()
+		select {
+		case <-trayGone:
+		case <-time.After(time.Second):
+		}
+	})
+}
 
 // trayL is the tray's tiny EN/RU dictionary; the language follows the window's
 // setting (re-read on every refresh, so a switch applies within a tick).
@@ -42,7 +65,7 @@ func startTray(srv *desktopui.Server, store *desktopui.Store, getCtx func() cont
 		}
 	}()
 
-	systray.Run(func() { trayReady(srv, store, getCtx, show, appVersion) }, nil)
+	systray.Run(func() { trayReady(srv, store, getCtx, show, appVersion) }, func() { close(trayGone) })
 }
 
 func trayReady(srv *desktopui.Server, store *desktopui.Store, getCtx func() context.Context, show func(), appVersion string) {
@@ -137,10 +160,13 @@ func trayReady(srv *desktopui.Server, store *desktopui.Store, getCtx func() cont
 					wailsruntime.BrowserOpenURL(ctx, desktopui.RepoURL)
 				}
 			case <-mQuit.ClickedCh:
+				// wails' shutdown hook calls stopTray, so the icon goes away on
+				// this path too — and only once.
 				if ctx := getCtx(); ctx != nil {
 					wailsruntime.Quit(ctx)
+				} else {
+					stopTray()
 				}
-				systray.Quit()
 				return
 			case <-tick.C:
 				refresh()

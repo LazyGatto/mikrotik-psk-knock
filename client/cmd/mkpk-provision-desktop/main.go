@@ -72,6 +72,17 @@ func main() {
 			// handler: index, static assets, favicons and the /api/* endpoints.
 			Handler: handler,
 		},
+		// One console per machine: a second copy would race the first over the
+		// same config file, and the version guard would start rejecting saves.
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId: "mkpk-provision-desktop",
+			OnSecondInstanceLaunch: func(options.SecondInstanceData) {
+				if wailsCtx != nil {
+					wailsruntime.WindowUnminimise(wailsCtx)
+					wailsruntime.WindowShow(wailsCtx)
+				}
+			},
+		},
 		OnStartup: func(ctx context.Context) { wailsCtx = ctx },
 	})
 	if err != nil {
