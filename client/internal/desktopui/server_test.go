@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -57,6 +58,27 @@ func newTestServer(t *testing.T) (*httptest.Server, *Store) {
 	ts := httptest.NewServer(h)
 	t.Cleanup(ts.Close)
 	return ts, store
+}
+
+// newTestServerSrv is newTestServer for tests that need the Server itself —
+// mainly to swap the launch runner for a recorder.
+func newTestServerSrv(t *testing.T) (*httptest.Server, *Server) {
+	t.Helper()
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	srv := New(store, testToken, KnockTimings{
+		MinBucketAge:  time.Nanosecond,
+		StageDuration: 30 * time.Millisecond,
+		TokenDuration: 30 * time.Millisecond,
+		CheckTimeout:  200 * time.Millisecond,
+		CheckAttempts: 3,
+		CheckInterval: 20 * time.Millisecond,
+	})
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+	return ts, srv
 }
 
 func call(t *testing.T, ts *httptest.Server, method, path string, body any, out any) *http.Response {
@@ -211,6 +233,69 @@ func TestKnockUnknownService(t *testing.T) {
 		map[string]string{"invite_id": imported.ID, "router": "127.0.0.1", "service": "nope"}, nil)
 	if res.StatusCode != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", res.StatusCode)
+	}
+}
+
+// TestRelaunchRunsCommandWithoutKnocking covers the "reconnect while the port
+// is still open" button: no knock is sent, the command runs again, and once the
+// window is gone the answer is "closed" rather than a launch into nothing.
+func TestRelaunchRunsCommandWithoutKnocking(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_ = c.Close()
+		}
+	}()
+	port := ln.Addr().(*net.TCPAddr).Port
+
+	ts, srv := newTestServerSrv(t)
+	var ran []string
+	srv.runCmd = func(cmdline string) error { ran = append(ran, cmdline); return nil }
+
+	var imported struct {
+		ID string `json:"id"`
+	}
+	call(t, ts, "POST", "/api/import",
+		map[string]string{"name": "re", "blob": testBlob(t, port)}, &imported)
+
+	// No command yet → nothing to replay.
+	if res := call(t, ts, "POST", "/api/relaunch",
+		map[string]string{"invite_id": imported.ID, "router": "127.0.0.1", "service": "wg"}, nil); res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("relaunch without a command: status = %d, want 400", res.StatusCode)
+	}
+
+	call(t, ts, "POST", "/api/launch", map[string]string{
+		"invite_id": imported.ID, "router": "127.0.0.1", "service": "wg",
+		"command": "echo {host}:{port}",
+	}, nil)
+
+	var res RelaunchResult
+	call(t, ts, "POST", "/api/relaunch",
+		map[string]string{"invite_id": imported.ID, "router": "127.0.0.1", "service": "wg"}, &res)
+	if res.Status != "open" || res.Launched != "echo 127.0.0.1:"+strconv.Itoa(port) {
+		t.Fatalf("relaunch = %+v, want open and the expanded command", res)
+	}
+	if len(ran) != 1 {
+		t.Fatalf("runCmd calls = %d, want 1", len(ran))
+	}
+
+	ln.Close()
+	var closed RelaunchResult
+	call(t, ts, "POST", "/api/relaunch",
+		map[string]string{"invite_id": imported.ID, "router": "127.0.0.1", "service": "wg"}, &closed)
+	if closed.Status == "open" || closed.Launched != "" {
+		t.Fatalf("relaunch after close = %+v, want no launch", closed)
+	}
+	if len(ran) != 1 {
+		t.Fatalf("command ran again on a closed port: %v", ran)
 	}
 }
 

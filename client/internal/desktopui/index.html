@@ -152,6 +152,9 @@ const T = {
   launch_preset_hint: ["The admin already set what opens after this service — leave empty to use it, or type your own command to override it on this machine ({host}, {port}, {service} are substituted).",
                        "Админ уже задал, что открывать после стука — оставьте пусто, чтобы использовать это, либо впишите свою команду, она переопределит пресет на этой машине ({host}, {port}, {service} подставляются)."],
   launched:      ["launched", "запущено"],
+  relaunch_tip:  ["Run the command again — no knock, the port is already open",
+                  "Запустить команду повторно — без стука, порт уже открыт"],
+  relaunch_closed: ["The port is closed now — knock again", "Порт уже закрыт — постучитесь заново"],
   about_text:    ["Knock first: a PSK time-token port-knock client for MikroTik routers. Import an invite, knock, connect.",
                   "Сначала постучись: клиент PSK-time port-knock для роутеров MikroTik. Импортируйте инвайт, постучитесь, подключайтесь."],
   close:         ["Close", "Закрыть"],
@@ -245,6 +248,7 @@ function svcRow(inv, rt, svc) {
   const last = chips[key];
   if (last) { chip.classList.add(last.cls); chip.textContent = chipText(last); }
   else { chip.textContent = t("idle"); }
+  const hasCmd = () => !!(svc.launch || svc.launch_kind);
 
   // Local post-open command: typed by the user, stored on this machine only.
   const editor = document.createElement("div");
@@ -268,7 +272,9 @@ function svcRow(inv, rt, svc) {
     try {
       await api("/api/launch", { invite_id: inv.id, router: rt.router, service: svc.name, command });
       svc.launch = command;
-      gear.classList.toggle("on", !!(command || svc.launch_kind));
+      gear.classList.toggle("on", hasCmd());
+      again.style.display = hasCmd() ? "" : "none";
+      bindReplay();
       toast(t("launch_saved"));
     } catch (e) { toast(e.message); }
   };
@@ -285,14 +291,32 @@ function svcRow(inv, rt, svc) {
   };
 
   const btn = document.createElement("button"); btn.textContent = t("knock");
-  btn.onclick = () => knock(inv, rt, svc, chip, btn, key);
-  row.append(info, spacer, gear, chip, btn);
+  btn.onclick = () => knock(inv, rt, svc, chip, btn, key, bindReplay);
+
+  // Re-run without knocking: the router's window is still open, only the
+  // client-side session died. Also on the chip itself once it says "open" —
+  // that is where the eye already is after a knock.
+  const again = document.createElement("button");
+  again.className = "gear"; again.textContent = "▶"; again.title = t("relaunch_tip");
+  again.style.display = hasCmd() ? "" : "none";
+  const replay = () => relaunch(inv, rt, svc, chip, [btn, again], key, bindReplay);
+  again.onclick = replay;
+  function bindReplay() {
+    const on = hasCmd() && chips[key] && chips[key].cls === "open";
+    chip.onclick = on ? replay : null;
+    chip.style.cursor = on ? "pointer" : "";
+    chip.title = on ? t("relaunch_tip") : "";
+  }
+  bindReplay();
+
+  row.append(info, spacer, gear, again, chip, btn);
   box.append(row, editor);
   return box;
 }
 
-async function knock(inv, rt, svc, chip, btn, key) {
+async function knock(inv, rt, svc, chip, btn, key, bindReplay) {
   btn.disabled = true;
+  chip.onclick = null;
   chip.className = "chip busy"; chip.textContent = t("knocking");
   try {
     const res = await api("/api/knock", { invite_id: inv.id, router: rt.router, service: svc.name });
@@ -310,6 +334,36 @@ async function knock(inv, rt, svc, chip, btn, key) {
     toast(e.message);
   } finally {
     btn.disabled = false;
+    bindReplay();
+  }
+}
+
+// relaunch re-runs the service's command without knocking. The backend probes
+// the port first, so a window that expired meanwhile comes back as "closed"
+// instead of a launch into nothing.
+async function relaunch(inv, rt, svc, chip, btns, key, bindReplay) {
+  btns.forEach((b) => { b.disabled = true; });
+  chip.onclick = null;
+  const before = chip.className, beforeText = chip.textContent;
+  chip.className = "chip busy";
+  try {
+    const res = await api("/api/relaunch", { invite_id: inv.id, router: rt.router, service: svc.name });
+    if (res.status !== "open") {
+      chips[key] = { cls: res.status === "closed" ? "closed" : "error", attempts: res.attempts };
+      chip.className = "chip " + chips[key].cls; chip.textContent = chipText(chips[key]);
+      toast(t("relaunch_closed"));
+      return;
+    }
+    chips[key] = { cls: "open", attempts: res.attempts };
+    chip.className = "chip open"; chip.textContent = chipText(chips[key]);
+    if (res.launch_error) toast(t("launch_failed") + " " + res.launch_error);
+    else if (res.launched) chip.textContent = chipText(chips[key]) + " · " + t("launched");
+  } catch (e) {
+    chip.className = before; chip.textContent = beforeText;
+    toast(e.message);
+  } finally {
+    btns.forEach((b) => { b.disabled = false; });
+    bindReplay();
   }
 }
 

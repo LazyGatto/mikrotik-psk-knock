@@ -6,6 +6,13 @@ the native macOS recipient app in `client-macos/` ships separately.
 
 ## [Unreleased]
 
+### Added
+- **Windows client: re-run the command without knocking.** A ▶ button next to
+  each service (and a click on the green `open` badge) starts the connection
+  again while the router's window is still open — reconnecting after the RDP
+  session drops no longer costs a knock. The port is probed first, so an expired
+  window is reported as closed instead of launching into nothing.
+
 ### Fixed
 - **The Windows client actually runs the post-knock command** — it reported
   "launched" while nothing happened, for presets and typed commands alike. Go

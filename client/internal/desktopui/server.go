@@ -111,6 +111,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/settings", s.auth(s.handleSettings))
 	mux.HandleFunc("/api/open", s.auth(s.handleOpen))
 	mux.HandleFunc("/api/launch", s.auth(s.handleLaunch))
+	mux.HandleFunc("/api/relaunch", s.auth(s.handleRelaunch))
 	mux.HandleFunc("/icon.png", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		_, _ = w.Write(iconPNG)
@@ -402,17 +403,9 @@ func (s *Server) Knock(inviteID, routerAddr, serviceName string) (KnockResult, e
 			s.state.markOpen(inv.ID, rt.Router, svc.Name, time.Now().Add(d))
 		}
 	}
-	// What to run: the user's own command wins; otherwise the invite's preset
-	// KIND, expanded by us into a platform invocation.
-	cmdline := ""
-	if line := s.launchCommand(inv.ID, rt.Router, svc.Name); line != "" {
-		cmdline = expandLaunch(line, rt.Router, svc.CheckPort, svc.Name)
-	} else if svc.Launch != "" {
-		line, err := presetLine(svc.Launch, rt.Router, svc.CheckPort)
-		if err != nil {
-			res.LaunchErr = err.Error()
-		}
-		cmdline = line
+	cmdline, lerr := s.launchLine(inv.ID, rt, svc)
+	if lerr != nil {
+		res.LaunchErr = lerr.Error()
 	}
 	if cmdline != "" && s.runCmd != nil {
 		if err := s.runCmd(cmdline); err != nil {
@@ -422,6 +415,104 @@ func (s *Server) Knock(inviteID, routerAddr, serviceName string) (KnockResult, e
 		}
 	}
 	return res, nil
+}
+
+// launchLine decides what to run after a service is open: the user's own
+// command wins; otherwise the invite's preset KIND, expanded by us into a
+// platform invocation. An empty line means "nothing to run".
+func (s *Server) launchLine(inviteID string, rt invite.Router, svc invite.Service) (string, error) {
+	if line := s.launchCommand(inviteID, rt.Router, svc.Name); line != "" {
+		return expandLaunch(line, rt.Router, svc.CheckPort, svc.Name), nil
+	}
+	if svc.Launch != "" {
+		return presetLine(svc.Launch, rt.Router, svc.CheckPort)
+	}
+	return "", nil
+}
+
+// RelaunchResult is the outcome of re-running the command for a service that
+// is already open.
+type RelaunchResult struct {
+	Router    string `json:"router"`
+	Service   string `json:"service"`
+	Status    string `json:"status"` // port check: open / closed / error
+	Attempts  int    `json:"attempts"`
+	LastError string `json:"error,omitempty"`
+	Launched  string `json:"launched,omitempty"`
+	LaunchErr string `json:"launch_error,omitempty"`
+}
+
+// Relaunch runs the service's command again without knocking. Reconnecting to
+// a session that dropped should not cost a knock while the router still holds
+// the window open — but the window may have expired meanwhile, so the port is
+// checked first and a closed one is reported rather than launched into.
+func (s *Server) Relaunch(inviteID, routerAddr, serviceName string) (RelaunchResult, error) {
+	inv, err := s.store.Get(inviteID)
+	if err != nil {
+		return RelaunchResult{}, err
+	}
+	rt, svc, err := findService(inv.Invite, routerAddr, serviceName)
+	if err != nil {
+		return RelaunchResult{}, err
+	}
+	cmdline, lerr := s.launchLine(inv.ID, rt, svc)
+	if cmdline == "" {
+		if lerr != nil {
+			return RelaunchResult{}, lerr
+		}
+		return RelaunchResult{}, fmt.Errorf("desktopui: no command set for %s", svc.Name)
+	}
+
+	// One attempt: this is a fast "is it still open?", not the patient wait a
+	// knock does while the router installs the rule.
+	chk := servicecheck.Check(servicecheck.Options{
+		Host:     rt.Router,
+		Port:     svc.CheckPort,
+		Timeout:  s.timings.CheckTimeout,
+		Attempts: 1,
+		Interval: s.timings.CheckInterval,
+	})
+	res := RelaunchResult{
+		Router: rt.Router, Service: svc.Name,
+		Status: chk.Status, Attempts: chk.Attempts, LastError: chk.LastError,
+	}
+	if chk.Status != "open" {
+		return res, nil // caller tells the user to knock again
+	}
+	if lerr != nil {
+		res.LaunchErr = lerr.Error()
+		return res, nil
+	}
+	if s.runCmd != nil {
+		if err := s.runCmd(cmdline); err != nil {
+			res.LaunchErr = err.Error()
+		} else {
+			res.Launched = cmdline
+		}
+	}
+	return res, nil
+}
+
+func (s *Server) handleRelaunch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	var req struct {
+		InviteID string `json:"invite_id"`
+		Router   string `json:"router"`
+		Service  string `json:"service"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "bad request: "+err.Error())
+		return
+	}
+	res, err := s.Relaunch(req.InviteID, req.Router, req.Service)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, res)
 }
 
 func (s *Server) handleKnock(w http.ResponseWriter, r *http.Request) {
