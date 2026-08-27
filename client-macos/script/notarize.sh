@@ -22,10 +22,26 @@ if [[ -n "${MKPK_KEYCHAIN:-}" ]]; then
   KEYCHAIN_ARGS=(--keychain "$MKPK_KEYCHAIN")
 fi
 
+# Apple's notary endpoint times out on us now and then (NSURLError -1001 while
+# polling a submission that is in fact progressing). It has cost two releases so
+# far, each fixed by pressing retry by hand — so retry here instead. A resubmit
+# is safe: notarization has no side effect on the artifact, and stapling happens
+# only after a submission actually succeeds.
 submit() {  # <path-to-submit>
-  echo "▸ Submitting $1 to the notary service (profile: $PROFILE)"
-  xcrun notarytool submit "$1" --keychain-profile "$PROFILE" \
-    ${KEYCHAIN_ARGS[@]+"${KEYCHAIN_ARGS[@]}"} --wait
+  local attempt
+  for attempt in 1 2 3; do
+    echo "▸ Submitting $1 to the notary service (profile: $PROFILE, attempt $attempt/3)"
+    if xcrun notarytool submit "$1" --keychain-profile "$PROFILE" \
+        ${KEYCHAIN_ARGS[@]+"${KEYCHAIN_ARGS[@]}"} --wait; then
+      return 0
+    fi
+    if [[ "$attempt" -lt 3 ]]; then
+      echo "  ! notarization attempt $attempt failed — retrying in 30s"
+      sleep 30
+    fi
+  done
+  echo "✗ notarization failed three times — see the log above" >&2
+  return 1
 }
 
 case "$FILE" in
