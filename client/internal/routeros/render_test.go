@@ -1,6 +1,7 @@
 package routeros
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -100,6 +101,42 @@ func TestRenderUserOnMultipleServices(t *testing.T) {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("rendered script missing %q for multi-service user:\n%s", want, rendered)
 		}
+	}
+}
+
+// A router with services but no users granted access used to render
+// `:set mkpkTtClients { }` — an empty code block, which RouterOS rejects with a
+// syntax error that aborts the whole /import.
+func TestRenderWithoutClientsEmitsEmptyArray(t *testing.T) {
+	rendered, err := RenderConfig(multiRouter(), nil)
+	if err != nil {
+		t.Fatalf("RenderConfig() error = %v", err)
+	}
+	if !strings.Contains(rendered, `:set mkpkTtClients [:toarray ""]`) {
+		t.Fatalf("clientless render does not use the empty-array idiom:\n%s", rendered)
+	}
+	if strings.Contains(rendered, ":set mkpkTtClients {") {
+		t.Fatalf("clientless render still emits an empty code block:\n%s", rendered)
+	}
+	// The rest of the router must still be there — the services exist, only
+	// nobody may knock yet.
+	if !strings.Contains(rendered, "mkpk-tt-stage1-svc-a") {
+		t.Fatalf("services missing from a clientless render:\n%s", rendered)
+	}
+}
+
+// Same class of bug one step further: a router with no enabled services at all
+// would render `source={ }` for the apply script. An always-present `:return 0`
+// keeps every generated block non-empty.
+func TestRenderWithoutServicesHasNoEmptyBlocks(t *testing.T) {
+	r := multiRouter()
+	r.Services = nil
+	rendered, err := RenderConfig(r, nil)
+	if err != nil {
+		t.Fatalf("RenderConfig() error = %v", err)
+	}
+	if m := regexp.MustCompile(`(?m)=\{[ \t]*\n[ \t]*\}`).FindAllString(rendered, -1); len(m) > 0 {
+		t.Fatalf("rendered script contains empty RouterOS blocks %q:\n%s", m, rendered)
 	}
 }
 

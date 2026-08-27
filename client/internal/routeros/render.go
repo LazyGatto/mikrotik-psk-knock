@@ -159,6 +159,13 @@ func sortedStrings(s []string) []string {
 // buildClientsArray builds the RouterOS array-of-arrays literal consumed by the
 // data-driven poller: one associative array per client with quoted keys.
 func buildClientsArray(clients []cliData) string {
+	// A router can carry services with nobody granted access yet. An empty
+	// `{ }` is not an empty array to RouterOS — it is an empty code block, and
+	// `:set x { }` is a syntax error that kills the whole /import. This is the
+	// idiom for "empty array"; the poller then simply iterates nothing.
+	if len(clients) == 0 {
+		return `[:toarray ""]`
+	}
 	var b strings.Builder
 	b.WriteString("{\n")
 	for i, c := range clients {
@@ -279,7 +286,8 @@ add name="mkpk-tt-apply-service" policy=read,write,test source={
             src-address-list={{.AllowedList}}
     }
     :log info ("mkpk-tt target local applied comment=" . {{.Comment}})
-{{end}}{{end}}}
+{{end}}{{end}}    :return 0
+}
 
 add name="mkpk-tt-notify" policy=read,write,test source={
     # Router-level notification config, baked in at render time so it survives

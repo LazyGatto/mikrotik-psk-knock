@@ -4,6 +4,27 @@ Notable changes to this project. Format: [Keep a Changelog](https://keepachangel
 Versions are the **Go CLI / provisioner** release tags (`mkpk`, `mkpk-provision`);
 the native macOS recipient app in `client-macos/` ships separately.
 
+## [Unreleased]
+
+### Added
+- **«О программе» в веб-админке** — пункт в меню внизу сайдбара: версия
+  инсталляции, ссылка на проект, на документацию и, главное, на страницу
+  последнего релиза, откуда пользователи забирают клиентов (mkpk-client для
+  macOS и Windows, CLI `mkpk`). Показывает и результат проверки обновлений.
+
+### Fixed
+- **Деплой роутера, у которого есть сервисы, но нет ни одного пользователя**
+  (#37). Пустая таблица клиентов рендерилась как `:set mkpkTtClients { }`, а
+  для RouterOS `{ }` — это пустой блок кода, а не пустой массив: `/import`
+  падал с `syntax error`, при том что `dry-run` проходил. Теперь используется
+  идиома `[:toarray ""]`. Заодно `mkpk-tt-apply-service` всегда заканчивается
+  `:return 0`, чтобы у роутера вообще без сервисов не получился пустой
+  `source={ }`.
+- **Зеркалирование релиза на GitHub** падало на `mktemp -t relnotes`: это
+  BSD-идиома, а джоба переехала с macOS-раннера на Debian, где нужен шаблон с
+  `XXXXXX`. Пустой путь скармливал в API пустое тело релиза и всплывал как
+  невнятный HTTP 422.
+
 ## [0.14.0] — 2026-08-27
 
 ### Added

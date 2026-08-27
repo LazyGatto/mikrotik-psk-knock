@@ -40,6 +40,14 @@ const I18N = {
     "ssh.use": "Ключ инсталляции",
     "auth.mismatch": "Пароли не совпадают", "auth.changed": "Пароль изменён",
     "update.available": "Доступно обновление {ver} — открыть страницу релиза",
+    "about.title": "О программе",
+    "about.what": "Админка mkpk: PSK-time port-knock перед firewall-правилами RouterOS. Заводит роутеры и юзеров, раздаёт инвайты, деплоит правила по SSH.",
+    "about.repo": "Проект на GitHub",
+    "about.clients": "Клиенты для macOS и Windows",
+    "about.clients_note": "Страница последнего релиза: mkpk-client (.dmg для macOS, .zip для Windows) и CLI mkpk для всех платформ. Эти же файлы получают ваши пользователи вместе с .mkpk-инвайтом.",
+    "about.docs": "Документация",
+    "about.latest": "Последняя версия: {ver}",
+    "about.uptodate": "Установлена последняя версия",
     "note.add": "Добавить примечание", "note.title": "Примечание · {kind} {name}", "note.subtitle": "Хранится только в этом конфиге — на роутер не уходит",
     "note.placeholder": "Заметка для себя…", "note.clear": "Очистить", "note.saved": "Примечание сохранено", "note.cleared": "Примечание удалено",
     "note.kind.router": "роутер", "note.kind.service": "сервис", "note.kind.user": "юзер",
@@ -214,6 +222,14 @@ const I18N = {
     "ssh.use": "Instance key",
     "auth.mismatch": "Passwords do not match", "auth.changed": "Password changed",
     "update.available": "Update {ver} available — open the release page",
+    "about.title": "About",
+    "about.what": "The mkpk admin console: a PSK time-token port-knock in front of RouterOS firewall rules. Manages routers and users, hands out invites, deploys the rules over SSH.",
+    "about.repo": "Project on GitHub",
+    "about.clients": "Clients for macOS and Windows",
+    "about.clients_note": "The latest release page: mkpk-client (.dmg for macOS, .zip for Windows) and the mkpk CLI for every platform. These are the files your users get along with their .mkpk invite.",
+    "about.docs": "Documentation",
+    "about.latest": "Latest release: {ver}",
+    "about.uptodate": "You are on the latest release",
     undo: "Undo", redo: "Redo", "toast.undone": "Undone", "toast.redone": "Redone",
     "nav.dashboard": "Overview", "nav.routers": "Routers", "nav.users": "Users",
     "nav.add_router": "+ Add router", "nav.add_user": "+ Add user",
@@ -395,6 +411,8 @@ const ICONS = {
   logout: '<path d="M15 4h3.4A1.6 1.6 0 0 1 20 5.6v12.8a1.6 1.6 0 0 1-1.6 1.6H15"/><path d="M10 16l-4-4 4-4"/><path d="M6 12h10"/>',
   launch: '<path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M18 14v5a1.6 1.6 0 0 1-1.6 1.6H5.6A1.6 1.6 0 0 1 4 19V8.2A1.6 1.6 0 0 1 5.6 6.6H10"/>',
   note: '<path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/>',
+  download: '<path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M4 20h16"/>',
 };
 function icon(name, cls) {
   const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -665,6 +683,7 @@ function renderSidebar() {
     icon(ic), h("span", null, label), value ? h("span", { class: "val" }, value) : null);
 
   menuPop.append(item("key", t("ssh.title"), openSSHKeyModal));
+  menuPop.append(item("info", t("about.title"), openAboutModal));
   if (window.MKPK_AUTH) menuPop.append(item("lock", t("auth.passwd"), openPasswordModal));
   menuPop.append(h("hr"));
   menuPop.append(item("globe", t("lang.switch"), toggleLang, LANG.toUpperCase()));
@@ -1723,6 +1742,48 @@ async function openSSHKeyModal() {
       h("button", { class: "btn pri", onclick: () => downloadText(info.public_key + "\n", "mkpk-provision.pub") }, "⤓ .pub"));
   }
   modal(h("div", null, h("div", { class: "modal-head" }, h("h3", null, t("ssh.title"))), body, foot));
+}
+
+// The public project page — every outbound link lives under it, which is also
+// what /api/open allows in the desktop build.
+const REPO_URL = "https://github.com/LazyGatto/mikrotik-psk-knock/";
+
+// About: what this is, which version, and — the reason it exists — where the
+// admin sends users to get the client apps.
+function openAboutModal() {
+  const ver = (window.MKPK_VERSION && window.MKPK_VERSION !== "__MKPK_" + "VERSION__") ? window.MKPK_VERSION : "";
+  const link = (ic, label, url) => h("button", { class: "btn link row", style: "gap:6px", onclick: () => openExternal(url) },
+    icon(ic, "ic-sm"), h("span", null, label));
+
+  const head = h("div", { class: "row", style: "gap:12px;align-items:center" },
+    h("img", { src: "/logo-96.png", width: 48, height: 48, alt: "mkpk", style: "border-radius:11px" }),
+    h("div", null,
+      h("h3", { style: "margin:0" }, "mkpk-provision"),
+      ver ? h("div", { class: "foot-note mono" }, ver) : null));
+
+  const body = h("div", { class: "modal-body" }, head,
+    h("div", { class: "note", style: "margin-top:12px" }, t("about.what")),
+    h("div", { style: "display:flex;flex-direction:column;gap:8px;margin-top:12px;align-items:flex-start" },
+      link("launch", t("about.repo"), REPO_URL),
+      link("download", t("about.clients"), REPO_URL + "releases/latest"),
+      link("note", t("about.docs"), REPO_URL + "#readme")),
+    h("div", { class: "foot-note", style: "margin-top:8px" }, t("about.clients_note")));
+
+  // The update check already ran on boot; show what it found rather than
+  // asking the user to hunt for the arrow in the sidebar.
+  if (UPDATE && UPDATE.latest) {
+    body.append(UPDATE.newer
+      ? h("div", { style: "margin-top:12px" },
+          h("button", { class: "btn sm", onclick: () => openExternal(UPDATE.url) },
+            t("update.available", { ver: UPDATE.latest })))
+      : h("div", { class: "foot-note", style: "margin-top:12px" }, t("about.uptodate")));
+  }
+
+  modal(h("div", null,
+    h("div", { class: "modal-head" }, h("h3", null, t("about.title"))),
+    body,
+    h("div", { class: "modal-foot" }, h("span", { class: "spacer" }),
+      h("button", { class: "btn pri", onclick: closeModal }, t("close")))));
 }
 
 // A command an operator has to run on the router: shown as code, copied with a
