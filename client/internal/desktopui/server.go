@@ -10,6 +10,7 @@ import (
 
 	"mikrotik-psk-knock/client/internal/invite"
 	"mikrotik-psk-knock/client/internal/knock"
+	"mikrotik-psk-knock/client/internal/release"
 	"mikrotik-psk-knock/client/internal/servicecheck"
 	"mikrotik-psk-knock/client/internal/token"
 	"mikrotik-psk-knock/client/internal/version"
@@ -52,12 +53,28 @@ type Server struct {
 	token   string // per-session token, injected into the page, gates /api
 	timings KnockTimings
 	state   stateRegistry
+	updates release.Cache
 	openURL func(string) error // shell hook: open a URL in the system browser
 	runCmd  func(string) error // launch runner; swapped in tests
 }
 
 // RepoURL is the public project page (the About link target).
 const RepoURL = "https://github.com/LazyGatto/mikrotik-psk-knock"
+
+// handleUpdate reports whether a newer release is published. The page asks
+// once at startup and says so quietly — this client updates by downloading a
+// new zip, so all it can usefully do is tell the user that one exists.
+func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
+	info, err := s.updates.Get()
+	if err != nil {
+		writeErr(w, http.StatusBadGateway, "update check: "+err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{
+		"current": info.Current, "latest": info.Latest,
+		"newer": info.Newer, "url": info.URL,
+	})
+}
 
 // SetOpenURL lends the shell's system-browser hook to the UI (webview links
 // would navigate the app page away instead of opening a browser).
@@ -112,6 +129,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/open", s.auth(s.handleOpen))
 	mux.HandleFunc("/api/launch", s.auth(s.handleLaunch))
 	mux.HandleFunc("/api/relaunch", s.auth(s.handleRelaunch))
+	mux.HandleFunc("/api/update", s.auth(s.handleUpdate))
 	mux.HandleFunc("/icon.png", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		_, _ = w.Write(iconPNG)

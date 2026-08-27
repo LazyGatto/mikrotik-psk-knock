@@ -7,10 +7,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"mikrotik-psk-knock/client/internal/invite"
+	"mikrotik-psk-knock/client/internal/release"
+	"mikrotik-psk-knock/client/internal/version"
 )
 
 const testToken = "test-session-token"
@@ -318,3 +321,30 @@ func TestIndexInjectsToken(t *testing.T) {
 	}
 }
 
+// The client only reports that a newer release exists — it ships as a zip, so
+// there is nothing to install from the app. Offline must stay silent, which is
+// the caller's job: the endpoint says so with a 502.
+func TestUpdateEndpointReportsNewerRelease(t *testing.T) {
+	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"tag_name":"v9.9.9","html_url":"https://github.com/LazyGatto/mikrotik-psk-knock/releases/tag/v9.9.9"}`))
+	}))
+	defer feed.Close()
+	oldURL, oldVer := release.FeedURL, version.Version
+	release.FeedURL, version.Version = feed.URL, "v0.5.0"
+	defer func() { release.FeedURL, version.Version = oldURL, oldVer }()
+
+	ts, _ := newTestServerSrv(t)
+	var got struct {
+		Latest string `json:"latest"`
+		Newer  bool   `json:"newer"`
+		URL    string `json:"url"`
+	}
+	call(t, ts, "GET", "/api/update", nil, &got)
+	if !got.Newer || got.Latest != "v9.9.9" || got.URL == "" {
+		t.Fatalf("update = %+v, want newer v9.9.9 with a URL", got)
+	}
+	// The URL must be one /api/open will accept, or the button does nothing.
+	if !strings.HasPrefix(got.URL, RepoURL) {
+		t.Fatalf("release URL %q is outside the project pages", got.URL)
+	}
+}

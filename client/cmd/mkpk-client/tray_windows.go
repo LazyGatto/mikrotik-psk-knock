@@ -35,17 +35,17 @@ func trayL(lang, en, ru string) string {
 // win32 message loop; on Windows it may live in a goroutine (macOS would
 // require the main thread — this file is windows-only). A tray failure must
 // not take the app down: the window alone is still a working client.
-func startTray(srv *desktopui.Server, store *desktopui.Store, getCtx func() context.Context, appVersion string) {
+func startTray(srv *desktopui.Server, store *desktopui.Store, getCtx func() context.Context, show func(), appVersion string) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("mkpk-client: tray disabled: %v", r)
 		}
 	}()
 
-	systray.Run(func() { trayReady(srv, store, getCtx, appVersion) }, nil)
+	systray.Run(func() { trayReady(srv, store, getCtx, show, appVersion) }, nil)
 }
 
-func trayReady(srv *desktopui.Server, store *desktopui.Store, getCtx func() context.Context, appVersion string) {
+func trayReady(srv *desktopui.Server, store *desktopui.Store, getCtx func() context.Context, show func(), appVersion string) {
 	systray.SetIcon(trayIcon)
 	systray.SetTitle("mkpk")
 	systray.SetTooltip("mkpk " + appVersion)
@@ -125,19 +125,13 @@ func trayReady(srv *desktopui.Server, store *desktopui.Store, getCtx func() cont
 	refresh()
 	srv.SetOnChange(refresh)
 
-	showWindow := func() {
-		if ctx := getCtx(); ctx != nil {
-			wailsruntime.WindowShow(ctx)
-		}
-	}
-
 	go func() {
 		tick := time.NewTicker(30 * time.Second) // countdown + expiry rollover
 		defer tick.Stop()
 		for {
 			select {
 			case <-mShow.ClickedCh:
-				showWindow()
+				show()
 			case <-mAbout.ClickedCh:
 				if ctx := getCtx(); ctx != nil {
 					wailsruntime.BrowserOpenURL(ctx, desktopui.RepoURL)

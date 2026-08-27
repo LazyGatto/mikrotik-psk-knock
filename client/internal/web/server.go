@@ -24,6 +24,7 @@ import (
 	"mikrotik-psk-knock/client/internal/admin"
 	"mikrotik-psk-knock/client/internal/config"
 	"mikrotik-psk-knock/client/internal/deploy"
+	"mikrotik-psk-knock/client/internal/release"
 	"mikrotik-psk-knock/client/internal/version"
 )
 
@@ -42,12 +43,10 @@ type Server struct {
 	hooks      DesktopHooks
 	auth       *Auth // nil → local mode: loopback + a static per-process token
 
-	updMu      sync.Mutex
-	updCache   updateInfo
-	updFetched time.Time
-	mu         sync.Mutex
-	undo       [][]byte // snapshots of the file before each mutation
-	redo       [][]byte
+	updates release.Cache
+	mu      sync.Mutex
+	undo    [][]byte // snapshots of the file before each mutation
+	redo    [][]byte
 }
 
 // Handler builds the HTTP handler for the local admin UI served over a loopback

@@ -1,4 +1,4 @@
-package web
+package release
 
 import (
 	"net/http"
@@ -21,23 +21,25 @@ func TestParseSemver(t *testing.T) {
 		{"", [3]int{}, false},
 	}
 	for _, c := range cases {
-		got, ok := parseSemver(c.in)
+		got, ok := ParseSemver(c.in)
 		if ok != c.ok || got != c.want {
-			t.Errorf("parseSemver(%q) = %v,%v; want %v,%v", c.in, got, ok, c.want, c.ok)
+			t.Errorf("ParseSemver(%q) = %v,%v; want %v,%v", c.in, got, ok, c.want, c.ok)
 		}
 	}
 }
 
+// The cache must not turn a dev build into a nag, and a stubbed feed proves
+// the comparison end to end.
 func TestUpdateCheck(t *testing.T) {
 	feed := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"tag_name":"v9.9.9","html_url":"https://github.com/LazyGatto/mikrotik-psk-knock/releases/tag/v9.9.9"}`))
 	}))
 	defer feed.Close()
-	oldURL, oldVer := updateFeedURL, version.Version
-	updateFeedURL, version.Version = feed.URL, "v0.5.0"
-	defer func() { updateFeedURL, version.Version = oldURL, oldVer }()
+	oldURL, oldVer := FeedURL, version.Version
+	FeedURL, version.Version = feed.URL, "v0.5.0"
+	defer func() { FeedURL, version.Version = oldURL, oldVer }()
 
-	info, err := fetchUpdateInfo()
+	info, err := Check()
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
 	}
@@ -47,7 +49,7 @@ func TestUpdateCheck(t *testing.T) {
 
 	// dev builds never nag
 	version.Version = "dev"
-	info, err = fetchUpdateInfo()
+	info, err = Check()
 	if err != nil {
 		t.Fatalf("fetch: %v", err)
 	}

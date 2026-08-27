@@ -15,11 +15,17 @@
     --open: #1f9d57; --closed: #cc3d3d; --warn: #a87718;
   }
   * { box-sizing: border-box; margin: 0; }
+  html { height: 100%; }
+  /* Column layout instead of a fixed footer: a fixed one sat on top of the
+     last service row as soon as the list scrolled. */
   body {
     background: var(--bg); color: var(--fg);
     font: 13px/1.45 "Segoe UI", system-ui, sans-serif;
     padding: 14px; user-select: none;
+    min-height: 100%; display: flex; flex-direction: column;
+    overflow-x: hidden;
   }
+  main { flex: 1 1 auto; }
   header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
   header .title { font-size: 15px; font-weight: 700; }
   header .spacer { flex: 1; }
@@ -42,12 +48,15 @@
   .invite-head .x:hover { color: var(--closed); }
   .router { color: var(--dim); font-size: 11.5px; margin: 6px 0 4px; }
   .svc {
-    display: flex; align-items: center; gap: 8px;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
     padding: 7px 0; border-top: 1px solid var(--border);
   }
+  /* The name column shrinks first; when the controls still do not fit they
+     wrap to their own line instead of pushing the Knock button off-window. */
+  .svc .info { flex: 1 1 45%; min-width: 0; }
+  .svc .actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
   .svc .name { font-weight: 600; }
   .svc .meta { color: var(--dim); font-size: 11px; }
-  .svc .spacer { flex: 1; }
   .chip {
     font-size: 11px; padding: 2px 9px; border-radius: 99px;
     border: 1px solid var(--border); color: var(--dim); white-space: nowrap;
@@ -67,13 +76,13 @@
   }
   .launch .hint { color: var(--dim); font-size: 10.5px; margin-top: 4px; }
   .toast {
-    position: fixed; left: 14px; right: 14px; bottom: 40px;
+    position: fixed; left: 14px; right: 14px; bottom: 44px; z-index: 60;
     background: var(--card); border: 1px solid var(--closed); border-radius: 8px;
     color: var(--closed); padding: 8px 12px; font-size: 12px; display: none;
   }
   footer {
-    position: fixed; left: 14px; right: 14px; bottom: 10px;
     display: flex; color: var(--dim); font-size: 11px;
+    margin-top: 14px; padding-top: 8px; border-top: 1px solid var(--border);
   }
   footer .spacer { flex: 1; }
   footer a { color: var(--dim); text-decoration: none; cursor: pointer; }
@@ -93,6 +102,9 @@
   .about .ver { color: var(--dim); font-size: 11.5px; margin-top: 2px; }
   .about p { color: var(--dim); font-size: 11.5px; margin-top: 10px; line-height: 1.5; }
   .about .row { display: flex; gap: 8px; justify-content: center; margin-top: 14px; }
+  .confirm { width: 280px; text-align: left; padding: 18px 20px; }
+  .confirm p { color: var(--fg); font-size: 13px; margin: 0; }
+  .confirm .row { justify-content: flex-end; }
 </style>
 </head>
 <body>
@@ -137,7 +149,16 @@ const T = {
   empty:         ["No invites yet. Import a .mkpk file you received from your admin.",
                   "Инвайтов пока нет. Импортируйте .mkpk-файл, который вам передал администратор."],
   removeConfirm: ["Remove this invite?", "Удалить этот инвайт?"],
-  attempts:      ["attempts", "попыток"],
+  remove:        ["Remove", "Удалить"],
+  cancel:        ["Cancel", "Отмена"],
+  attempt_one:   ["attempt", "попытка"],
+  attempt_few:   ["attempts", "попытки"],
+  attempt_many:  ["attempts", "попыток"],
+  update_title:  ["Update available", "Доступно обновление"],
+  update_body:   ["Version {ver} has been released. You are running {cur}. Updating is optional — download it when convenient.",
+                  "Вышла версия {ver}, у вас {cur}. Обновляться необязательно — скачайте, когда будет удобно."],
+  update_open:   ["Open the release page", "Открыть страницу релиза"],
+  update_later:  ["Later", "Позже"],
   theme_light:   ["Light theme", "Светлая тема"],
   theme_dark:    ["Dark theme", "Тёмная тема"],
   about_tip:     ["About mkpk", "О программе"],
@@ -213,7 +234,9 @@ function render() {
     const cid = document.createElement("span"); cid.className = "cid"; cid.textContent = inv.client_id;
     const x = document.createElement("button"); x.className = "x"; x.textContent = "✕";
     x.onclick = async () => {
-      if (!confirm(t("removeConfirm"))) return;
+      // The webview's confirm() renders as "Сообщение с wails.localhost" —
+      // a browser dialog inside what should look like a desktop app.
+      if (!(await askConfirm(t("removeConfirm"), t("remove")))) return;
       try { await api("/api/remove", { id: inv.id }); await load(); }
       catch (e) { toast(e.message); }
     };
@@ -229,21 +252,30 @@ function render() {
   }
 }
 
+// "1 попыток" was wrong in every screenshot; Russian needs three forms.
+function attempts(n) {
+  if (lang !== "ru") return n + " " + t(n === 1 ? "attempt_one" : "attempt_many");
+  const d = n % 10, h = n % 100;
+  if (d === 1 && h !== 11) return n + " " + t("attempt_one");
+  if (d >= 2 && d <= 4 && (h < 12 || h > 14)) return n + " " + t("attempt_few");
+  return n + " " + t("attempt_many");
+}
+
 function chipText(last) {
-  return t(last.cls) + (last.attempts != null ? " \u00b7 " + last.attempts + " " + t("attempts") : "");
+  return t(last.cls) + (last.attempts != null ? " \u00b7 " + attempts(last.attempts) : "");
 }
 
 function svcRow(inv, rt, svc) {
   const key = inv.id + "/" + rt.router + "/" + svc.name;
   const box = document.createElement("div");
   const row = document.createElement("div"); row.className = "svc";
-  const info = document.createElement("div");
+  const info = document.createElement("div"); info.className = "info";
   const name = document.createElement("div"); name.className = "name"; name.textContent = svc.name;
   const meta = document.createElement("div"); meta.className = "meta";
   meta.textContent = t("port") + " " + svc.check_port +
     (svc.allowed_timeout ? " · " + t("openFor") + " " + svc.allowed_timeout : "");
   info.append(name, meta);
-  const spacer = document.createElement("span"); spacer.className = "spacer";
+  const actions = document.createElement("div"); actions.className = "actions";
   const chip = document.createElement("span"); chip.className = "chip";
   const last = chips[key];
   if (last) { chip.classList.add(last.cls); chip.textContent = chipText(last); }
@@ -309,7 +341,8 @@ function svcRow(inv, rt, svc) {
   }
   bindReplay();
 
-  row.append(info, spacer, gear, again, chip, btn);
+  actions.append(gear, again, chip, btn);
+  row.append(info, actions);
   box.append(row, editor);
   return box;
 }
@@ -367,6 +400,47 @@ async function relaunch(inv, rt, svc, chip, btns, key, bindReplay) {
   }
 }
 
+// A small in-app dialog: same overlay as About, Esc cancels, Enter confirms.
+function askConfirm(text, okLabel) {
+  return new Promise((resolve) => {
+    const ov = document.createElement("div"); ov.className = "overlay show";
+    const box = document.createElement("div"); box.className = "about confirm";
+    const p = document.createElement("p"); p.textContent = text;
+    const row = document.createElement("div"); row.className = "row";
+    const no = document.createElement("button"); no.textContent = t("cancel");
+    const yes = document.createElement("button"); yes.className = "primary"; yes.textContent = okLabel || "OK";
+    const done = (v) => { document.removeEventListener("keydown", key); ov.remove(); resolve(v); };
+    const key = (e) => { if (e.key === "Escape") done(false); if (e.key === "Enter") done(true); };
+    no.onclick = () => done(false);
+    yes.onclick = () => done(true);
+    ov.onclick = (e) => { if (e.target === ov) done(false); };
+    row.append(no, yes); box.append(p, row); ov.append(box);
+    document.body.appendChild(ov);
+    document.addEventListener("keydown", key);
+    yes.focus();
+  });
+}
+
+// Checked once per start. This client ships as a zip, so there is nothing to
+// install from here — say that a newer version exists and offer the page.
+async function checkUpdate() {
+  let d;
+  try { d = await api("/api/update"); } catch { return; } // offline: never nag
+  if (!d || !d.newer) return;
+  const ov = document.createElement("div"); ov.className = "overlay show";
+  const box = document.createElement("div"); box.className = "about confirm";
+  const head = document.createElement("h2"); head.style.fontSize = "15px"; head.textContent = t("update_title");
+  const p = document.createElement("p");
+  p.textContent = t("update_body").replace("{ver}", d.latest).replace("{cur}", d.current);
+  const row = document.createElement("div"); row.className = "row";
+  const later = document.createElement("button"); later.textContent = t("update_later");
+  const open = document.createElement("button"); open.className = "primary"; open.textContent = t("update_open");
+  later.onclick = () => ov.remove();
+  open.onclick = () => { ov.remove(); api("/api/open", { url: d.url }).catch((e) => toast(e.message)); };
+  row.append(later, open); box.append(head, p, row); ov.append(box);
+  document.body.appendChild(ov);
+}
+
 document.getElementById("langBtn").onclick = async () => {
   lang = lang === "ru" ? "en" : "ru";
   render(); applyTheme();
@@ -410,7 +484,7 @@ async function load() {
   if (st.theme === "light" || st.theme === "dark") theme = st.theme;
   render(); applyTheme();
 }
-load().catch((e) => toast(e.message));
+load().then(checkUpdate).catch((e) => toast(e.message));
 </script>
 </body>
 </html>
