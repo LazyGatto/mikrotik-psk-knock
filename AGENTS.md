@@ -97,7 +97,14 @@ RouterOS-side domain principles: [`agent/instructions.md`](agent/instructions.md
    **in-app auto-update** (feed: GitHub `releases/latest/download/appcast.xml`).
    Runner provisioning (CI keychain, `mkpk-notary` profile, EdDSA key, `wails`):
    [`docs/plans/2026-08-26-macos-release-ci-plan.md`](docs/plans/2026-08-26-macos-release-ci-plan.md).
-6. **Manual fallback** (maintainer's machine, e.g. when the runner is down):
+6. **Artifact retention.** The self-hosted GitLab keeps only the **last two
+   versions** — releases, generic packages and image tags alike; the public
+   GitHub mirror keeps the full history. `cleanup:gitlab` does this on every tag
+   (`scripts/prune_gitlab_storage.sh`, `MKPK_KEEP_RELEASES`, dry-run via
+   `MKPK_PRUNE_DRY_RUN=1`). Git tags and the `latest` image tag are never
+   touched — a tag is the version history and what already-deployed instances
+   pull.
+7. **Manual fallback** (maintainer's machine, e.g. when the runner is down):
    `bash scripts/package_release.sh vX.Y.Z` from the tagged checkout runs the
    same build/sign/notarize pipeline locally and prints the `glab`/`gh` upload
    commands. The underlying scripts (`client-macos/script/{build_app,sign,make_dmg,notarize}.sh`,
