@@ -90,7 +90,9 @@ func New(store *Store, sessionToken string, t KnockTimings) *Server {
 	if t.CheckInterval == 0 {
 		t.CheckInterval = d.CheckInterval
 	}
-	return &Server{store: store, token: sessionToken, timings: t, runCmd: runCommandLine}
+	srv := &Server{store: store, token: sessionToken, timings: t}
+	srv.runCmd = srv.runCommandLine
+	return srv
 }
 
 // NewHandlerTimings builds the handler with explicit timings (tests).
@@ -182,6 +184,9 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 		"language": st.Language,
 		"theme":    st.Theme,
 		"invites":  invites,
+		// Where launches are recorded — the answer to "it says launched but
+		// nothing happened".
+		"launch_log": s.LaunchLogPath(),
 	})
 }
 

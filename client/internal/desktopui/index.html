@@ -146,6 +146,8 @@ const T = {
   launch_hint:   ["Runs on this machine after a successful knock. {host}, {port}, {service} are substituted. Empty — nothing runs.",
                   "Выполняется на этой машине после успешного стука. {host}, {port}, {service} подставляются. Пусто — ничего не запускается."],
   launch_saved:  ["Command saved", "Команда сохранена"],
+  launch_log:    ["Launch log:", "Журнал запусков:"],
+  launch_failed: ["Command failed:", "Команда не выполнилась:"],
   launch_preset_ph:   ["admin preset: ", "пресет админа: "],
   launch_preset_hint: ["The admin already set what opens after this service — leave empty to use it, or type your own command to override it on this machine ({host}, {port}, {service} are substituted).",
                        "Админ уже задал, что открывать после стука — оставьте пусто, чтобы использовать это, либо впишите свою команду, она переопределит пресет на этой машине ({host}, {port}, {service} подставляются)."],
@@ -252,6 +254,13 @@ function svcRow(inv, rt, svc) {
   input.placeholder = svc.launch_kind ? t("launch_preset_ph") + svc.launch_kind.toUpperCase() : t("launch_ph");
   const hint = document.createElement("div"); hint.className = "hint";
   hint.textContent = svc.launch_kind ? t("launch_preset_hint") : t("launch_hint");
+  if (state.launch_log) {
+    const logLine = document.createElement("div");
+    logLine.className = "hint";
+    logLine.style.marginTop = "4px";
+    logLine.textContent = t("launch_log") + " " + state.launch_log;
+    editor.appendChild(logLine);
+  }
   editor.append(input, hint);
   const save = async () => {
     const command = input.value.trim();
@@ -291,7 +300,7 @@ async function knock(inv, rt, svc, chip, btn, key) {
     chips[key] = { cls, attempts: res.attempts };
     chip.className = "chip " + cls; chip.textContent = chipText(chips[key]);
     if (res.status !== "open" && res.error) toast(res.error);
-    if (res.launch_error) toast(res.launch_error);
+    if (res.launch_error) toast(t("launch_failed") + " " + res.launch_error);
     else if (res.launched) {
       chip.textContent = chipText(chips[key]) + " · " + t("launched");
     }

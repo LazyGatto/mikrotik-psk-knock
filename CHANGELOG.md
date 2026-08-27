@@ -4,6 +4,21 @@ Notable changes to this project. Format: [Keep a Changelog](https://keepachangel
 Versions are the **Go CLI / provisioner** release tags (`mkpk`, `mkpk-provision`);
 the native macOS recipient app in `client-macos/` ships separately.
 
+## [Unreleased]
+
+### Fixed
+- **The Windows client actually runs the post-knock command** — it reported
+  "launched" while nothing happened, for presets and typed commands alike. Go
+  escapes process arguments the way MSVC expects and `cmd.exe` does not read
+  that, so any command containing quotes (`start "" mstsc /v:host:port`, which
+  is every RDP preset) reached the shell mangled. The line is now passed to
+  `cmd.exe` verbatim.
+- **A failed launch says so** — only the shell starting was checked, so a
+  command that could not run was indistinguishable from one that worked. The
+  client now waits briefly, reports a non-zero exit in the UI, and records every
+  attempt (command, exit status, output) in `launch.log` next to the config; the
+  path is shown under the command field.
+
 ## [0.13.0] — 2026-08-27
 
 ### Added

@@ -7,16 +7,19 @@ import (
 	"syscall"
 )
 
-// runCommandLine hands the line to cmd.exe, so shell built-ins the user is
-// likely to type (`start "" mstsc /v:host:port`, `call …`) work as written.
-// The command is detached: we never wait for the launched app to exit, and the
-// console window stays hidden.
-func runCommandLine(cmdline string) error {
-	cmd := exec.Command("cmd", "/c", cmdline)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x08000000} // CREATE_NO_WINDOW
-	if err := cmd.Start(); err != nil {
-		return err
+// launchCmd hands the line to cmd.exe, so shell built-ins an operator is likely
+// to type (`start "" mstsc /v:host:port`, `call …`) work as written.
+//
+// CmdLine is set explicitly instead of passing arguments: Go escapes arguments
+// with backslash-quote pairs (the MSVC convention) and cmd.exe does not read
+// those, so a command containing quotes arrived mangled and silently did
+// nothing.
+func launchCmd(cmdline string) *exec.Cmd {
+	cmd := exec.Command("cmd.exe")
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: 0x08000000, // CREATE_NO_WINDOW: no console flash
+		CmdLine:       `cmd.exe /c ` + cmdline,
 	}
-	go func() { _ = cmd.Wait() }() // reap without blocking
-	return nil
+	return cmd
 }
