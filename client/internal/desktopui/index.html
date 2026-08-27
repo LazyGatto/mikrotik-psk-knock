@@ -69,6 +69,8 @@
   .svc .gear { background: none; border: none; color: var(--dim); padding: 2px 4px; font-size: 13px; }
   .svc .gear:hover { color: var(--accent); }
   .svc .gear.on { color: var(--open); }
+  .svc .keep.on { color: var(--accent); }
+  .svc .gear:disabled { opacity: .35; }
   .launch { padding: 0 0 8px; }
   .launch input {
     width: 100%; background: var(--bg); color: var(--fg); font: 11.5px/1.4 inherit;
@@ -159,6 +161,12 @@ const T = {
                   "Вышла версия {ver}, у вас {cur}. Обновляться необязательно — скачайте, когда будет удобно."],
   update_open:   ["Open the release page", "Открыть страницу релиза"],
   update_later:  ["Later", "Позже"],
+  keep_tip:      ["Keep this port open: re-knock automatically before it expires",
+                  "Держать порт открытым: перестукивать автоматически перед истечением"],
+  keep_no_ttl:   ["The invite does not say how long the port stays open, so it cannot be held",
+                  "В инвайте не указано, на сколько открывается порт — держать нечем"],
+  keep_on:       ["Holding the port open", "Держим порт открытым"],
+  keep_off:      ["Stopped holding the port", "Больше не держим порт"],
   theme_light:   ["Light theme", "Светлая тема"],
   theme_dark:    ["Dark theme", "Тёмная тема"],
   about_tip:     ["About mkpk", "О программе"],
@@ -222,6 +230,7 @@ function render() {
   document.getElementById("importBtn").textContent = t("import");
   const main = document.getElementById("main");
   main.textContent = "";
+  for (const k of Object.keys(chipEls)) delete chipEls[k];
   if (!state.invites.length) {
     const d = document.createElement("div");
     d.className = "empty"; d.textContent = t("empty");
@@ -261,8 +270,34 @@ function attempts(n) {
   return n + " " + t("attempt_many");
 }
 
+// "ещё 42м" beats "1 попытка" once a window is running: after a knock the
+// question stops being "did it work" and becomes "how long do I have".
+function remaining(until) {
+  const secs = Math.round(until - Date.now() / 1000);
+  if (secs <= 0) return null;
+  if (secs < 60) return lang === "ru" ? "ещё " + secs + "с" : secs + "s left";
+  const m = Math.round(secs / 60);
+  return lang === "ru" ? "ещё " + m + "м" : m + "m left";
+}
+
 function chipText(last) {
-  return t(last.cls) + (last.attempts != null ? " \u00b7 " + attempts(last.attempts) : "");
+  if (!last) return t("idle");
+  let tail = last.attempts != null ? attempts(last.attempts) : null;
+  if (last.cls === "open" && last.until) tail = remaining(last.until) || tail;
+  let text = t(last.cls) + (tail ? " \u00b7 " + tail : "");
+  if (last.launched) text += " \u00b7 " + t("launched");
+  return text;
+}
+
+// Chips repaint in place: a full re-render would close whatever launch editor
+// the user has open, and this ticks every second.
+const chipEls = {};
+function paintChip(key) {
+  const el = chipEls[key];
+  if (!el) return;
+  const last = chips[key];
+  el.className = "chip" + (last ? " " + last.cls : "");
+  el.textContent = chipText(last);
 }
 
 function svcRow(inv, rt, svc) {
@@ -277,6 +312,10 @@ function svcRow(inv, rt, svc) {
   info.append(name, meta);
   const actions = document.createElement("div"); actions.className = "actions";
   const chip = document.createElement("span"); chip.className = "chip";
+  chipEls[key] = chip;
+  // /api/state carries the live window, so the chip tells the truth even right
+  // after a restart — the router keeps holding the port either way.
+  if (svc.open_until) chips[key] = Object.assign({}, chips[key], { cls: "open", until: svc.open_until });
   const last = chips[key];
   if (last) { chip.classList.add(last.cls); chip.textContent = chipText(last); }
   else { chip.textContent = t("idle"); }
@@ -341,7 +380,27 @@ function svcRow(inv, rt, svc) {
   }
   bindReplay();
 
-  actions.append(gear, again, chip, btn);
+  // Keep-open: re-knock before the router's timeout runs out. Needs the invite
+  // to say how long that window is; invites issued before that field do not.
+  const keep = document.createElement("button");
+  keep.className = "gear keep" + (svc.keep_open ? " on" : "");
+  keep.textContent = "\u27f3";
+  keep.disabled = !svc.allowed_timeout;
+  keep.title = svc.allowed_timeout ? t("keep_tip") : t("keep_no_ttl");
+  keep.onclick = async () => {
+    const on = !svc.keep_open;
+    keep.disabled = true;
+    try {
+      await api("/api/keepopen", { invite_id: inv.id, router: rt.router, service: svc.name, on });
+      svc.keep_open = on;
+      keep.classList.toggle("on", on);
+      toast(on ? t("keep_on") : t("keep_off"));
+      if (on) setTimeout(pollStatus, 2000); // switching it on knocks right away
+    } catch (e) { toast(e.message); }
+    finally { keep.disabled = !svc.allowed_timeout; }
+  };
+
+  actions.append(gear, keep, again, chip, btn);
   row.append(info, actions);
   box.append(row, editor);
   return box;
@@ -354,16 +413,14 @@ async function knock(inv, rt, svc, chip, btn, key, bindReplay) {
   try {
     const res = await api("/api/knock", { invite_id: inv.id, router: rt.router, service: svc.name });
     const cls = res.status === "open" ? "open" : res.status === "closed" ? "closed" : "error";
-    chips[key] = { cls, attempts: res.attempts };
-    chip.className = "chip " + cls; chip.textContent = chipText(chips[key]);
+    chips[key] = { cls, attempts: res.attempts, launched: !!res.launched && !res.launch_error };
+    paintChip(key);
     if (res.status !== "open" && res.error) toast(res.error);
     if (res.launch_error) toast(t("launch_failed") + " " + res.launch_error);
-    else if (res.launched) {
-      chip.textContent = chipText(chips[key]) + " · " + t("launched");
-    }
+    pollStatus();  // pick up the window the router just granted
   } catch (e) {
     chips[key] = { cls: "error" };
-    chip.className = "chip error"; chip.textContent = chipText(chips[key]);
+    paintChip(key);
     toast(e.message);
   } finally {
     btn.disabled = false;
@@ -383,14 +440,14 @@ async function relaunch(inv, rt, svc, chip, btns, key, bindReplay) {
     const res = await api("/api/relaunch", { invite_id: inv.id, router: rt.router, service: svc.name });
     if (res.status !== "open") {
       chips[key] = { cls: res.status === "closed" ? "closed" : "error", attempts: res.attempts };
-      chip.className = "chip " + chips[key].cls; chip.textContent = chipText(chips[key]);
+      paintChip(key);
       toast(t("relaunch_closed"));
       return;
     }
-    chips[key] = { cls: "open", attempts: res.attempts };
-    chip.className = "chip open"; chip.textContent = chipText(chips[key]);
+    const until = chips[key] && chips[key].until;
+    chips[key] = { cls: "open", attempts: res.attempts, until, launched: !!res.launched && !res.launch_error };
+    paintChip(key);
     if (res.launch_error) toast(t("launch_failed") + " " + res.launch_error);
-    else if (res.launched) chip.textContent = chipText(chips[key]) + " · " + t("launched");
   } catch (e) {
     chip.className = before; chip.textContent = beforeText;
     toast(e.message);
@@ -477,6 +534,30 @@ document.getElementById("file").onchange = async (ev) => {
   } catch (e) { toast(e.message); }
 };
 
+// The live half of the state: a window granted by the router, and whether we
+// are holding it. Polled instead of re-rendering, so an open editor survives —
+// and so a renewal made in the background shows up without a click.
+async function pollStatus() {
+  let d;
+  try { d = await api("/api/status"); } catch { return; }
+  const skew = Math.round(Date.now() / 1000) - d.now;   // clock drift, if any
+  for (const [key, row] of Object.entries(d.services || {})) {
+    const until = row.open_until ? row.open_until + skew : 0;
+    const cur = chips[key];
+    if (until) chips[key] = Object.assign({}, cur, { cls: "open", until });
+    else if (cur && cur.until) chips[key] = { cls: "closed" };
+    paintChip(key);
+  }
+}
+
+// Countdown ticks locally; the poll above only corrects it.
+setInterval(() => {
+  for (const key of Object.keys(chips)) {
+    if (chips[key] && chips[key].until) paintChip(key);
+  }
+}, 1000);
+setInterval(pollStatus, 10000);
+
 async function load() {
   const st = await api("/api/state");
   state = st;
@@ -484,7 +565,7 @@ async function load() {
   if (st.theme === "light" || st.theme === "dark") theme = st.theme;
   render(); applyTheme();
 }
-load().then(checkUpdate).catch((e) => toast(e.message));
+load().then(() => { pollStatus(); checkUpdate(); }).catch((e) => toast(e.message));
 </script>
 </body>
 </html>

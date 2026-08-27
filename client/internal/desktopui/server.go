@@ -53,6 +53,7 @@ type Server struct {
 	token   string // per-session token, injected into the page, gates /api
 	timings KnockTimings
 	state   stateRegistry
+	keep    keepOpenState
 	updates release.Cache
 	openURL func(string) error // shell hook: open a URL in the system browser
 	runCmd  func(string) error // launch runner; swapped in tests
@@ -130,6 +131,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/launch", s.auth(s.handleLaunch))
 	mux.HandleFunc("/api/relaunch", s.auth(s.handleRelaunch))
 	mux.HandleFunc("/api/update", s.auth(s.handleUpdate))
+	mux.HandleFunc("/api/keepopen", s.auth(s.handleKeepOpen))
+	mux.HandleFunc("/api/status", s.auth(s.handleStatus))
 	mux.HandleFunc("/icon.png", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
 		_, _ = w.Write(iconPNG)
@@ -168,6 +171,8 @@ type serviceJSON struct {
 	AllowedTimeout string `json:"allowed_timeout,omitempty"`
 	Launch         string `json:"launch,omitempty"`      // user's local post-open command
 	LaunchKind     string `json:"launch_kind,omitempty"` // admin's preset from the invite
+	KeepOpen       bool   `json:"keep_open,omitempty"`   // hold it open by re-knocking
+	OpenUntil      int64  `json:"open_until,omitempty"`  // unix seconds; 0 → not known open
 }
 
 type routerJSON struct {
@@ -193,7 +198,12 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 		ij := toInviteJSON(inv)
 		for ri, rt := range ij.Routers {
 			for si, svc := range rt.Services {
-				ij.Routers[ri].Services[si].Launch = st.Launch[LaunchKey(inv.ID, rt.Router, svc.Name)]
+				key := LaunchKey(inv.ID, rt.Router, svc.Name)
+				ij.Routers[ri].Services[si].Launch = st.Launch[key]
+				ij.Routers[ri].Services[si].KeepOpen = st.KeepOpen[key]
+				if until := s.state.openUntil(inv.ID, rt.Router, svc.Name); !until.IsZero() {
+					ij.Routers[ri].Services[si].OpenUntil = until.Unix()
+				}
 			}
 		}
 		invites = append(invites, ij)
@@ -371,6 +381,13 @@ type KnockResult struct {
 // tray menu. A successful open is recorded in the state registry so the tray
 // can show "open · Nm left".
 func (s *Server) Knock(inviteID, routerAddr, serviceName string) (KnockResult, error) {
+	return s.knock(inviteID, routerAddr, serviceName, true)
+}
+
+// knock is Knock with control over the post-open command. Keep-open renewals
+// pass runLaunch=false: holding a port open must not pop an RDP window every
+// time the router's timeout comes round.
+func (s *Server) knock(inviteID, routerAddr, serviceName string, runLaunch bool) (KnockResult, error) {
 	inv, err := s.store.Get(inviteID)
 	if err != nil {
 		return KnockResult{}, err
@@ -414,12 +431,16 @@ func (s *Server) Knock(inviteID, routerAddr, serviceName string) (KnockResult, e
 		DurationMS: chk.Duration.Milliseconds(), LastError: chk.LastError,
 	}
 	if chk.Status != "open" {
+		s.state.markClosed(inv.ID, rt.Router, svc.Name)
 		return res, nil // nothing is launched unless the port really opened
 	}
 	if svc.AllowedTimeout != "" {
 		if d, err := parseGoDuration(svc.AllowedTimeout); err == nil {
 			s.state.markOpen(inv.ID, rt.Router, svc.Name, time.Now().Add(d))
 		}
+	}
+	if !runLaunch {
+		return res, nil
 	}
 	cmdline, lerr := s.launchLine(inv.ID, rt, svc)
 	if lerr != nil {

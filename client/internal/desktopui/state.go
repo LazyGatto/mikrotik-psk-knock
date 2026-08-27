@@ -45,6 +45,22 @@ func (r *stateRegistry) markOpen(inviteID, router, service string, until time.Ti
 	}
 }
 
+// markClosed forgets an open window: the port is no longer known to be open.
+func (r *stateRegistry) markClosed(inviteID, router, service string) {
+	r.mu.Lock()
+	delete(r.openTill, stateKey(inviteID, router, service))
+	cb := r.onChange
+	r.mu.Unlock()
+	if cb != nil {
+		cb()
+	}
+}
+
+// isOpen reports whether the service is currently within a known window.
+func (r *stateRegistry) isOpen(inviteID, router, service string) bool {
+	return time.Now().Before(r.openUntil(inviteID, router, service))
+}
+
 func (r *stateRegistry) openUntil(inviteID, router, service string) time.Time {
 	r.mu.Lock()
 	defer r.mu.Unlock()

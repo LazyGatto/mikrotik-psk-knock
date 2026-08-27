@@ -76,6 +76,10 @@ func main() {
 	// Tray (Windows): icon + per-service menu.
 	go startTray(srv, store, getCtx, show, version.String())
 
+	// Hold-open maintenance: re-knock the services the user asked to keep open,
+	// shortly before the router's window runs out. Runs for the life of the app.
+	srv.StartKeepOpen(nil)
+
 	err = wails.Run(&options.App{
 		Title:     "mkpk " + version.String(),
 		Width:     460,
