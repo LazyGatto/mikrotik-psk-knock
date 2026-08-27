@@ -31,7 +31,12 @@ git push "https://x-access-token:${GITHUB_TOKEN}@github.com/$GITHUB_REPO.git" \
 
 echo "▸ 2/3 релиз"
 # Заметки берём из CHANGELOG — это публичное лицо релиза.
-notes_file="$(mktemp -t relnotes)"
+# `mktemp -t relnotes` works on macOS and fails on GNU coreutils ("too few X's
+# in template") — this script moved from the macOS runner to a Debian one, so
+# spell the template out.
+notes_file="$(mktemp "${TMPDIR:-/tmp}/relnotes.XXXXXX")"
+# Without this the failure surfaces three steps later as an opaque HTTP 422.
+[[ -f "$notes_file" ]] || { echo "  ✗ mktemp не создал файл для заметок" >&2; exit 1; }
 python3 - "${TAG#v}" "${CI_PROJECT_DIR:-$PWD}/CHANGELOG.md" "$notes_file" <<'PY'
 import re, sys
 version, changelog, out = sys.argv[1], sys.argv[2], sys.argv[3]
