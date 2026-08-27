@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"mikrotik-psk-knock/client/internal/admin"
@@ -146,27 +147,88 @@ func (s *Server) routes() *http.ServeMux {
 	return mux
 }
 
+// pkgLogger is where the package writes things that are not a request line —
+// mainly deploy outcomes, which the request log cannot show: the deploy stream
+// answers 200 and carries any failure inside its body, so a container log full
+// of "POST /api/deploy/stream -> 200" looked like a healthy instance while the
+// operator was staring at red text in the browser.
+var pkgLogger atomic.Pointer[log.Logger]
+
+func logf(format string, args ...any) {
+	if l := pkgLogger.Load(); l != nil {
+		l.Printf(format, args...)
+	}
+}
+
+// debugLog turns off every bit of noise suppression below.
+func debugLog() bool { return os.Getenv("MKPK_DEBUG") != "" }
+
+// pollPaths are polled by the open page on a timer. At one line every 20s they
+// bury everything worth reading, so they are logged only when they fail, crawl,
+// or MKPK_DEBUG is set.
+var pollPaths = map[string]bool{
+	"/api/router/info": true,
+	"/api/config":      true,
+	"/api/update":      true,
+}
+
 // LogRequests wraps h to log each request (method, path, status, duration). API
-// endpoints only — static asset noise is skipped.
+// endpoints only — static asset noise is skipped. Failures carry the error
+// message the client was given, so "why did that 400?" is answerable from the
+// container log alone. It also installs l as the package logger.
 func LogRequests(h http.Handler, l *log.Logger) http.Handler {
+	if l != nil {
+		pkgLogger.Store(l)
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		h.ServeHTTP(rec, r)
-		if strings.HasPrefix(r.URL.Path, "/api/") {
-			l.Printf("%s %s%s -> %d (%s)", r.Method, r.URL.Path, querySuffix(r), rec.status, time.Since(start).Truncate(time.Millisecond))
+		if !strings.HasPrefix(r.URL.Path, "/api/") {
+			return
 		}
+		took := time.Since(start)
+		if pollPaths[r.URL.Path] && rec.status < 400 && took < 2*time.Second && !debugLog() {
+			return
+		}
+		line := fmt.Sprintf("%s %s%s -> %d (%s)", r.Method, r.URL.Path, querySuffix(r), rec.status, took.Truncate(time.Millisecond))
+		if msg := rec.errMessage(); msg != "" {
+			line += ": " + msg
+		}
+		l.Print(line)
 	})
 }
 
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
+	errBuf []byte // body of a failed response, capped — it is a JSON error object
 }
 
 func (r *statusRecorder) WriteHeader(code int) {
 	r.status = code
 	r.ResponseWriter.WriteHeader(code)
+}
+
+func (r *statusRecorder) Write(b []byte) (int, error) {
+	if r.status >= 400 && len(r.errBuf) < 512 {
+		r.errBuf = append(r.errBuf, b[:min(len(b), 512-len(r.errBuf))]...)
+	}
+	return r.ResponseWriter.Write(b)
+}
+
+// errMessage digs the human-readable part out of a captured error body.
+func (r *statusRecorder) errMessage() string {
+	if len(r.errBuf) == 0 {
+		return ""
+	}
+	var body struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(r.errBuf, &body); err == nil && body.Error != "" {
+		return body.Error
+	}
+	return strings.TrimSpace(string(r.errBuf))
 }
 
 // Flush forwards to the underlying writer so streaming handlers (deploy stream)
@@ -1056,8 +1118,19 @@ func (s *Server) handleDeployStream(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	emit(map[string]any{"type": "log", "line": "→ " + req.Action + " on " + req.Router + " …"})
+	started := time.Now()
+	action := req.Action
+	if action == "" {
+		action = "apply"
+	}
+	// Keep the router's own transcript out of the server log (it is long, and
+	// it carries command output), but keep every line that says what the
+	// operator was told went wrong.
 	opts := admin.DeployOptions{OnLog: func(line string) {
 		emit(map[string]any{"type": "log", "line": line})
+		if strings.HasPrefix(line, "! ") {
+			logf("deploy %s %s: %s", action, req.Router, strings.TrimPrefix(line, "! "))
+		}
 	}}
 
 	var res any
@@ -1069,13 +1142,16 @@ func (s *Server) handleDeployStream(w http.ResponseWriter, r *http.Request) {
 	case "apply", "":
 		res, err = admin.Apply(cfg, req.Router, opts, req.Force, req.DryRun)
 	default:
+		logf("deploy: unknown action %q", req.Action)
 		emit(map[string]any{"type": "error", "msg": "unknown action: " + req.Action})
 		return
 	}
 	if err != nil {
+		logf("deploy %s %s: FAILED after %s: %v", action, req.Router, time.Since(started).Truncate(time.Millisecond), err)
 		emit(map[string]any{"type": "error", "msg": err.Error()})
 		return
 	}
+	logf("deploy %s %s: ok (%s)", action, req.Router, time.Since(started).Truncate(time.Millisecond))
 	emit(map[string]any{"type": "result", "action": req.Action, "result": res})
 }
 

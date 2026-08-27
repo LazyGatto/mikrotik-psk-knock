@@ -14,6 +14,9 @@ services:
     environment:
       MKPK_ADMIN_PASSWORD: ${MKPK_ADMIN_PASSWORD:?set MKPK_ADMIN_PASSWORD in .env for the first start}
       MKPK_BEHIND_PROXY: "1"
+      # Empty by default. Set MKPK_DEBUG=1 in .env to also log the page's
+      # polling requests — useful when chasing "did that request even arrive?".
+      MKPK_DEBUG: ${MKPK_DEBUG:-}
     volumes:
       - mkpk-data:/data
       # - ./ssh:/data/ssh:ro

@@ -16,6 +16,8 @@ const I18N = {
     "auth.passwd_note": "Общий пароль для всех админов этой инсталляции. После смены все остальные сессии завершатся.",
     "auth.current": "Текущий пароль", "auth.new": "Новый пароль", "auth.repeat": "Повторите",
     "menu.title": "Меню",
+    "onb.ssh_address": "Адрес для деплоя (SSH)",
+    "onb.ssh_address_note": "Куда подключается сам провижн. Пусто — тот же публичный адрес. Обычно отличается: консоль ходит по локальной сети, а клиенты стучатся на внешний адрес.",
     "onb.title": "Добавить роутер",
     "onb.note": "Провижн заведёт на роутере собственного пользователя mkpk с минимальными правами и своим ключом. Дальше вся работа идёт под ним — личный логин админа больше не нужен.",
     "onb.admin_legend": "Разовый доступ администратора",
@@ -202,6 +204,8 @@ const I18N = {
     "auth.passwd_note": "One shared password for every admin of this instance. Changing it signs all other sessions out.",
     "auth.current": "Current password", "auth.new": "New password", "auth.repeat": "Repeat",
     "menu.title": "Menu",
+    "onb.ssh_address": "Deploy address (SSH)",
+    "onb.ssh_address_note": "Where provision itself connects. Empty — the public address above. Usually different: the console reaches the router over the LAN, clients knock the public address.",
     "onb.title": "Add router",
     "onb.note": "Provision will create its own mkpk user on the router, with a minimal group and its own key. Everything after this runs as that account — no personal admin login needed.",
     "onb.admin_legend": "One-off administrator access",
@@ -1402,6 +1406,12 @@ function openNoteModal(kind, router, name, note) {
 function openOnboardModal() {
   const addr = hostInput(h("input", { type: "text", placeholder: "router.example.com" }));
   const name = nameInput(h("input", { type: "text", placeholder: "router-a" }));
+  // The address provision connects to and the address clients knock are often
+  // not the same host: the console usually sits inside the network and reaches
+  // the router by a LAN address, while the invite must carry the public one.
+  // Onboarding needs the SSH one right now, so ask for both here instead of
+  // making the operator save a wrong address and edit it afterwards.
+  const sshAddr = hostInput(h("input", { type: "text", placeholder: "10.0.0.1 / router.lan" }));
   const port = portInput(h("input", { type: "number", placeholder: "22" }));
   const user = h("input", { type: "text", placeholder: "admin" });
   const password = h("input", { type: "password", autocomplete: "off" });
@@ -1416,8 +1426,9 @@ function openOnboardModal() {
     err.textContent = ""; out.textContent = t("onb.working");
     run.disabled = true;
     try {
+      const sshVal = sshAddr.value.trim() || addr.value.trim();
       const res = await api("POST", "/api/router/onboard", {
-        address: addr.value.trim(), port: +port.value || 0,
+        address: sshVal, port: +port.value || 0,
         user: user.value.trim(), password: password.value,
         key_path: keyPath.value.trim(), use_agent: agent.checked,
         restore_password_auth: restore.checked,
@@ -1429,7 +1440,10 @@ function openOnboardModal() {
       // Save the router pointing at the account we just created.
       const cfg = await api("POST", "/api/router", {
         name: name.value.trim() || addr.value.trim(),
-        address: addr.value.trim(),
+        address: addr.value.trim() || sshVal,
+        // Only record an override when it really differs, so the common
+        // single-address case stays a single address in the config.
+        deploy_address: sshVal === addr.value.trim() ? "" : sshVal,
         port: +port.value || 0, user: res.user, key_path: res.key_path, use_agent: false,
         notify: { webhook: {}, telegram: {}, email: {} },
       });
@@ -1455,6 +1469,7 @@ function openOnboardModal() {
     h("div", { class: "modal-body" },
       h("div", { class: "note" }, t("onb.note")),
       h("div", { class: "grid2" }, field(t("field.name"), name), field(t("field.address"), addr)),
+      field(t("onb.ssh_address"), sshAddr, t("onb.ssh_address_note")),
       h("fieldset", { class: "fieldset" }, h("legend", null, t("onb.admin_legend")),
         h("div", { class: "note" }, t("onb.admin_note")),
         h("div", { class: "grid2" }, field(t("field.user"), user), field(t("field.port"), port)),

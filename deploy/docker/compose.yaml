@@ -19,6 +19,9 @@ services:
       # A proxy terminates TLS in front of us; without this the binary refuses
       # to serve plain HTTP on a non-loopback address.
       MKPK_BEHIND_PROXY: "1"
+      # Empty by default. Set MKPK_DEBUG=1 in .env to also log the page's
+      # polling requests — useful when chasing "did that request even arrive?".
+      MKPK_DEBUG: ${MKPK_DEBUG:-}
     volumes:
       # Config, admin password record and any SSH keys used for deploys.
       - mkpk-data:/data

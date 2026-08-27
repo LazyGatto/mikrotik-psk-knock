@@ -152,16 +152,81 @@ func (c *Client) Deploy(rsc []byte) error {
 	if err := c.upload(remoteFileName, rsc); err != nil {
 		return fmt.Errorf("upload: %w", err)
 	}
-	out, err := c.Run("/import file-name=" + remoteFileName)
-	if err != nil {
-		return fmt.Errorf("import: %w (%s)", err, strings.TrimSpace(out))
-	}
-	if !strings.Contains(out, "loaded and executed successfully") {
-		return fmt.Errorf("import did not report success: %s", strings.TrimSpace(out))
+	if err := c.importFile(); err != nil {
+		return err
 	}
 	// Best-effort remove of the transient file (secrets live in the config anyway).
 	_, _ = c.Run(`/file remove [find where name="` + remoteFileName + `"]`)
 	return c.Verify()
+}
+
+// importFile runs `/import` and, when RouterOS refuses, retries once.
+//
+// A re-deploy tears the previous rule set down and rebuilds it in one file,
+// while the previous installation's poller is still firing every second. That
+// overlap makes the first import fail often enough that operators had learned
+// to just press deploy again — RouterOS's own message ("Script Error: 0") says
+// nothing about where it died. So: one automatic retry (the .rsc is idempotent
+// by construction — it removes everything it owns before re-adding it), and
+// whatever the router logged about the failure is carried into the error, so
+// the next report contains a cause instead of a shrug.
+func (c *Client) importFile() error {
+	out, err := c.runImport()
+	if err == nil {
+		return nil
+	}
+	first := err
+	if logs := c.recentScriptErrors(); logs != "" {
+		first = fmt.Errorf("%w\n  router log:\n%s", err, logs)
+	}
+	c.note("! import failed, retrying once: " + firstLine(out, err))
+	if _, retryErr := c.runImport(); retryErr != nil {
+		return fmt.Errorf("%w\n  (the retry failed too: %v)", first, retryErr)
+	}
+	c.note("import succeeded on the second attempt — first attempt: " + firstLine(out, err))
+	return nil
+}
+
+func (c *Client) runImport() (string, error) {
+	out, err := c.Run("/import file-name=" + remoteFileName)
+	if err != nil {
+		return out, fmt.Errorf("import: %w (%s)", err, strings.TrimSpace(out))
+	}
+	if !strings.Contains(out, "loaded and executed successfully") {
+		return out, fmt.Errorf("import did not report success: %s", strings.TrimSpace(out))
+	}
+	return out, nil
+}
+
+// recentScriptErrors pulls the router's own view of what just went wrong.
+// Best-effort: a router that will not tell us simply yields no extra detail.
+func (c *Client) recentScriptErrors() string {
+	// The tail of the whole log, not a topic filter: RouterOS spreads import
+	// failures across topics (script, system, error) and the last few lines
+	// right after a failed import are the interesting ones either way.
+	out, err := c.Run(`:local ids [/log find]; :local skip ([:len $ids] - 8); :local i 0; ` +
+		`:foreach l in=$ids do={ :if ($i >= $skip) do={ ` +
+		`:put ([/log get $l time] . " [" . [/log get $l topics] . "] " . [/log get $l message]) }; :set i ($i + 1) }`)
+	if err != nil {
+		return ""
+	}
+	var kept []string
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			kept = append(kept, "    "+line)
+		}
+	}
+	return strings.Join(kept, "\n")
+}
+
+func firstLine(out string, err error) string {
+	if s := strings.TrimSpace(out); s != "" {
+		if i := strings.IndexByte(s, '\n'); i > 0 {
+			return s[:i]
+		}
+		return s
+	}
+	return err.Error()
 }
 
 // Verify waits for the poller to bring the token rules up (or confirms there are

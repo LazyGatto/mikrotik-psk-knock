@@ -740,7 +740,7 @@ func serveCmd(args []string) error {
 		handler = web.LogRequests(web.Handler(*configPath, token), logger)
 	}
 	srv := &http.Server{Addr: *addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
-	fmt.Printf("mkpk provision UI: http://%s/\n", *addr)
+	fmt.Printf("mkpk-provision %s — UI: http://%s/\n", version.String(), *addr)
 	mode := "loopback only, no password"
 	if hasPassword {
 		mode = "password required"
@@ -749,6 +749,11 @@ func serveCmd(args []string) error {
 		}
 	}
 	fmt.Printf("config: %s (%s, Ctrl-C to stop)\n", *configPath, mode)
+	if os.Getenv("MKPK_DEBUG") == "" {
+		fmt.Println("logging: requests, deploy outcomes and errors (MKPK_DEBUG=1 also logs the page's polling)")
+	} else {
+		fmt.Println("logging: debug — every request, including the page's polling")
+	}
 	return srv.ListenAndServe()
 }
 

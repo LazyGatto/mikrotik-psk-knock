@@ -1,6 +1,8 @@
 package web
 
 import (
+	"bytes"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -213,5 +215,27 @@ func TestSaveWarnsAboutStaleInvites(t *testing.T) {
 	// what `mkpk invite show` prints on the user's side.
 	if !strings.Contains(rr.Body.String(), `"fingerprint":`) {
 		t.Fatalf("summary carries no fingerprint: %s", rr.Body.String())
+	}
+}
+
+// The container log is the only window into a networked instance, so a failing
+// request must carry its reason and the page's polling must not bury it.
+func TestLogRequestsShowsErrorsAndHidesPolling(t *testing.T) {
+	var buf bytes.Buffer
+	h := LogRequests(Handler(testConfigPath(t), "tok"), log.New(&buf, "", 0))
+
+	if rr := do(t, h, "GET", "/api/config", ""); rr.Code != 200 {
+		t.Fatalf("config: %d", rr.Code)
+	}
+	if strings.Contains(buf.String(), "/api/config") {
+		t.Fatalf("a successful poll was logged: %q", buf.String())
+	}
+
+	if rr := do(t, h, "POST", "/api/router", `{"name":"","address":""}`); rr.Code != 400 {
+		t.Fatalf("router: %d", rr.Code)
+	}
+	line := buf.String()
+	if !strings.Contains(line, "-> 400") || !strings.Contains(line, "router name and address are required") {
+		t.Fatalf("failure logged without its reason: %q", line)
 	}
 }
