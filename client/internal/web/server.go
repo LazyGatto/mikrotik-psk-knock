@@ -644,11 +644,7 @@ func (s *Server) handleRouter(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := s.save(cfg); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	s.writeConfig(w, cfg)
+	s.saveAndRespond(w, cfg)
 }
 
 type enableReq struct {
@@ -677,11 +673,7 @@ func (s *Server) handleServiceEnable(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := s.save(cfg); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	s.writeConfig(w, cfg)
+	s.saveAndRespond(w, cfg)
 }
 
 type noteReq struct {
@@ -714,11 +706,7 @@ func (s *Server) handleNote(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := s.save(cfg); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	s.writeConfig(w, cfg)
+	s.saveAndRespond(w, cfg)
 }
 
 type saveReq struct {
@@ -854,11 +842,7 @@ func (s *Server) handleService(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := s.save(cfg); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	s.writeConfig(w, cfg)
+	s.saveAndRespond(w, cfg)
 }
 
 type clientReq struct {
@@ -898,11 +882,7 @@ func (s *Server) handleClient(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := s.save(cfg); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	s.writeConfig(w, cfg)
+	s.saveAndRespond(w, cfg)
 }
 
 type userReq struct {
@@ -941,11 +921,7 @@ func (s *Server) handleUser(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := s.save(cfg); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	s.writeConfig(w, cfg)
+	s.saveAndRespond(w, cfg)
 }
 
 type pskReq struct {
@@ -974,11 +950,7 @@ func (s *Server) handleUserPSK(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if err := s.save(cfg); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	s.writeConfig(w, cfg)
+	s.saveAndRespond(w, cfg)
 }
 
 func (s *Server) handleRender(w http.ResponseWriter, r *http.Request) {
@@ -1173,6 +1145,39 @@ func (s *Server) writeConfigWarning(w http.ResponseWriter, cfg config.Config, wa
 		"can_undo": canUndo, "can_redo": canRedo,
 		"version": configVersion(s.configPath), "warning": warning,
 	})
+}
+
+// saveAndRespond persists cfg and answers with the new state. It also compares
+// the invite fingerprints before and after: an invite already in someone's
+// hands dies the moment a PSK, a knock port, the router address or the bucket
+// changes, and nothing else in the system would ever say so — a UDP knock
+// cannot report delivery, so the user just sees "nothing opens".
+func (s *Server) saveAndRespond(w http.ResponseWriter, cfg config.Config) {
+	// The file still holds the pre-change state; reading it back beats keeping
+	// a copy, because the handlers mutate maps the loaded config shares.
+	before, _ := config.LoadOrEmpty(s.configPath)
+	if err := s.save(cfg); err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.writeConfigStale(w, cfg, admin.InvalidatedInvites(before, cfg))
+}
+
+func (s *Server) writeConfigStale(w http.ResponseWriter, cfg config.Config, stale []string) {
+	s.mu.Lock()
+	canUndo, canRedo := len(s.undo) > 0, len(s.redo) > 0
+	s.mu.Unlock()
+	body := map[string]any{
+		"path":     s.configPath,
+		"summary":  admin.Summarize(cfg),
+		"can_undo": canUndo,
+		"can_redo": canRedo,
+		"version":  configVersion(s.configPath),
+	}
+	if len(stale) > 0 {
+		body["stale_invites"] = stale
+	}
+	writeJSON(w, http.StatusOK, body)
 }
 
 func (s *Server) writeConfig(w http.ResponseWriter, cfg config.Config) {

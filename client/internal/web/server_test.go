@@ -187,3 +187,31 @@ func TestIndexInjectsToken(t *testing.T) {
 		t.Fatal("index did not inject session token")
 	}
 }
+
+// A change that moves a knock port must come back with the users whose invites
+// it just killed; a note edit must not.
+func TestSaveWarnsAboutStaleInvites(t *testing.T) {
+	h := Handler(testConfigPath(t), "tok")
+
+	rr := do(t, h, "POST", "/api/note", `{"kind":"user","name":"cli","note":"hi"}`)
+	if rr.Code != 200 {
+		t.Fatalf("note: %d %s", rr.Code, rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), "stale_invites") {
+		t.Fatalf("a note edit warned about stale invites: %s", rr.Body.String())
+	}
+
+	rr = do(t, h, "POST", "/api/service",
+		`{"router":"r1","name":"svc","stage1_port":43001,"stage2_port":43002,"token_port":43003,"target":{"type":"forward","protocol":"tcp","port":2222,"to_address":"192.0.2.10","to_port":22}}`)
+	if rr.Code != 200 {
+		t.Fatalf("service edit: %d %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), `"stale_invites":["cli"]`) {
+		t.Fatalf("port change did not warn about the affected user: %s", rr.Body.String())
+	}
+	// The fingerprint travels with the summary so the admin can compare it with
+	// what `mkpk invite show` prints on the user's side.
+	if !strings.Contains(rr.Body.String(), `"fingerprint":`) {
+		t.Fatalf("summary carries no fingerprint: %s", rr.Body.String())
+	}
+}

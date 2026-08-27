@@ -159,7 +159,7 @@ type RouterOptions struct {
 	Address        string        // public knock address (also default SSH target)
 	Deploy         config.Deploy // Deploy.Address optionally overrides the SSH target
 	Notify         config.Notify
-	AllowedTimeout string        // router-wide default allowed-list TTL; empty → keep existing (3m for a new router)
+	AllowedTimeout string // router-wide default allowed-list TTL; empty → keep existing (3m for a new router)
 }
 
 // SetRouter creates the router when absent (default timeouts, empty services) or
@@ -672,15 +672,25 @@ func RemoveUser(cfg config.Config, name string) (config.Config, error) {
 // services. The common client_id is shared. It never includes other users'
 // secrets.
 func ExportUser(cfg config.Config, userName, routerName string) (string, error) {
+	b, err := buildInviteBlob(cfg, userName, routerName)
+	if err != nil {
+		return "", err
+	}
+	return invite.Encode(b)
+}
+
+// buildInviteBlob is ExportUser without the encoding step: the same blob also
+// feeds the fingerprint, so the two can never drift apart.
+func buildInviteBlob(cfg config.Config, userName, routerName string) (invite.Blob, error) {
 	u, ok := cfg.Users[userName]
 	if !ok {
-		return "", fmt.Errorf("unknown user %q", userName)
+		return invite.Blob{}, fmt.Errorf("unknown user %q", userName)
 	}
 	b := invite.Blob{Version: invite.Version, ClientID: u.ClientID}
 	routerNames := sortedKeys(u.Access)
 	if routerName != "" {
 		if _, ok := u.Access[routerName]; !ok {
-			return "", fmt.Errorf("user %q has no access to router %q", userName, routerName)
+			return invite.Blob{}, fmt.Errorf("user %q has no access to router %q", userName, routerName)
 		}
 		routerNames = []string{routerName}
 	}
@@ -715,9 +725,9 @@ func ExportUser(cfg config.Config, userName, routerName string) (string, error) 
 		}
 	}
 	if len(b.Routers) == 0 {
-		return "", fmt.Errorf("user %q has no enabled services to export", userName)
+		return invite.Blob{}, fmt.Errorf("user %q has no enabled services to export", userName)
 	}
-	return invite.Encode(b)
+	return b, nil
 }
 
 // Render renders one router (its services and the users granted access) into
@@ -749,6 +759,10 @@ type AccessSummary struct {
 	Router   string   `json:"router"`
 	Services []string `json:"services"`
 	PSKSet   bool     `json:"psk_set"`
+	// Fingerprint of the invite this access produces — the same value
+	// `mkpk invite show` prints, so an admin can tell a stale invite from a
+	// current one without seeing the PSK.
+	Fingerprint string `json:"fingerprint,omitempty"`
 }
 
 type RouterSummary struct {
@@ -817,6 +831,8 @@ type ServiceSummary struct {
 }
 
 type ClientSummary struct {
+	Fingerprint string `json:"fingerprint,omitempty"`
+
 	Name     string   `json:"name"`
 	ClientID string   `json:"client_id"`
 	Services []string `json:"services"`
@@ -860,6 +876,7 @@ func Summarize(cfg config.Config) Summary {
 			}
 			rs.Clients = append(rs.Clients, ClientSummary{
 				Name: un, ClientID: u.ClientID, Services: access.Services, PSKSet: access.PSK != "",
+				Fingerprint: AccessFingerprint(cfg, un, rn),
 			})
 		}
 		s.Routers = append(s.Routers, rs)
@@ -873,7 +890,10 @@ func Summarize(cfg config.Config) Summary {
 			if svcs == nil {
 				svcs = []string{}
 			}
-			us.Access = append(us.Access, AccessSummary{Router: rn, Services: svcs, PSKSet: access.PSK != ""})
+			us.Access = append(us.Access, AccessSummary{
+				Router: rn, Services: svcs, PSKSet: access.PSK != "",
+				Fingerprint: AccessFingerprint(cfg, un, rn),
+			})
 		}
 		s.Users = append(s.Users, us)
 	}

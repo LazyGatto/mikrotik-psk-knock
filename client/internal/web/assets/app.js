@@ -40,6 +40,10 @@ const I18N = {
     "ssh.use": "Ключ инсталляции",
     "auth.mismatch": "Пароли не совпадают", "auth.changed": "Пароль изменён",
     "update.available": "Доступно обновление {ver} — открыть страницу релиза",
+    "user.fp_title": "Отпечаток инвайта: это же значение печатает `mkpk invite show` у пользователя. Разошлись — инвайт на руках устарел.",
+    "stale.title": "Выданные инвайты стали недействительными",
+    "stale.body": "Изменение затронуло PSK, порты стука, адрес роутера или bucket — то есть ровно то, что вшито в инвайт. Инвайты этих пользователей больше не откроют порт:",
+    "stale.hint": "Выдайте им новые инвайты. Сверить можно по отпечатку: у пользователя — `mkpk invite show`, здесь — значение рядом с доступом.",
     "about.title": "О программе",
     "about.what": "Админка mkpk: PSK-time port-knock перед firewall-правилами RouterOS. Заводит роутеры и юзеров, раздаёт инвайты, деплоит правила по SSH.",
     "about.repo": "Проект на GitHub",
@@ -222,6 +226,10 @@ const I18N = {
     "ssh.use": "Instance key",
     "auth.mismatch": "Passwords do not match", "auth.changed": "Password changed",
     "update.available": "Update {ver} available — open the release page",
+    "user.fp_title": "Invite fingerprint — the same value `mkpk invite show` prints on the user's side. If they differ, the invite they hold is stale.",
+    "stale.title": "Invites already handed out are now invalid",
+    "stale.body": "This change touched a PSK, a knock port, the router address or the bucket — exactly what an invite carries. These users' invites will no longer open the port:",
+    "stale.hint": "Issue them new invites. To compare: `mkpk invite show` on their side, the fingerprint next to the access here.",
     "about.title": "About",
     "about.what": "The mkpk admin console: a PSK time-token port-knock in front of RouterOS firewall rules. Manages routers and users, hands out invites, deploys the rules over SSH.",
     "about.repo": "Project on GitHub",
@@ -507,6 +515,23 @@ async function applyConfig(data) {
   if (S.view.kind === "user" && !userOf(S.view.id)) S.view = { kind: "dashboard" };
   if (!S.routers.length) S.view = { kind: "onboarding" };
   render();
+  // Invites already handed out die silently when a PSK, a knock port, the
+  // router address or the bucket changes — a toast is too easy to miss for
+  // something that leaves people locked out.
+  if (data.stale_invites && data.stale_invites.length) staleInvitesModal(data.stale_invites);
+}
+
+function staleInvitesModal(users) {
+  modal(h("div", null,
+    h("div", { class: "modal-head" }, h("h3", null, t("stale.title"))),
+    h("div", { class: "modal-body" },
+      h("div", { class: "note" }, t("stale.body")),
+      h("div", { class: "stack", style: "gap:4px;margin-top:10px" },
+        ...users.map((u) => h("button", { class: "btn link row", style: "gap:6px", onclick: () => { closeModal(); go({ kind: "user", id: u }); } },
+          icon("user", "ic-sm"), h("span", null, u)))),
+      h("div", { class: "foot-note", style: "margin-top:10px" }, t("stale.hint"))),
+    h("div", { class: "modal-foot" }, h("span", { class: "spacer" }),
+      h("button", { class: "btn pri", onclick: closeModal }, t("close")))), "md");
 }
 async function reload() { applyConfig(await api("GET", "/api/config")); }
 function go(view) { S.view = { tab: "services", ...view }; render(); }
@@ -1179,6 +1204,7 @@ function userView(u) {
       h("span", { class: "spacer" }),
       h("span", { class: "foot-note" }, has ? t("user.svc_count", { n: a.services.length, total: r.services.length }) : t("user.no_access")),
       h("span", { class: "badge " + (has ? "green" : "grey"), "data-tip": has ? t("user.psk_active") : t("user.psk_none") }, "PSK"),
+      has && a.fingerprint && h("span", { class: "mono foot-note", "data-tip": t("user.fp_title") }, a.fingerprint),
       has && h("button", { class: "btn sm", "data-tip": t("user.invite_single_title"), onclick: () => openInvite(u.name, "single", r.name) }, "Invite"),
       has && h("button", { class: "iconbtn", "data-tip": t("user.rotate_title"), onclick: () => rotatePSK(u.name, r.name) }, icon("refresh"))));
     const checks = h("div", { class: "stack", style: "gap:5px" });
@@ -1860,7 +1886,8 @@ async function openInvite(user, mode, router) {
       const r = routerOf(rn); const a = u.access.find((x) => x.router === rn);
       const on = a.services.filter((sn) => { const s = r.services.find((x) => x.name === sn); return s && s.enabled; });
       included.append(h("div", { class: "row" }, h("span", { style: "font-weight:550" }, rn), h("span", { class: "mono foot-note" }, r.address),
-        h("span", { class: "spacer" }), h("span", { class: "foot-note" }, on.length ? on.join(", ") : t("invite.no_services"))));
+        h("span", { class: "spacer" }), h("span", { class: "foot-note" }, on.length ? on.join(", ") : t("invite.no_services")),
+        a.fingerprint ? h("span", { class: "mono foot-note", "data-tip": t("user.fp_title") }, a.fingerprint) : null));
     }
     loadBlob();
   }

@@ -22,6 +22,10 @@ mkpk \- MikroTik PSK port-knock runtime client
 .IR HOST "] [" --port
 .IR PORT "] [" --json "] [" --debug ]
 .br
+.B mkpk invite show
+.I FILE
+.RB [ --json ]
+.br
 .B mkpk version
 .SH DESCRIPTION
 .B mkpk
@@ -50,6 +54,16 @@ Run only a TCP connect check of the target endpoint, without knocking. Useful
 for before/after status. With
 .B --json
 it prints a machine-readable result.
+.TP
+.B invite show
+Print what an invite carries \(em router address, bucket, services and their
+knock ports \(em plus a short
+.IR fingerprint .
+The PSK is never printed. The same fingerprint appears in the
+.BR mkpk-provision (1)
+console next to the user's access, so a mismatch identifies a stale invite: a
+changed PSK, knock port, router address or bucket silently invalidates every
+invite already handed out, and a UDP knock cannot report that.
 .TP
 .B version
 Print the program version and exit.

@@ -41,7 +41,7 @@ func main() {
 // subcommand returns knock/check when that's what was invoked, so an error can
 // point at the right `-h`.
 func subcommand(args []string) string {
-	if len(args) > 0 && (args[0] == "knock" || args[0] == "check") {
+	if len(args) > 0 && (args[0] == "knock" || args[0] == "check" || args[0] == "invite") {
 		return args[0]
 	}
 	return ""
@@ -70,6 +70,8 @@ func run(args []string) error {
 		return knockCmd(args[1:])
 	case "check":
 		return checkCmd(args[1:])
+	case "invite":
+		return inviteCmd(args[1:])
 	case "version", "--version", "-v":
 		fmt.Printf("mkpk %s\n", version.String())
 		return nil
@@ -85,6 +87,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `Usage:
   mkpk knock (--invite @laptop.mkpk | --config mkpk.yaml --client laptop [--router name]) [--service name] [--check] [--debug]
   mkpk check (--invite @laptop.mkpk | --config mkpk.yaml --client laptop [--router name]) [--service name] [--host host] [--port port] [--json] [--debug]
+  mkpk invite show @laptop.mkpk [--json]
 
 Run `+"`mkpk knock -h`"+` or `+"`mkpk check -h`"+` for all options (e.g. --noise, --min-bucket-age, --stage-duration).
 `)
@@ -339,6 +342,89 @@ func printWindowDebug(window token.Window) {
 		window.Age.Truncate(time.Millisecond),
 		window.Remaining.Truncate(time.Millisecond),
 	)
+}
+
+// inviteCmd inspects an invite file. It exists because an invite that no longer
+// matches the router fails silently — a UDP knock cannot report delivery — so
+// the only way to tell "my invite is stale" from "the router is down" is to
+// compare what the invite carries against what the admin console shows. The
+// fingerprint makes that a one-line comparison.
+func inviteCmd(args []string) error {
+	if len(args) == 0 || args[0] != "show" {
+		return fmt.Errorf("usage: mkpk invite show @laptop.mkpk [--json]")
+	}
+	fs := flag.NewFlagSet("invite show", flag.ContinueOnError)
+	jsonOut := fs.Bool("json", false, "print as JSON")
+	if err := fs.Parse(args[1:]); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: mkpk invite show @laptop.mkpk [--json]")
+	}
+	b, err := loadBlob(fs.Arg(0))
+	if err != nil {
+		return err
+	}
+
+	// The PSK is never printed, in either format: this output is meant to be
+	// pasted into a chat with the admin.
+	type svcOut struct {
+		Name           string `json:"name"`
+		Stage1         int    `json:"stage1"`
+		Stage2         int    `json:"stage2"`
+		Token          int    `json:"token"`
+		CheckPort      int    `json:"check_port"`
+		AllowedTimeout string `json:"allowed_timeout,omitempty"`
+		Launch         string `json:"launch,omitempty"`
+	}
+	type routerOut struct {
+		Router        string   `json:"router"`
+		BucketSeconds int64    `json:"bucket_seconds"`
+		Fingerprint   string   `json:"fingerprint"`
+		Services      []svcOut `json:"services"`
+	}
+	out := struct {
+		Version     int         `json:"v"`
+		ClientID    string      `json:"client_id"`
+		Fingerprint string      `json:"fingerprint"`
+		Routers     []routerOut `json:"routers"`
+	}{Version: b.Version, ClientID: b.ClientID, Fingerprint: invite.Fingerprint(b)}
+	for _, r := range b.Routers {
+		ro := routerOut{Router: r.Router, BucketSeconds: r.BucketSeconds,
+			Fingerprint: invite.RouterFingerprint(b.ClientID, r)}
+		for _, s := range r.Services {
+			ro.Services = append(ro.Services, svcOut{
+				Name: s.Name, Stage1: s.Stage1, Stage2: s.Stage2, Token: s.Token,
+				CheckPort: s.CheckPort, AllowedTimeout: s.AllowedTimeout, Launch: s.Launch,
+			})
+		}
+		out.Routers = append(out.Routers, ro)
+	}
+
+	if *jsonOut {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(out)
+	}
+
+	fmt.Printf("client_id:   %s\n", out.ClientID)
+	fmt.Printf("fingerprint: %s\n", out.Fingerprint)
+	for _, r := range out.Routers {
+		fmt.Printf("\nrouter %s (bucket %ds, fingerprint %s)\n", r.Router, r.BucketSeconds, r.Fingerprint)
+		for _, s := range r.Services {
+			line := fmt.Sprintf("  %-16s knock %d/%d/%d  check %d", s.Name, s.Stage1, s.Stage2, s.Token, s.CheckPort)
+			if s.AllowedTimeout != "" {
+				line += "  opens for " + s.AllowedTimeout
+			}
+			if s.Launch != "" {
+				line += "  launch " + s.Launch
+			}
+			fmt.Println(line)
+		}
+	}
+	fmt.Printf("\nCompare the fingerprint with the one your admin sees next to your access.\n" +
+		"If they differ, this invite is stale — ask for a new one.\n")
+	return nil
 }
 
 func resolveTarget(configPath, inviteFlag, routerName, clientName, serviceName string) (config.Resolved, error) {
